@@ -1,0 +1,224 @@
+version: '3.8'
+
+# Complete HIE Stack for E2E Testing
+# Usage: docker-compose -f docker-compose.full.yml up --build
+#
+# Port Mapping (9300-9350 range):
+#   9300 - HIE Engine (HTTP receiver)
+#   9301 - HIE Engine (MLLP receiver)
+#   9302 - Management API
+#   9303 - Management Portal
+#   9310 - PostgreSQL
+#   9311 - Redis
+#   9320 - MLLP Echo Server
+#   9321 - HTTP Echo Server
+#   9330 - Adminer (DB UI)
+#   9331 - Redis Commander
+
+services:
+  # ==========================================================================
+  # HIE Backend Engine
+  # ==========================================================================
+  hie-engine:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: hie-engine
+    ports:
+      - "9300:8080"  # HTTP receiver for HL7 messages
+      - "9301:2575"  # MLLP receiver (when implemented)
+    volumes:
+      - ./config:/app/config:ro
+      - ./data/inbound:/data/inbound
+      - ./data/outbound:/data/outbound
+      - ./data/processed:/data/processed
+      - ./data/archive:/data/archive
+    environment:
+      - HIE_CONFIG=/app/config/production.yaml
+      - HIE_LOG_LEVEL=DEBUG
+      - HIE_LOG_FORMAT=json
+      - DATABASE_URL=postgresql://hie:hie_password@postgres:5432/hie
+      - REDIS_URL=redis://redis:6379/0
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - hie-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  # ==========================================================================
+  # HIE Management API
+  # ==========================================================================
+  hie-api:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    container_name: hie-api
+    ports:
+      - "9302:8081"
+    environment:
+      - HIE_API_HOST=0.0.0.0
+      - HIE_API_PORT=8081
+      - DATABASE_URL=postgresql://hie:hie_password@postgres:5432/hie
+      - REDIS_URL=redis://redis:6379/0
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - hie-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8081/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 5s
+
+  # ==========================================================================
+  # HIE Management Portal (Next.js)
+  # ==========================================================================
+  hie-portal:
+    build:
+      context: ./portal
+      dockerfile: Dockerfile
+    container_name: hie-portal
+    ports:
+      - "9303:3000"
+    environment:
+      - NODE_ENV=production
+      - NEXT_PUBLIC_API_URL=http://hie-api:8081
+    depends_on:
+      - hie-api
+    restart: unless-stopped
+    networks:
+      - hie-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  # ==========================================================================
+  # PostgreSQL Database
+  # ==========================================================================
+  postgres:
+    image: postgres:16-alpine
+    container_name: hie-postgres
+    ports:
+      - "9310:5432"
+    environment:
+      - POSTGRES_USER=hie
+      - POSTGRES_PASSWORD=hie_password
+      - POSTGRES_DB=hie
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./scripts/init-db.sql:/docker-entrypoint-initdb.d/init-db.sql:ro
+    restart: unless-stopped
+    networks:
+      - hie-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U hie -d hie"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ==========================================================================
+  # Redis Cache/Queue
+  # ==========================================================================
+  redis:
+    image: redis:7-alpine
+    container_name: hie-redis
+    ports:
+      - "9311:6379"
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+    networks:
+      - hie-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ==========================================================================
+  # MLLP Echo Server (Test Target)
+  # ==========================================================================
+  mllp-echo:
+    image: python:3.11-slim
+    container_name: hie-mllp-echo
+    volumes:
+      - ./scripts:/scripts:ro
+    command: ["python", "/scripts/mllp_echo.py"]
+    ports:
+      - "9320:2575"
+    restart: unless-stopped
+    networks:
+      - hie-network
+
+  # ==========================================================================
+  # HTTP Echo Server (Test Target)
+  # ==========================================================================
+  http-echo:
+    image: python:3.11-slim
+    container_name: hie-http-echo
+    volumes:
+      - ./scripts:/scripts:ro
+    command: ["python", "/scripts/http_echo.py"]
+    ports:
+      - "9321:8082"
+    restart: unless-stopped
+    networks:
+      - hie-network
+
+  # ==========================================================================
+  # Adminer (Database UI)
+  # ==========================================================================
+  adminer:
+    image: adminer:latest
+    container_name: hie-adminer
+    ports:
+      - "9330:8080"
+    environment:
+      - ADMINER_DEFAULT_SERVER=postgres
+    depends_on:
+      - postgres
+    restart: unless-stopped
+    networks:
+      - hie-network
+
+  # ==========================================================================
+  # Redis Commander (Redis UI)
+  # ==========================================================================
+  redis-commander:
+    image: rediscommander/redis-commander:latest
+    container_name: hie-redis-commander
+    ports:
+      - "9331:8081"
+    environment:
+      - REDIS_HOSTS=local:redis:6379
+    depends_on:
+      - redis
+    restart: unless-stopped
+    networks:
+      - hie-network
+
+volumes:
+  postgres_data:
+  redis_data:
+
+networks:
+  hie-network:
+    driver: bridge

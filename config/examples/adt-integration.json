@@ -1,0 +1,251 @@
+{
+  "$schema": "../schema/production.schema.json",
+  "name": "NHS-ADT-Integration",
+  "description": "ADT message integration for NHS acute trust - receives HL7v2 ADT messages via HTTP and MLLP, routes based on message type, and delivers to downstream systems",
+  "enabled": true,
+  "settings": {
+    "actorPoolSize": 4,
+    "gracefulShutdownTimeout": 60,
+    "healthCheckInterval": 10,
+    "autoStart": true
+  },
+  "items": [
+    {
+      "id": "HTTP_ADT_Receiver",
+      "name": "HTTP ADT Receiver",
+      "type": "receiver.http",
+      "category": "service",
+      "enabled": true,
+      "displayCategory": "Inbound",
+      "comment": "Receives ADT messages from EPR system via REST API",
+      "settings": {
+        "poolSize": 4,
+        "queueSize": 10000,
+        "host": "0.0.0.0",
+        "port": 8080,
+        "path": "/api/hl7/adt",
+        "methods": ["POST"],
+        "contentTypes": ["application/hl7-v2", "x-application/hl7-v2+er7", "text/plain"],
+        "maxBodySize": 1048576
+      },
+      "position": { "x": 100, "y": 200 }
+    },
+    {
+      "id": "File_ADT_Receiver",
+      "name": "File ADT Receiver",
+      "type": "receiver.file",
+      "category": "service",
+      "enabled": true,
+      "displayCategory": "Inbound",
+      "comment": "Watches for ADT message files from legacy batch interface",
+      "settings": {
+        "poolSize": 2,
+        "queueSize": 1000,
+        "directory": "/data/inbound/adt",
+        "patterns": ["*.hl7", "*.txt"],
+        "pollInterval": 5.0,
+        "moveTo": "/data/processed/adt",
+        "recursive": false
+      },
+      "position": { "x": 100, "y": 400 }
+    },
+    {
+      "id": "ADT_Router",
+      "name": "ADT Message Router",
+      "type": "processor.router",
+      "category": "process",
+      "enabled": true,
+      "displayCategory": "Processing",
+      "comment": "Routes ADT messages based on event type (A01, A02, A03, etc.)",
+      "settings": {
+        "poolSize": 4,
+        "queueSize": 5000,
+        "defaultTarget": "ADT_Archive",
+        "stopOnMatch": false
+      },
+      "position": { "x": 400, "y": 300 }
+    },
+    {
+      "id": "ADT_Transformer",
+      "name": "ADT Transformer",
+      "type": "processor.transform",
+      "category": "process",
+      "enabled": true,
+      "displayCategory": "Processing",
+      "comment": "Transforms ADT messages for downstream PAS system",
+      "settings": {
+        "poolSize": 4,
+        "queueSize": 5000,
+        "scriptPath": "/app/transforms/adt_to_pas.py"
+      },
+      "position": { "x": 700, "y": 200 }
+    },
+    {
+      "id": "PAS_MLLP_Sender",
+      "name": "PAS MLLP Sender",
+      "type": "sender.mllp",
+      "category": "operation",
+      "enabled": true,
+      "displayCategory": "Outbound",
+      "comment": "Sends transformed ADT messages to PAS via MLLP",
+      "settings": {
+        "poolSize": 4,
+        "queueSize": 5000,
+        "host": "pas.nhs.local",
+        "port": 2575,
+        "connectionTimeout": 30,
+        "maxConnections": 10,
+        "keepalive": true,
+        "ackTimeout": 30
+      },
+      "position": { "x": 1000, "y": 200 }
+    },
+    {
+      "id": "LIMS_MLLP_Sender",
+      "name": "LIMS MLLP Sender",
+      "type": "sender.mllp",
+      "category": "operation",
+      "enabled": true,
+      "displayCategory": "Outbound",
+      "comment": "Sends ADT A01/A03 messages to Laboratory system",
+      "settings": {
+        "poolSize": 2,
+        "queueSize": 2000,
+        "host": "lims.nhs.local",
+        "port": 2576,
+        "connectionTimeout": 30,
+        "maxConnections": 5,
+        "keepalive": true
+      },
+      "position": { "x": 1000, "y": 400 }
+    },
+    {
+      "id": "ADT_Archive",
+      "name": "ADT Archive",
+      "type": "sender.file",
+      "category": "operation",
+      "enabled": true,
+      "displayCategory": "Outbound",
+      "comment": "Archives all ADT messages for audit and compliance",
+      "settings": {
+        "poolSize": 2,
+        "queueSize": 10000,
+        "directory": "/data/archive/adt",
+        "filenamePattern": "{date}/{message_type}_{message_id}.hl7",
+        "createDirectory": true
+      },
+      "position": { "x": 700, "y": 500 }
+    },
+    {
+      "id": "Error_Handler",
+      "name": "Error Handler",
+      "type": "sender.file",
+      "category": "operation",
+      "enabled": true,
+      "displayCategory": "Error Handling",
+      "comment": "Stores failed messages for manual review",
+      "settings": {
+        "poolSize": 1,
+        "queueSize": 1000,
+        "directory": "/data/errors/adt",
+        "filenamePattern": "{timestamp}_{message_id}_error.hl7",
+        "createDirectory": true
+      },
+      "position": { "x": 700, "y": 600 }
+    }
+  ],
+  "connections": [
+    {
+      "id": "conn_http_to_router",
+      "source": "HTTP_ADT_Receiver",
+      "target": "ADT_Router",
+      "type": "standard",
+      "comment": "HTTP messages to router"
+    },
+    {
+      "id": "conn_file_to_router",
+      "source": "File_ADT_Receiver",
+      "target": "ADT_Router",
+      "type": "standard",
+      "comment": "File messages to router"
+    },
+    {
+      "id": "conn_router_to_transform",
+      "source": "ADT_Router",
+      "target": "ADT_Transformer",
+      "type": "standard",
+      "filter": {
+        "logic": "or",
+        "conditions": [
+          { "field": "envelope.message_type", "operator": "eq", "value": "ADT^A01" },
+          { "field": "envelope.message_type", "operator": "eq", "value": "ADT^A02" },
+          { "field": "envelope.message_type", "operator": "eq", "value": "ADT^A03" },
+          { "field": "envelope.message_type", "operator": "eq", "value": "ADT^A08" }
+        ]
+      },
+      "comment": "Route admission/discharge/transfer to PAS"
+    },
+    {
+      "id": "conn_transform_to_pas",
+      "source": "ADT_Transformer",
+      "target": "PAS_MLLP_Sender",
+      "type": "standard",
+      "comment": "Transformed messages to PAS"
+    },
+    {
+      "id": "conn_router_to_lims",
+      "source": "ADT_Router",
+      "target": "LIMS_MLLP_Sender",
+      "type": "standard",
+      "filter": {
+        "logic": "or",
+        "conditions": [
+          { "field": "envelope.message_type", "operator": "eq", "value": "ADT^A01" },
+          { "field": "envelope.message_type", "operator": "eq", "value": "ADT^A03" }
+        ]
+      },
+      "comment": "Route admit/discharge to LIMS"
+    },
+    {
+      "id": "conn_router_to_archive",
+      "source": "ADT_Router",
+      "target": "ADT_Archive",
+      "type": "standard",
+      "comment": "Archive all messages"
+    },
+    {
+      "id": "conn_pas_error",
+      "source": "PAS_MLLP_Sender",
+      "target": "Error_Handler",
+      "type": "error",
+      "comment": "PAS delivery failures"
+    },
+    {
+      "id": "conn_lims_error",
+      "source": "LIMS_MLLP_Sender",
+      "target": "Error_Handler",
+      "type": "error",
+      "comment": "LIMS delivery failures"
+    }
+  ],
+  "routingRules": [
+    {
+      "id": "rule_urgent_priority",
+      "name": "Urgent Message Priority",
+      "enabled": true,
+      "priority": 100,
+      "filter": {
+        "logic": "and",
+        "conditions": [
+          { "field": "envelope.priority", "operator": "eq", "value": "urgent" }
+        ]
+      },
+      "targets": ["ADT_Transformer", "ADT_Archive"],
+      "stopProcessing": false
+    }
+  ],
+  "createdAt": "2026-01-21T11:00:00Z",
+  "updatedAt": "2026-01-21T11:00:00Z",
+  "createdBy": "system",
+  "version": 1
+}

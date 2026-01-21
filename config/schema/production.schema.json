@@ -1,0 +1,332 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://hie.nhs.uk/schemas/production/v1",
+  "title": "HIE Production Configuration",
+  "description": "Schema for Healthcare Integration Engine production configuration",
+  "type": "object",
+  "required": ["name", "items"],
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "description": "Schema version identifier"
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Production name"
+    },
+    "description": {
+      "type": "string",
+      "description": "Production description"
+    },
+    "enabled": {
+      "type": "boolean",
+      "default": true,
+      "description": "Whether production is enabled"
+    },
+    "settings": {
+      "$ref": "#/$defs/productionSettings"
+    },
+    "items": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/item"
+      },
+      "description": "Business hosts (services, processes, operations)"
+    },
+    "connections": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/connection"
+      },
+      "description": "Connections between items defining message flow"
+    },
+    "routingRules": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/routingRule"
+      },
+      "description": "Global routing rules"
+    },
+    "createdAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "updatedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "createdBy": {
+      "type": "string"
+    },
+    "version": {
+      "type": "integer",
+      "minimum": 1,
+      "default": 1
+    }
+  },
+  "$defs": {
+    "productionSettings": {
+      "type": "object",
+      "properties": {
+        "actorPoolSize": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 2,
+          "description": "Global actor pool size"
+        },
+        "gracefulShutdownTimeout": {
+          "type": "number",
+          "minimum": 0,
+          "default": 30,
+          "description": "Shutdown timeout in seconds"
+        },
+        "healthCheckInterval": {
+          "type": "number",
+          "minimum": 1,
+          "default": 10,
+          "description": "Health check interval in seconds"
+        },
+        "autoStart": {
+          "type": "boolean",
+          "default": true,
+          "description": "Start production automatically"
+        },
+        "testingEnabled": {
+          "type": "boolean",
+          "default": false,
+          "description": "Enable testing mode"
+        }
+      },
+      "additionalProperties": true
+    },
+    "item": {
+      "type": "object",
+      "required": ["id", "type", "category"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^[^|;,:\\[<>\\\\/&\"]+$",
+          "description": "Unique item identifier"
+        },
+        "name": {
+          "type": "string",
+          "description": "Human-readable display name"
+        },
+        "type": {
+          "type": "string",
+          "description": "Item type (e.g., 'receiver.http', 'sender.mllp')"
+        },
+        "category": {
+          "type": "string",
+          "enum": ["service", "process", "operation"],
+          "description": "Item category"
+        },
+        "className": {
+          "type": "string",
+          "description": "Custom class name for extensibility"
+        },
+        "enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Whether item is enabled"
+        },
+        "displayCategory": {
+          "type": "string",
+          "description": "UI grouping category"
+        },
+        "comment": {
+          "type": "string",
+          "description": "Description or notes"
+        },
+        "settings": {
+          "type": "object",
+          "description": "Item-specific settings",
+          "properties": {
+            "poolSize": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 1,
+              "description": "Number of worker instances"
+            },
+            "queueSize": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 1000,
+              "description": "Maximum pending messages"
+            },
+            "timeout": {
+              "type": "number",
+              "minimum": 0,
+              "default": 30,
+              "description": "Processing timeout in seconds"
+            },
+            "retryCount": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 3,
+              "description": "Maximum retry attempts"
+            },
+            "retryInterval": {
+              "type": "number",
+              "minimum": 0,
+              "default": 5,
+              "description": "Seconds between retries"
+            },
+            "inactivityTimeout": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0,
+              "description": "Seconds before idle shutdown (0=never)"
+            }
+          },
+          "additionalProperties": true
+        },
+        "position": {
+          "type": "object",
+          "properties": {
+            "x": { "type": "number" },
+            "y": { "type": "number" }
+          },
+          "description": "Visual position in editor"
+        }
+      },
+      "additionalProperties": true
+    },
+    "connection": {
+      "type": "object",
+      "required": ["source", "target"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Connection identifier"
+        },
+        "source": {
+          "type": "string",
+          "description": "Source item ID"
+        },
+        "target": {
+          "type": "string",
+          "description": "Target item ID"
+        },
+        "type": {
+          "type": "string",
+          "enum": ["standard", "error", "async"],
+          "default": "standard",
+          "description": "Connection type"
+        },
+        "filter": {
+          "$ref": "#/$defs/filterGroup",
+          "description": "Optional filter for this connection"
+        },
+        "enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Whether connection is active"
+        },
+        "comment": {
+          "type": "string",
+          "description": "Description or notes"
+        },
+        "waypoints": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "x": { "type": "number" },
+              "y": { "type": "number" }
+            }
+          },
+          "description": "Visual waypoints for curved lines"
+        }
+      }
+    },
+    "filterGroup": {
+      "type": "object",
+      "properties": {
+        "logic": {
+          "type": "string",
+          "enum": ["and", "or"],
+          "default": "and",
+          "description": "How to combine conditions"
+        },
+        "conditions": {
+          "type": "array",
+          "items": {
+            "oneOf": [
+              { "$ref": "#/$defs/filterCondition" },
+              { "$ref": "#/$defs/filterGroup" }
+            ]
+          },
+          "description": "Conditions or nested groups"
+        }
+      }
+    },
+    "filterCondition": {
+      "type": "object",
+      "required": ["field", "operator", "value"],
+      "properties": {
+        "field": {
+          "type": "string",
+          "description": "Field path (dot notation)"
+        },
+        "operator": {
+          "type": "string",
+          "enum": [
+            "eq", "ne", "contains", "not_contains",
+            "starts_with", "ends_with", "matches",
+            "gt", "gte", "lt", "lte",
+            "in", "not_in", "exists", "not_exists"
+          ],
+          "description": "Comparison operator"
+        },
+        "value": {
+          "description": "Value to compare against"
+        }
+      }
+    },
+    "routingRule": {
+      "type": "object",
+      "required": ["targets"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Rule identifier"
+        },
+        "name": {
+          "type": "string",
+          "description": "Human-readable name"
+        },
+        "enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Whether rule is active"
+        },
+        "priority": {
+          "type": "integer",
+          "default": 0,
+          "description": "Rule priority (higher = evaluated first)"
+        },
+        "filter": {
+          "$ref": "#/$defs/filterGroup",
+          "description": "Filter conditions"
+        },
+        "targets": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Target item IDs when rule matches"
+        },
+        "transform": {
+          "type": "string",
+          "description": "Optional transform to apply"
+        },
+        "stopProcessing": {
+          "type": "boolean",
+          "default": true,
+          "description": "Stop evaluating rules after match"
+        }
+      }
+    }
+  }
+}

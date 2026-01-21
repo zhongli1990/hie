@@ -1,0 +1,44 @@
+# HIE Example Configuration
+# Minimal configuration for local development and testing
+
+production:
+  name: "Development"
+  description: "Local development configuration"
+  enabled: true
+
+items:
+  # Simple HTTP receiver
+  - id: http_receiver
+    type: receiver.http
+    name: "HTTP Receiver"
+    enabled: true
+    host: "127.0.0.1"
+    port: 8080
+    path: "/hl7"
+    
+  # Passthrough processor
+  - id: passthrough
+    type: processor.passthrough
+    name: "Passthrough"
+    enabled: true
+    
+  # File output
+  - id: file_sender
+    type: sender.file
+    name: "File Output"
+    enabled: true
+    output_directory: "./output"
+    filename_pattern: "{message_id}.hl7"
+
+routes:
+  - id: main_route
+    name: "Main Route"
+    enabled: true
+    path: [http_receiver, passthrough, file_sender]
+
+logging:
+  level: "DEBUG"
+  format: "console"
+
+persistence:
+  type: "memory"

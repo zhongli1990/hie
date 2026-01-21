@@ -1,0 +1,132 @@
+# HIE Production Configuration
+# Healthcare Integration Engine - Example Production Setup
+
+production:
+  name: "NHS-ADT-Integration"
+  description: "ADT message integration for NHS acute trust"
+  enabled: true
+  auto_start_items: true
+  auto_start_routes: true
+  graceful_shutdown_timeout: 30.0
+  health_check_interval: 10.0
+
+items:
+  # ===================
+  # RECEIVERS
+  # ===================
+  
+  # HTTP Receiver - accepts HL7v2 messages via REST API
+  - id: http_hl7_receiver
+    type: receiver.http
+    name: "HTTP HL7v2 Receiver"
+    enabled: true
+    host: "0.0.0.0"
+    port: 8080
+    path: "/hl7"
+    methods: ["POST"]
+    content_types:
+      - "application/hl7-v2"
+      - "x-application/hl7-v2+er7"
+      - "text/plain"
+    max_body_size: 10485760  # 10MB
+    queue_size: 10000
+    concurrency: 4
+    timeout_seconds: 30.0
+    
+  # File Receiver - watches for incoming files
+  - id: file_receiver
+    type: receiver.file
+    name: "File Receiver"
+    enabled: true
+    watch_directory: "/data/inbound"
+    patterns:
+      - "*.hl7"
+      - "*.txt"
+      - "*.csv"
+    poll_interval: 1.0
+    move_to: "/data/processed"
+    recursive: false
+    queue_size: 1000
+    
+  # ===================
+  # PROCESSORS
+  # ===================
+  
+  # Passthrough processor for HTTP route
+  - id: http_passthrough
+    type: processor.passthrough
+    name: "HTTP Passthrough"
+    enabled: true
+    concurrency: 4
+    
+  # Passthrough processor for file route
+  - id: file_passthrough
+    type: processor.passthrough
+    name: "File Passthrough"
+    enabled: true
+    concurrency: 2
+
+  # ===================
+  # SENDERS
+  # ===================
+  
+  # MLLP Sender - sends HL7v2 to downstream system
+  - id: mllp_sender
+    type: sender.mllp
+    name: "MLLP Sender"
+    enabled: true
+    host: "mllp-echo"  # Docker service name
+    port: 2575
+    timeout: 30.0
+    max_connections: 10
+    keepalive: true
+    retry_connect: true
+    queue_size: 5000
+    concurrency: 4
+    
+  # File Sender - writes transformed messages to files
+  - id: file_sender
+    type: sender.file
+    name: "File Sender"
+    enabled: true
+    output_directory: "/data/outbound"
+    filename_pattern: "{timestamp}_{message_id}.hl7"
+    overwrite: false
+    create_directory: true
+    queue_size: 1000
+    concurrency: 2
+
+routes:
+  # HTTP to MLLP route - receives HL7 via HTTP, sends via MLLP
+  - id: http_to_mllp
+    name: "HTTP to MLLP Route"
+    enabled: true
+    path:
+      - http_hl7_receiver
+      - http_passthrough
+      - mllp_sender
+    ordered: false
+    timeout_seconds: 60.0
+    
+  # File to File route - processes files and outputs transformed files
+  - id: file_to_file
+    name: "File to File Route"
+    enabled: true
+    path:
+      - file_receiver
+      - file_passthrough
+      - file_sender
+    ordered: true
+    timeout_seconds: 120.0
+
+logging:
+  level: "INFO"
+  format: "json"
+
+persistence:
+  type: "postgresql"
+  host: "postgres"
+  port: 5432
+  database: "hie"
+  user: "hie"
+  password: "hie_password"
