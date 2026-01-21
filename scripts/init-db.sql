@@ -1,6 +1,135 @@
 -- HIE Database Initialization Script
 -- Creates tables and indexes for PostgreSQL persistence
 
+-- ============================================================================
+-- User Management Tables
+-- ============================================================================
+
+-- Tenants table (NHS Trusts / Organizations)
+CREATE TABLE IF NOT EXISTS hie_tenants (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    name VARCHAR(255) NOT NULL,
+    code VARCHAR(50) NOT NULL UNIQUE,
+    status VARCHAR(20) NOT NULL DEFAULT 'active',
+    settings JSONB DEFAULT '{}',
+    max_users INTEGER DEFAULT 100,
+    max_productions INTEGER DEFAULT 50,
+    admin_email VARCHAR(255),
+    support_email VARCHAR(255),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_tenant_status ON hie_tenants(status);
+CREATE INDEX IF NOT EXISTS idx_tenant_code ON hie_tenants(code);
+
+-- Roles table
+CREATE TABLE IF NOT EXISTS hie_roles (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    tenant_id UUID REFERENCES hie_tenants(id) ON DELETE CASCADE,
+    name VARCHAR(100) NOT NULL,
+    display_name VARCHAR(255) NOT NULL,
+    description TEXT,
+    is_system BOOLEAN DEFAULT FALSE,
+    permissions JSONB NOT NULL DEFAULT '[]',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE(tenant_id, name)
+);
+
+CREATE INDEX IF NOT EXISTS idx_role_tenant ON hie_roles(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_role_is_system ON hie_roles(is_system);
+
+-- Users table
+CREATE TABLE IF NOT EXISTS hie_users (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    tenant_id UUID REFERENCES hie_tenants(id) ON DELETE CASCADE,
+    email VARCHAR(255) NOT NULL UNIQUE,
+    username VARCHAR(100),
+    display_name VARCHAR(255) NOT NULL,
+    title VARCHAR(100),
+    department VARCHAR(100),
+    mobile VARCHAR(50),
+    avatar_url TEXT,
+    password_hash VARCHAR(255) NOT NULL,
+    mfa_enabled BOOLEAN DEFAULT FALSE,
+    mfa_secret VARCHAR(255),
+    status VARCHAR(20) NOT NULL DEFAULT 'pending',
+    role_id UUID NOT NULL REFERENCES hie_roles(id),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    approved_at TIMESTAMPTZ,
+    approved_by UUID REFERENCES hie_users(id),
+    last_login_at TIMESTAMPTZ,
+    password_changed_at TIMESTAMPTZ,
+    failed_login_attempts INTEGER DEFAULT 0,
+    locked_until TIMESTAMPTZ,
+    must_change_password BOOLEAN DEFAULT FALSE
+);
+
+CREATE INDEX IF NOT EXISTS idx_user_tenant ON hie_users(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_user_email ON hie_users(email);
+CREATE INDEX IF NOT EXISTS idx_user_status ON hie_users(status);
+CREATE INDEX IF NOT EXISTS idx_user_role ON hie_users(role_id);
+
+-- Password history table
+CREATE TABLE IF NOT EXISTS hie_password_history (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL REFERENCES hie_users(id) ON DELETE CASCADE,
+    password_hash VARCHAR(255) NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_password_history_user ON hie_password_history(user_id);
+
+-- Sessions table (for refresh tokens)
+CREATE TABLE IF NOT EXISTS hie_sessions (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL REFERENCES hie_users(id) ON DELETE CASCADE,
+    refresh_token_hash VARCHAR(255) NOT NULL,
+    user_agent TEXT,
+    ip_address VARCHAR(45),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    expires_at TIMESTAMPTZ NOT NULL,
+    revoked_at TIMESTAMPTZ
+);
+
+CREATE INDEX IF NOT EXISTS idx_session_user ON hie_sessions(user_id);
+CREATE INDEX IF NOT EXISTS idx_session_expires ON hie_sessions(expires_at);
+
+-- ============================================================================
+-- Insert System Roles
+-- ============================================================================
+
+INSERT INTO hie_roles (id, tenant_id, name, display_name, description, is_system, permissions) VALUES
+    ('00000000-0000-0000-0000-000000000001', NULL, 'super_admin', 'Super Administrator', 'Full platform access, can manage all tenants and users', TRUE, 
+     '["tenants:create","tenants:read","tenants:update","tenants:delete","users:create","users:read","users:update","users:delete","users:approve","productions:create","productions:read","productions:update","productions:delete","productions:start","productions:stop","messages:read","messages:resend","messages:delete","config:read","config:update","config:export","config:import","audit:read","settings:read","settings:update"]'),
+    ('00000000-0000-0000-0000-000000000002', NULL, 'tenant_admin', 'Tenant Administrator', 'Full access within their tenant, can manage users', TRUE,
+     '["users:create","users:read","users:update","users:delete","users:approve","productions:create","productions:read","productions:update","productions:delete","productions:start","productions:stop","messages:read","messages:resend","messages:delete","config:read","config:update","config:export","config:import","audit:read","settings:read","settings:update"]'),
+    ('00000000-0000-0000-0000-000000000003', NULL, 'integration_engineer', 'Integration Engineer', 'Configure productions, items, and routes', TRUE,
+     '["users:read","productions:create","productions:read","productions:update","productions:delete","productions:start","productions:stop","messages:read","messages:resend","config:read","config:update","config:export","config:import","settings:read"]'),
+    ('00000000-0000-0000-0000-000000000004', NULL, 'operator', 'Operator', 'Start/stop productions, view and resend messages', TRUE,
+     '["users:read","productions:read","productions:start","productions:stop","messages:read","messages:resend","config:read","settings:read"]'),
+    ('00000000-0000-0000-0000-000000000005', NULL, 'viewer', 'Viewer', 'Read-only access to all resources', TRUE,
+     '["users:read","productions:read","messages:read","config:read","settings:read"]'),
+    ('00000000-0000-0000-0000-000000000006', NULL, 'auditor', 'Auditor', 'Read-only access plus audit log viewing', TRUE,
+     '["users:read","productions:read","messages:read","config:read","settings:read","audit:read"]')
+ON CONFLICT (tenant_id, name) DO NOTHING;
+
+-- ============================================================================
+-- Insert Default Super Admin User (password: Admin123!)
+-- ============================================================================
+
+INSERT INTO hie_users (id, tenant_id, email, display_name, password_hash, status, role_id, approved_at, password_changed_at) VALUES
+    ('00000000-0000-0000-0000-000000000001', NULL, 'admin@hie.nhs.uk', 'System Administrator', 
+     '$2b$12$v0ffmoq9NEa5B.Kh8ZpgWeZx343uT4NC3d7YNgZJTnzCaWiipf2qm', 'active', 
+     '00000000-0000-0000-0000-000000000001', NOW(), NOW())
+ON CONFLICT (email) DO NOTHING;
+
+-- ============================================================================
+-- Message Tables
+-- ============================================================================
+
 -- Messages table
 CREATE TABLE IF NOT EXISTS hie_messages (
     message_id UUID PRIMARY KEY,

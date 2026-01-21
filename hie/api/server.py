@@ -7,11 +7,13 @@ Provides REST endpoints for managing the HIE engine.
 from __future__ import annotations
 
 import asyncio
+import os
 from datetime import datetime
-from typing import Any
+from typing import Any, Optional
 
 from aiohttp import web
 import structlog
+import asyncpg
 
 from hie.core.production import Production
 from hie.core.schema import ProductionSchema
@@ -26,11 +28,13 @@ class APIServer:
         self,
         host: str = "0.0.0.0",
         port: int = 8081,
+        db_pool: Optional[asyncpg.Pool] = None,
     ):
         self.host = host
         self.port = port
         self.app = web.Application()
         self.productions: dict[str, Production] = {}
+        self.db_pool = db_pool
         self._setup_routes()
     
     def _setup_routes(self) -> None:
@@ -67,6 +71,12 @@ class APIServer:
         self.app.router.add_get("/api/productions/{name}/config", self.export_config)
         self.app.router.add_post("/api/productions/{name}/config", self.import_config)
         
+        # Auth routes (if db_pool is available)
+        if self.db_pool:
+            from hie.auth.aiohttp_router import setup_auth_routes
+            setup_auth_routes(self.app, self.db_pool)
+            logger.info("auth_routes_registered")
+        
         # Add CORS middleware
         self.app.middlewares.append(self._cors_middleware)
     
@@ -95,7 +105,7 @@ class APIServer:
         return web.json_response({
             "status": "healthy",
             "timestamp": datetime.utcnow().isoformat(),
-            "version": "0.1.0",
+            "version": "0.2.0",
         })
     
     async def get_service_health(self, request: web.Request) -> web.Response:
@@ -510,6 +520,27 @@ class APIServer:
             pass
 
 
+async def create_db_pool() -> Optional[asyncpg.Pool]:
+    """Create database connection pool."""
+    db_url = os.environ.get("DATABASE_URL")
+    if not db_url:
+        # Try to construct from individual vars
+        db_host = os.environ.get("POSTGRES_HOST", "localhost")
+        db_port = os.environ.get("POSTGRES_PORT", "5432")
+        db_name = os.environ.get("POSTGRES_DB", "hie")
+        db_user = os.environ.get("POSTGRES_USER", "hie")
+        db_pass = os.environ.get("POSTGRES_PASSWORD", "hie")
+        db_url = f"postgresql://{db_user}:{db_pass}@{db_host}:{db_port}/{db_name}"
+    
+    try:
+        pool = await asyncpg.create_pool(db_url, min_size=2, max_size=10)
+        logger.info("database_pool_created", host=os.environ.get("POSTGRES_HOST", "localhost"))
+        return pool
+    except Exception as e:
+        logger.warning("database_pool_failed", error=str(e))
+        return None
+
+
 def create_app() -> web.Application:
     """Create the API application."""
     server = APIServer()
@@ -522,7 +553,10 @@ async def run_server(
     productions: dict[str, Production] | None = None,
 ) -> None:
     """Run the API server."""
-    server = APIServer(host=host, port=port)
+    # Create database pool for auth
+    db_pool = await create_db_pool()
+    
+    server = APIServer(host=host, port=port, db_pool=db_pool)
     
     if productions:
         for name, prod in productions.items():
