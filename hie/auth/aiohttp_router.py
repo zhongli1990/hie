@@ -8,7 +8,7 @@ from uuid import UUID
 from aiohttp import web
 import structlog
 
-from .models import User, Role, UserStatus
+from .models import UserStatus
 from .security import (
     get_password_hash, verify_password, create_access_token, 
     validate_password, decode_access_token, ACCESS_TOKEN_EXPIRE_MINUTES,

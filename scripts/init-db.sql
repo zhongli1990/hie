@@ -122,7 +122,7 @@ ON CONFLICT (tenant_id, name) DO NOTHING;
 
 INSERT INTO hie_users (id, tenant_id, email, display_name, password_hash, status, role_id, approved_at, password_changed_at) VALUES
     ('00000000-0000-0000-0000-000000000001', NULL, 'admin@hie.nhs.uk', 'System Administrator', 
-     '$2b$12$LQv3c1yqBWVHxkd0LHAkCOYz6TtxMQJqhN8/X4.VTtYWWQIhXqK2G', 'active', 
+     '$2b$12$v0ffmoq9NEa5B.Kh8ZpgWeZx343uT4NC3d7YNgZJTnzCaWiipf2qm', 'active', 
      '00000000-0000-0000-0000-000000000001', NOW(), NOW())
 ON CONFLICT (email) DO NOTHING;
 
