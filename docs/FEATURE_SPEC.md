@@ -2,7 +2,7 @@
 
 ## Healthcare Integration Engine - Complete Feature Set
 
-**Version:** 0.1.0  
+**Version:** 0.2.0  
 **Last Updated:** January 21, 2026  
 **Status:** Initial Release
 

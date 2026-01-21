@@ -2,8 +2,8 @@
 
 A next-generation, enterprise-grade healthcare integration engine designed for mission-critical NHS acute trust environments.
 
-**Version:** 0.1.0  
-**Status:** Initial Release - Core Engine + Management Portal  
+**Version:** 0.2.0  
+**Status:** User Management & Authentication Release  
 **Last Updated:** January 21, 2026
 
 ## Overview

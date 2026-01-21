@@ -5,6 +5,78 @@ All notable changes to HIE (Healthcare Integration Engine) will be documented in
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.0] - 2026-01-21
+
+### 🔐 User Management & Authentication
+
+This release introduces a complete user management system with multi-tenancy support, RBAC, and secure authentication.
+
+### Added
+
+#### Authentication System
+- **JWT Authentication** - Secure token-based authentication with configurable expiry
+- **Password Security** - bcrypt hashing with 12 rounds, password policy enforcement
+- **Account Lockout** - Automatic lockout after 5 failed login attempts for 30 minutes
+- **Session Management** - Token-based sessions with secure logout
+
+#### User Management
+- **User Registration** - Self-service registration with admin approval workflow
+- **User Lifecycle** - States: pending, active, inactive, locked, rejected
+- **User Approval** - Admin workflow for approving/rejecting new registrations
+- **User Actions** - Activate, deactivate, unlock user accounts
+
+#### Role-Based Access Control (RBAC)
+- **System Roles** - Super Admin, Tenant Admin, Operator, Developer, Viewer, Auditor
+- **Permissions** - Granular permissions for tenants, users, productions, messages, config, audit, settings
+- **Multi-Tenancy** - Tenant isolation with NHS Trust support (prepared for future use)
+
+#### Portal Authentication Pages
+- **Login Page** - Email/password authentication with error handling
+- **Registration Page** - User registration with password validation
+- **Pending Page** - Informational page for users awaiting approval
+
+#### Portal Security
+- **Auth Protection** - All app routes require authentication
+- **Auth Guard** - Automatic redirect to login for unauthenticated users
+- **User Menu** - Dropdown with user info, settings, and sign out
+- **Notifications** - Bell icon with notification panel
+
+#### API Endpoints
+- `POST /api/auth/register` - User registration
+- `POST /api/auth/login` - User authentication
+- `GET /api/auth/me` - Get current user
+- `POST /api/auth/change-password` - Change password
+- `POST /api/auth/logout` - Logout
+- `GET /api/admin/users` - List users (admin)
+- `GET /api/admin/users/{id}` - Get user details
+- `POST /api/admin/users/{id}/approve` - Approve user
+- `POST /api/admin/users/{id}/reject` - Reject user
+- `POST /api/admin/users/{id}/activate` - Activate user
+- `POST /api/admin/users/{id}/deactivate` - Deactivate user
+- `POST /api/admin/users/{id}/unlock` - Unlock user
+- `GET /api/admin/roles` - List roles
+
+#### Database Schema
+- `hie_tenants` - Multi-tenant organization support
+- `hie_roles` - Role definitions with permissions
+- `hie_users` - User accounts with full profile
+- `hie_password_history` - Password reuse prevention (prepared)
+- `hie_sessions` - Session tracking (prepared)
+- `hie_audit_log` - Audit trail (prepared)
+
+### Default Credentials
+- **Email:** admin@hie.nhs.uk
+- **Password:** Admin123!
+- **Role:** Super Administrator
+
+### Technical Details
+- JWT tokens with 24-hour expiry
+- bcrypt password hashing (12 rounds)
+- Password policy: 12+ chars, uppercase, lowercase, digit, special char
+- Account lockout: 5 attempts, 30 minute duration
+
+---
+
 ## [0.1.0] - 2026-01-21
 
 ### 🎉 Initial Release
@@ -87,4 +159,5 @@ First public release of HIE - Healthcare Integration Engine, a next-generation h
 
 ---
 
+[0.2.0]: https://github.com/your-org/hie/releases/tag/v0.2.0
 [0.1.0]: https://github.com/your-org/hie/releases/tag/v0.1.0
