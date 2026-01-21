@@ -264,7 +264,37 @@ Open Source (License TBD)
 
 ## Status
 
-✅ **v0.1.0 Released** — Initial release with core engine and management portal.
+✅ **v0.2.0 Released** — User Management & Authentication release.
+
+### What's New in v0.2.0
+
+**Authentication & Security:**
+- JWT-based authentication with 24-hour token expiry
+- bcrypt password hashing (12 rounds)
+- Account lockout after 5 failed attempts
+- Password policy enforcement (12+ chars, mixed case, digit, special)
+
+**User Management:**
+- User registration with admin approval workflow
+- User lifecycle states: pending, active, inactive, locked, rejected
+- Admin actions: approve, reject, activate, deactivate, unlock
+
+**Role-Based Access Control (RBAC):**
+- 6 system roles: Super Admin, Tenant Admin, Operator, Developer, Viewer, Auditor
+- Granular permissions for all resources
+- Multi-tenancy support (prepared for NHS Trusts)
+
+**Portal Authentication:**
+- Login page with error handling
+- Registration page with password validation
+- Pending approval page
+- Auth-protected routes (redirect to login if unauthenticated)
+- User dropdown menu with settings and sign out
+- Notifications panel with bell icon
+
+**Default Credentials:**
+- Email: `admin@hie.nhs.uk`
+- Password: `Admin123!`
 
 ### What's Included in v0.1.0
 

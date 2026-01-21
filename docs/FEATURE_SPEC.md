@@ -4,7 +4,7 @@
 
 **Version:** 0.2.0  
 **Last Updated:** January 21, 2026  
-**Status:** Initial Release
+**Status:** User Management & Authentication Release
 
 ---
 
@@ -249,8 +249,8 @@
 | Database Settings | Connection configuration | P0 | ✅ Done |
 | API Keys | Manage API access tokens | P0 | ✅ Done |
 | Email Settings | SMTP configuration | P0 | ✅ Done |
-| User Management | Create/edit users | P1 | 🔲 Planned |
-| Role-Based Access | Permission management | P1 | 🔲 Planned |
+| User Management | Create/edit users | P1 | ✅ Done |
+| Role-Based Access | Permission management | P1 | ✅ Done |
 
 ---
 
@@ -301,8 +301,11 @@
 ### 7.1 Authentication
 
 | Feature | Description | Priority | Status |
-|---------|-------------|----------|--------|
-| Local Users | Built-in user database | P0 | 🔲 Planned |
+|---------|-------------|----------|---------|
+| Local Users | Built-in user database | P0 | ✅ Done |
+| JWT Authentication | Token-based auth | P0 | ✅ Done |
+| Password Security | bcrypt hashing, policy enforcement | P0 | ✅ Done |
+| Account Lockout | Lockout after failed attempts | P0 | ✅ Done |
 | LDAP/AD | Enterprise directory | P1 | 🔲 Planned |
 | OAuth2/OIDC | Modern auth protocols | P1 | 🔲 Planned |
 | API Keys | Service authentication | P0 | 🔲 Planned |
@@ -311,8 +314,11 @@
 ### 7.2 Authorization
 
 | Feature | Description | Priority | Status |
-|---------|-------------|----------|--------|
-| Role-Based Access | RBAC model | P0 | 🔲 Planned |
+|---------|-------------|----------|---------|
+| Role-Based Access | RBAC model | P0 | ✅ Done |
+| System Roles | 6 predefined roles with permissions | P0 | ✅ Done |
+| User Approval Workflow | Admin approval for new users | P0 | ✅ Done |
+| Multi-Tenancy | Tenant isolation (prepared) | P1 | ✅ Done |
 | Production-Level Permissions | Per-production access | P0 | 🔲 Planned |
 | Item-Level Permissions | Per-item access | P1 | 🔲 Planned |
 | Audit Trail | Track all access | P0 | 🔲 Planned |

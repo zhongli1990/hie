@@ -4,8 +4,8 @@
 
 **Version:** 1.0  
 **Last Updated:** January 21, 2026  
-**Status:** Design Phase  
-**Branch:** `feature/user-management`
+**Status:** ✅ Implemented (v0.2.0)  
+**Branch:** `main` (merged from `feature/user-management`)
 
 ---
 

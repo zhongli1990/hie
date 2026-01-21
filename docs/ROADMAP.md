@@ -4,7 +4,7 @@
 
 **Version:** 0.2.0  
 **Last Updated:** January 21, 2026  
-**Current Phase:** v0.1.0 Released
+**Current Phase:** v0.2.0 Released
 
 ---
 
@@ -13,6 +13,7 @@
 ```
 Phase 1: Foundation        [████████████████████] 100% ✅ COMPLETE
 Phase 2: Management Portal [████████████████████] 100% ✅ COMPLETE (v0.1.0)
+Phase 2b: User Management  [████████████████████] 100% ✅ COMPLETE (v0.2.0)
 Phase 3: Enterprise        [░░░░░░░░░░░░░░░░░░░░]   0%
 Phase 4: NHS Integration   [░░░░░░░░░░░░░░░░░░░░]   0%
 ```
@@ -115,7 +116,7 @@ Phase 4: NHS Integration   [░░░░░░░░░░░░░░░░░�
 | Connection drawing | 🔲 Planned | Q2 2026 |
 | Message trace visualization | 🔲 Planned | Q2 2026 |
 | Message resend functionality | 🔲 Planned | Q2 2026 |
-| Authentication system | 🔲 Planned | Q2 2026 |
+| Authentication system | ✅ Done | Jan 21, 2026 |
 | Alert configuration | 🔲 Planned | Q2 2026 |
 
 ---
@@ -233,6 +234,46 @@ Phase 4: NHS Integration   [░░░░░░░░░░░░░░░░░�
 ---
 
 ## Change Log
+
+### v0.2.0 - January 21, 2026 (User Management & Authentication)
+
+**🔐 Complete user management system with multi-tenancy and RBAC**
+
+#### Authentication System
+- JWT-based authentication with 24-hour token expiry
+- bcrypt password hashing (12 rounds)
+- Password policy enforcement (12+ chars, mixed case, digit, special)
+- Account lockout after 5 failed attempts (30 minute duration)
+
+#### User Management
+- User registration with admin approval workflow
+- User lifecycle states: pending, active, inactive, locked, rejected
+- Admin actions: approve, reject, activate, deactivate, unlock
+
+#### Role-Based Access Control
+- 6 system roles: Super Admin, Tenant Admin, Operator, Developer, Viewer, Auditor
+- Granular permissions for all resources
+- Multi-tenancy database schema (prepared for NHS Trusts)
+
+#### Portal Authentication
+- Login page with error handling
+- Registration page with password validation
+- Pending approval page for new users
+- Auth-protected routes with automatic redirect
+- User dropdown menu with settings and sign out
+- Notifications panel with bell icon
+- Admin users page for user management
+
+#### API Endpoints
+- `/api/auth/*` - Authentication (register, login, me, change-password, logout)
+- `/api/admin/users/*` - User management (list, approve, reject, activate, deactivate, unlock)
+- `/api/admin/roles` - Role listing
+
+#### Default Credentials
+- Email: `admin@hie.nhs.uk`
+- Password: `Admin123!`
+
+---
 
 ### v0.1.0 - January 21, 2026 (Initial Release)
 
