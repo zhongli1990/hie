@@ -1,0 +1,198 @@
+version: '3.8'
+
+# Development docker-compose for LI Engine
+# All development and testing runs inside containers
+#
+# Port Mapping (9300-9350 range - consistent with docker-compose.full.yml):
+#   9300 - LI Engine (HTTP receiver)
+#   9301 - LI Engine (MLLP receiver)
+#   9302 - Management API
+#   9304 - Prometheus metrics
+#   9310 - PostgreSQL
+#   9311 - Redis
+#   9320 - MLLP Echo Server
+
+services:
+  # LI Engine - Development mode with hot reload
+  li-engine:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    container_name: li-engine-dev
+    ports:
+      - "9300:8080"      # HTTP receiver
+      - "9301:2575"      # MLLP receiver
+      - "9302:8081"      # Management API
+      - "9304:9090"      # Prometheus metrics
+    volumes:
+      # Mount source code for hot reload during development
+      - ./hie:/app/hie:rw
+      - ./tests:/app/tests:rw
+      - ./config:/app/config:rw
+      - ./schemas:/app/schemas:rw
+      - ./data:/data:rw
+    environment:
+      - LI_CONFIG=/app/config/production.xml
+      - LI_SCHEMA_DIR=/app/schemas
+      - LI_LOG_LEVEL=DEBUG
+      - LI_LOG_FORMAT=console
+      - DATABASE_URL=postgresql://li:li_password@postgres:5432/li
+      - REDIS_URL=redis://redis:6379/0
+      - PYTHONPATH=/app
+      - PYTHONDONTWRITEBYTECODE=1
+      - PYTHONUNBUFFERED=1
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - li-network
+    # Keep container running for interactive use
+    stdin_open: true
+    tty: true
+    command: ["tail", "-f", "/dev/null"]
+
+  # Test runner service
+  test:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    container_name: li-test
+    volumes:
+      - ./hie:/app/hie:rw
+      - ./tests:/app/tests:rw
+      - ./config:/app/config:ro
+      - ./schemas:/app/schemas:ro
+    environment:
+      - DATABASE_URL=postgresql://li:li_password@postgres:5432/li_test
+      - REDIS_URL=redis://redis:6379/1
+      - PYTHONPATH=/app
+      - PYTHONDONTWRITEBYTECODE=1
+      - PYTHONUNBUFFERED=1
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - li-network
+    profiles:
+      - test
+    command: ["pytest", "-v", "--tb=short"]
+
+  # PostgreSQL Database
+  postgres:
+    image: postgres:16-alpine
+    container_name: li-postgres
+    ports:
+      - "9310:5432"
+    environment:
+      - POSTGRES_USER=li
+      - POSTGRES_PASSWORD=li_password
+      - POSTGRES_DB=li
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./scripts/init-db.sql:/docker-entrypoint-initdb.d/init-db.sql:ro
+    restart: unless-stopped
+    networks:
+      - li-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U li -d li"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Redis Cache/Queue
+  redis:
+    image: redis:7-alpine
+    container_name: li-redis
+    ports:
+      - "9311:6379"
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+    networks:
+      - li-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # MLLP Test Server (mock external systems)
+  mllp-echo:
+    image: python:3.11-slim
+    container_name: li-mllp-echo
+    command: >
+      python -c "
+      import socket
+      import sys
+      
+      VT = b'\\x0b'
+      FS = b'\\x1c'
+      CR = b'\\x0d'
+      
+      def create_ack(msg):
+          return VT + b'MSH|^~\\\\&|ACK|LI|TEST|TEST|20240101120000||ACK|1|P|2.5\\rMSA|AA|1|Message Accepted\\r' + FS + CR
+      
+      server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+      server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+      server.bind(('0.0.0.0', 2575))
+      server.listen(5)
+      print('MLLP Echo Server listening on port 2575', flush=True)
+      
+      while True:
+          conn, addr = server.accept()
+          print(f'Connection from {addr}', flush=True)
+          try:
+              data = b''
+              while True:
+                  chunk = conn.recv(4096)
+                  if not chunk:
+                      break
+                  data += chunk
+                  if FS in data:
+                      break
+              if data:
+                  print(f'Received {len(data)} bytes', flush=True)
+                  conn.sendall(create_ack(data))
+          except Exception as e:
+              print(f'Error: {e}', flush=True)
+          finally:
+              conn.close()
+      "
+    ports:
+      - "9320:2575"
+    restart: unless-stopped
+    networks:
+      - li-network
+
+  # Prometheus for metrics (optional)
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: li-prometheus
+    ports:
+      - "9305:9090"
+    volumes:
+      - ./config/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+    restart: unless-stopped
+    networks:
+      - li-network
+    profiles:
+      - monitoring
+
+volumes:
+  postgres_data:
+  redis_data:
+  prometheus_data:
+
+networks:
+  li-network:
+    driver: bridge

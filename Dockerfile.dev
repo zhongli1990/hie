@@ -1,0 +1,43 @@
+# LI Engine - Development Dockerfile
+# Optimized for development with hot reload and testing
+
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    gcc \
+    libpq-dev \
+    curl \
+    git \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Python dependencies
+COPY requirements.txt .
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir -r requirements.txt
+
+# Copy application code (will be overridden by volume mount in dev)
+COPY hie/ /app/hie/
+COPY tests/ /app/tests/
+COPY config/ /app/config/
+
+# Set Python path
+ENV PYTHONPATH=/app
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
+
+# Environment defaults
+ENV LI_CONFIG=/app/config/production.xml
+ENV LI_LOG_LEVEL=DEBUG
+ENV LI_LOG_FORMAT=console
+
+# Create directories
+RUN mkdir -p /data/inbound /data/outbound /data/processed /app/schemas
+
+# Expose ports
+EXPOSE 8080 8081 9090
+
+# Default command - can be overridden
+CMD ["python", "-m", "hie.li.service.main"]
