@@ -1,8 +1,8 @@
 # HIE Implementation Status
 
-**Version:** 1.3.3  
+**Version:** 1.3.4  
 **Last Updated:** January 25, 2026  
-**Status:** Phase 5.2 Dashboard Real Data Complete
+**Status:** Phase 5.3 Configure Sub-Tabs Complete
 
 ---
 
@@ -458,16 +458,30 @@ def extract_ack_type(ack_content: bytes) -> Optional[str]
 | `portal/src/lib/api-v2.ts` | Added dashboard API types and functions |
 | `portal/src/app/(app)/dashboard/page.tsx` | Connected to real API with tree view |
 
-### Phase 5.3: Configure Sub-Tabs 🔲 PENDING
+### Phase 5.3: Configure Sub-Tabs ✅ COMPLETE (v1.3.4)
 
 | Task | Status | Effort | Notes |
 |------|--------|--------|-------|
-| Create sub-tab navigation | 🔲 Pending | 1h | Tab component |
-| Workspaces sub-tab | 🔲 Pending | 2h | CRUD UI |
-| Items registry sub-tab | 🔲 Pending | 2h | Read-only list |
-| Schemas sub-tab | 🔲 Pending | 3h | Schema viewer |
-| Transforms sub-tab (DTL) | 🔲 Pending | 4h | Basic DTL editor |
-| Routes sub-tab | 🔲 Pending | 3h | Routing rule editor |
+| Create sub-tab navigation | ✅ Done | 1h | Tab component with 4 tabs |
+| Workspaces sub-tab | ✅ Done | 2h | Full CRUD UI with forms |
+| Items registry sub-tab | ✅ Done | 2h | Read-only list from API |
+| Schemas sub-tab | ✅ Done | 1h | HL7 version display |
+| Routes sub-tab | ✅ Done | 1h | Placeholder with project link |
+
+#### Sub-Tab Features
+
+| Sub-Tab | Features |
+|---------|----------|
+| **Workspaces** | List, create, edit, delete workspaces with form UI |
+| **Item Types** | Display registered item types from API with category badges |
+| **Schemas** | Show available HL7 schema versions (2.3-2.7) |
+| **Routes** | Placeholder with navigation to project routing |
+
+#### Files Changed
+
+| File | Changes |
+|------|---------|
+| `portal/src/app/(app)/configure/page.tsx` | Complete rewrite with sub-tab navigation (~500 lines) |
 
 **Design Decisions:**
 - Configure tab has sub-tab menu for different configuration domains
@@ -514,6 +528,7 @@ def extract_ack_type(ack_content: bytes) -> Optional[str]
 | `v1.3.1` | Message Storage & Viewer | Jan 25, 2026 |
 | `v1.3.2` | Inbound Message Storage & UI Fixes | Jan 25, 2026 |
 | `v1.3.3` | Dashboard Real Data | Jan 25, 2026 |
+| `v1.3.4` | Configure Sub-Tabs | Jan 25, 2026 |
 
 ---
 

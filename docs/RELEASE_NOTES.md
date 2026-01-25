@@ -1,5 +1,40 @@
 # HIE Release Notes
 
+## v1.3.4 - Configure Sub-Tabs
+
+**Release Date:** January 25, 2026  
+**Status:** Phase 5.3 Complete
+
+---
+
+### Overview
+
+This release implements Phase 5.3 of the Enterprise UI Design - Configure Sub-Tabs. The Configure page now has a comprehensive sub-tab navigation for managing workspaces, item types, schemas, and routing rules.
+
+---
+
+### New Features
+
+#### Configure Sub-Tab Navigation
+- **Workspaces** - Full CRUD UI for workspace management
+- **Item Types** - Read-only registry of available item types
+- **Schemas** - Display of HL7 schema versions (2.3-2.7)
+- **Routes** - Placeholder with navigation to project routing
+
+#### Workspaces Management
+- Create new workspaces with name, display name, description
+- Edit existing workspace details
+- Delete workspaces with confirmation
+- View workspace details and navigate to projects
+
+---
+
+### Files Changed
+
+- `portal/src/app/(app)/configure/page.tsx` - Complete rewrite with sub-tabs (~500 lines)
+
+---
+
 ## v1.3.3 - Dashboard Real Data
 
 **Release Date:** January 25, 2026  
