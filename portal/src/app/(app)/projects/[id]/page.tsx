@@ -833,29 +833,33 @@ function SettingField({ setting, value, onChange, existingItems }: SettingFieldP
     return (
       <div>
         <label className="block text-sm font-medium text-gray-700 mb-1">
-          {setting.label} {setting.required && '*'}
+          {setting.label}
+          <span className="text-gray-400 font-normal ml-1">(optional)</span>
         </label>
-        <div className="border border-gray-300 rounded-lg p-2 max-h-40 overflow-y-auto">
-          {existingItems.map((item) => (
-            <label key={item.id} className="flex items-center gap-2 p-1 hover:bg-gray-50 rounded">
-              <input
-                type="checkbox"
-                checked={selectedTargets.includes(item.name)}
-                onChange={(e) => {
-                  const newTargets = e.target.checked
-                    ? [...selectedTargets, item.name]
-                    : selectedTargets.filter(t => t !== item.name);
-                  onChange(newTargets.join(','));
-                }}
-                className="h-4 w-4 text-blue-600 border-gray-300 rounded"
-              />
-              <span className="text-sm text-gray-700">{item.name}</span>
-            </label>
-          ))}
-          {existingItems.length === 0 && (
-            <p className="text-sm text-gray-500 p-2">No other items to target</p>
-          )}
-        </div>
+        {existingItems.length > 0 ? (
+          <div className="border border-gray-300 rounded-lg p-2 max-h-40 overflow-y-auto">
+            {existingItems.map((item) => (
+              <label key={item.id} className="flex items-center gap-2 p-1 hover:bg-gray-50 rounded cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={selectedTargets.includes(item.name)}
+                  onChange={(e) => {
+                    const newTargets = e.target.checked
+                      ? [...selectedTargets, item.name]
+                      : selectedTargets.filter(t => t !== item.name);
+                    onChange(newTargets.join(','));
+                  }}
+                  className="h-4 w-4 text-blue-600 border-gray-300 rounded"
+                />
+                <span className="text-sm text-gray-700">{item.name}</span>
+              </label>
+            ))}
+          </div>
+        ) : (
+          <div className="border border-gray-200 rounded-lg p-3 bg-gray-50">
+            <p className="text-sm text-gray-500">No other items in project yet. You can configure targets after creating more items.</p>
+          </div>
+        )}
         {setting.description && <p className="mt-1 text-xs text-gray-500">{setting.description}</p>}
       </div>
     );

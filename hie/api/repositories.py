@@ -263,9 +263,9 @@ class ProjectRepository:
         rules_query = "SELECT * FROM project_routing_rules WHERE project_id = $1 ORDER BY priority"
         rules = await self._pool.fetch(rules_query, project_id)
         
-        project['items'] = [dict(r) for r in items]
-        project['connections'] = [dict(r) for r in connections]
-        project['routing_rules'] = [dict(r) for r in rules]
+        project['items'] = [_parse_jsonb_fields(dict(r), ['adapter_settings', 'host_settings']) for r in items]
+        project['connections'] = [_parse_jsonb_fields(dict(r), ['settings']) for r in connections]
+        project['routing_rules'] = [_parse_jsonb_fields(dict(r), ['condition']) for r in rules]
         
         return project
 
