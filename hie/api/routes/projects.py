@@ -669,6 +669,77 @@ def setup_project_routes(app: web.Application, db_pool) -> None:
         
         return web.json_response(project, dumps=lambda x: json.dumps(x, default=serialize))
     
+    async def send_test_message(request: web.Request) -> web.Response:
+        """Send a test HL7 message through an outbound operation."""
+        workspace_id = request.match_info["workspace_id"]
+        project_id = request.match_info["project_id"]
+        item_name = request.match_info["item_name"]
+        
+        try:
+            ws_uuid = UUID(workspace_id)
+            proj_uuid = UUID(project_id)
+        except ValueError:
+            return web.json_response({"error": "Invalid ID"}, status=400)
+        
+        # Check if engine is running
+        if not _engine_manager.is_running(proj_uuid):
+            return web.json_response({"error": "Project is not running"}, status=400)
+        
+        engine = _engine_manager._engines.get(proj_uuid)
+        if not engine:
+            return web.json_response({"error": "Engine not found"}, status=404)
+        
+        # Get the host (operation)
+        host = engine.get_host(item_name)
+        if not host:
+            return web.json_response({"error": f"Item '{item_name}' not found"}, status=404)
+        
+        # Get message from request body or use default test message
+        try:
+            data = await request.json() if request.can_read_body else {}
+        except:
+            data = {}
+        
+        hl7_message = data.get('message')
+        if not hl7_message:
+            # Generate a default ADT^A01 test message
+            from datetime import datetime
+            timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
+            msg_id = f"TEST{timestamp}"
+            hl7_message = (
+                f"MSH|^~\\&|HIE|HIE|REMOTE|REMOTE|{timestamp}||ADT^A01|{msg_id}|P|2.4\r"
+                f"EVN|A01|{timestamp}\r"
+                f"PID|1||TEST123^^^MRN||Doe^John^Q||19800101|M|||123 Main St^^London^^SW1A 1AA^UK\r"
+                f"PV1|1|I|WARD1^ROOM1^BED1||||12345^Smith^Jane|||MED||||||||V123456\r"
+            )
+        
+        try:
+            # Check if host has a send method (operations do)
+            if hasattr(host, 'send_message'):
+                result = await host.send_message(hl7_message.encode() if isinstance(hl7_message, str) else hl7_message)
+                return web.json_response({
+                    "status": "sent",
+                    "item_name": item_name,
+                    "message_id": data.get('message_id', 'TEST'),
+                    "result": result.decode() if isinstance(result, bytes) else str(result) if result else "No ACK",
+                })
+            else:
+                # For operations, we need to use the adapter directly
+                adapter = host._adapter
+                if adapter and hasattr(adapter, 'send'):
+                    msg_bytes = hl7_message.encode() if isinstance(hl7_message, str) else hl7_message
+                    ack = await adapter.send(msg_bytes)
+                    return web.json_response({
+                        "status": "sent",
+                        "item_name": item_name,
+                        "ack": ack.decode() if isinstance(ack, bytes) else str(ack) if ack else "No ACK",
+                    })
+                else:
+                    return web.json_response({"error": "Item does not support sending messages"}, status=400)
+        except Exception as e:
+            logger.error("send_test_message_failed", item_name=item_name, error=str(e))
+            return web.json_response({"error": str(e)}, status=500)
+    
     # Register routes
     app.router.add_get("/api/workspaces/{workspace_id}/projects", list_projects)
     app.router.add_post("/api/workspaces/{workspace_id}/projects", create_project)
@@ -686,3 +757,6 @@ def setup_project_routes(app: web.Application, db_pool) -> None:
     app.router.add_post("/api/workspaces/{workspace_id}/projects/import", import_iris_config)
     app.router.add_post("/api/workspaces/{workspace_id}/projects/{project_id}/import", import_iris_config)
     app.router.add_get("/api/workspaces/{workspace_id}/projects/{project_id}/export", export_project_config)
+    
+    # Testing
+    app.router.add_post("/api/workspaces/{workspace_id}/projects/{project_id}/items/{item_name}/test", send_test_message)
