@@ -224,13 +224,28 @@ The original HIE engine provides the foundation but needs integration with LI En
 | **Edit Item Properties** | ✅ Complete | Edit mode with save/cancel |
 | Target Items field (optional) | ✅ Complete | Shows helpful message when empty |
 
-### Phase 4.6: Hot Reload 🔄 IN PROGRESS
+### Phase 4.6: Hot Reload ✅ COMPLETE
 
 | Feature | Status | Notes |
 |---------|--------|-------|
-| Update item settings at runtime | 🔄 In Progress | API endpoint exists, engine reload needed |
-| Graceful item restart | 🔲 Pending | Stop → update config → restart |
-| Live config sync | 🔲 Pending | Push changes to running engine |
+| Update item settings at runtime | ✅ Complete | `PUT /api/projects/{id}/items/{item_id}` |
+| Graceful item restart | ✅ Complete | `Host.reload_config()` method |
+| Live config sync | ✅ Complete | `POST /api/projects/{id}/items/{item_id}/reload` |
+| Hot reload button in UI | ✅ Complete | Green refresh icon in item detail panel |
+
+**Hot Reload Flow:**
+1. Pause item (stop accepting new messages)
+2. Wait for in-flight messages to complete (30s timeout)
+3. Stop adapter
+4. Apply new configuration (pool_size, enabled, adapter_settings, host_settings)
+5. Recreate adapter with new settings
+6. Resume processing
+
+**Key Files:**
+- `hie/li/hosts/base.py` - `reload_config()` method
+- `hie/li/engine/production.py` - `reload_host_config()` method
+- `hie/api/routes/items.py` - `/reload` endpoint
+- `portal/src/app/(app)/projects/[id]/page.tsx` - UI reload button
 
 ### Phase 4.7: Remaining Tasks 🔲 PENDING
 
@@ -321,6 +336,7 @@ docker-compose -f docker-compose.full.yml up -d
 |--------|----------|-------------|
 | GET | `/api/item-types` | List all item types |
 | GET | `/api/item-types/{type}` | Get item type details |
+| POST | `/api/projects/{id}/items/{item_id}/reload` | Hot reload item config |
 
 ---
 
