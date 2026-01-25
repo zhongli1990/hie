@@ -1,8 +1,8 @@
 # HIE Implementation Status
 
-**Version:** 1.3.0  
+**Version:** 1.3.1  
 **Last Updated:** January 25, 2026  
-**Status:** Enterprise UI Design Complete - Ready for Implementation
+**Status:** Phase 5.1 Message Storage & Viewer Complete
 
 ---
 
@@ -283,11 +283,11 @@ The original HIE engine provides the foundation but needs integration with LI En
 
 ---
 
-## 5. Enterprise UI Design (v1.3.0) 🔲 PLANNED
+## 5. Enterprise UI Design (v1.3.x) � IN PROGRESS
 
 See `docs/UI_DESIGN_SPEC.md` for complete design specification.
 
-### Phase 5.1: Message Storage & Viewer ✅ COMPLETE
+### Phase 5.1: Message Storage & Viewer ✅ COMPLETE (v1.3.1)
 
 | Task | Status | Effort | Notes |
 |------|--------|--------|-------|
@@ -297,24 +297,125 @@ See `docs/UI_DESIGN_SPEC.md` for complete design specification.
 | Connect Messages tab to API | ✅ Complete | 3h | Real-time data with filters |
 | Add clickable metrics | ✅ Complete | 1h | Navigate to Messages tab with project/item filter |
 
-**Implementation Details:**
-- `portal_messages` table stores messages permanently with project/item context
-- Message storage service provides async storage functions
-- API endpoints: `/api/projects/{id}/messages`, `/messages/stats`, `/messages/{id}`, `/messages/{id}/resend`
-- Messages tab shows real data with project selector, status/direction filters
-- HL7 syntax highlighting with color-coded segments (MSH=blue, PID=green, etc.)
-- Click item metrics → navigate to Messages tab with filter
-- Housekeeping endpoint for purging old messages
+#### Database Schema
 
-**Files Changed:**
-- `scripts/init-db.sql` - Added `portal_messages` table schema
-- `hie/api/repositories.py` - Added `PortalMessageRepository`
-- `hie/api/routes/messages.py` - New messages API routes
-- `hie/api/services/message_store.py` - Message storage service
-- `hie/api/routes/items.py` - Integrated message storage in test_item
-- `portal/src/lib/api-v2.ts` - Added message API functions
-- `portal/src/app/(app)/messages/page.tsx` - Connected to real API
-- `portal/src/app/(app)/projects/[id]/page.tsx` - Clickable metrics
+```sql
+CREATE TABLE portal_messages (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    item_name VARCHAR(255) NOT NULL,
+    item_type VARCHAR(50) NOT NULL CHECK (item_type IN ('service', 'process', 'operation')),
+    direction VARCHAR(20) NOT NULL CHECK (direction IN ('inbound', 'outbound', 'internal')),
+    message_type VARCHAR(100),           -- HL7 message type (e.g., ADT^A01)
+    correlation_id VARCHAR(255),
+    status VARCHAR(50) NOT NULL DEFAULT 'received',
+    raw_content BYTEA,                   -- Full message content
+    content_preview TEXT,                -- First 500 chars for list view
+    content_size INTEGER DEFAULT 0,
+    source_item VARCHAR(255),
+    destination_item VARCHAR(255),
+    remote_host VARCHAR(255),
+    remote_port INTEGER,
+    ack_content BYTEA,                   -- ACK response content
+    ack_type VARCHAR(20),                -- AA, CA, AR, AE, CR
+    error_message TEXT,
+    latency_ms INTEGER,
+    retry_count INTEGER DEFAULT 0,
+    received_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    completed_at TIMESTAMPTZ,
+    metadata JSONB DEFAULT '{}'::jsonb
+);
+
+-- Indexes for efficient querying
+CREATE INDEX idx_portal_messages_project ON portal_messages(project_id);
+CREATE INDEX idx_portal_messages_item ON portal_messages(item_name);
+CREATE INDEX idx_portal_messages_status ON portal_messages(status);
+CREATE INDEX idx_portal_messages_type ON portal_messages(message_type);
+CREATE INDEX idx_portal_messages_direction ON portal_messages(direction);
+CREATE INDEX idx_portal_messages_received ON portal_messages(received_at DESC);
+```
+
+#### API Endpoints
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/projects/{id}/messages` | GET | List messages with pagination and filters |
+| `/api/projects/{id}/messages/stats` | GET | Get message statistics (total, success, failed, etc.) |
+| `/api/projects/{id}/messages/{msg_id}` | GET | Get message detail with full content |
+| `/api/projects/{id}/messages/{msg_id}/resend` | POST | Resend a message through its original item |
+| `/api/messages/housekeeping` | DELETE | Purge messages older than N days |
+
+**Query Parameters for List:**
+- `item` - Filter by item name
+- `status` - Filter by status (received, processing, sent, completed, failed, error)
+- `type` - Filter by message type
+- `direction` - Filter by direction (inbound, outbound)
+- `limit` - Page size (default 50)
+- `offset` - Pagination offset
+
+#### Backend Components
+
+**Repository (`hie/api/repositories.py`):**
+```python
+class PortalMessageRepository:
+    async def create(self, project_id, item_name, item_type, direction, ...) -> UUID
+    async def update_status(self, message_id, status, ack_content=None, ...) -> bool
+    async def get_by_id(self, message_id) -> Optional[dict]
+    async def list_by_project(self, project_id, filters, limit, offset) -> List[dict]
+    async def get_content(self, message_id) -> Optional[dict]
+    async def delete_old_messages(self, days) -> int
+    async def get_stats(self, project_id) -> dict
+```
+
+**Message Store Service (`hie/api/services/message_store.py`):**
+```python
+async def store_message(project_id, item_name, item_type, direction, raw_content, ...) -> UUID
+async def update_message_status(message_id, status, ack_content=None, ...) -> bool
+async def store_and_complete_message(project_id, item_name, ...) -> UUID
+def extract_hl7_message_type(content: bytes) -> Optional[str]
+def extract_ack_type(ack_content: bytes) -> Optional[str]
+```
+
+#### Frontend Components
+
+**Messages Page (`portal/src/app/(app)/messages/page.tsx`):**
+- Project selector dropdown
+- Status filter (all, sent, completed, failed, error, received, processing)
+- Direction filter (all, inbound, outbound)
+- Search by message type
+- Paginated message table with:
+  - Direction icon (inbound=blue arrow, outbound=green arrow)
+  - Message type and ID
+  - Item name and remote host
+  - Status badge
+  - Size, latency, timestamp
+- Detail slide-over panel with:
+  - Status and ACK type badges
+  - Error message display (if failed)
+  - Full metadata grid
+  - Timeline (received → completed)
+  - HL7 syntax-highlighted message content
+  - ACK response content
+  - Resend button for failed messages
+
+**Clickable Metrics (`portal/src/app/(app)/projects/[id]/page.tsx`):**
+- Message count metrics in item detail panel are now clickable
+- Clicking navigates to Messages tab with `?project={id}&item={name}` filter
+
+#### Files Changed
+
+| File | Changes |
+|------|---------|
+| `scripts/init-db.sql` | Added `portal_messages` table schema with indexes |
+| `hie/api/repositories.py` | Added `PortalMessageRepository` class (~180 lines) |
+| `hie/api/routes/messages.py` | New file with 5 API endpoints (~300 lines) |
+| `hie/api/services/__init__.py` | New package init |
+| `hie/api/services/message_store.py` | New message storage service (~210 lines) |
+| `hie/api/server.py` | Register message routes and set db pool for service |
+| `hie/api/routes/items.py` | Integrated message storage in `test_item` endpoint |
+| `portal/src/lib/api-v2.ts` | Added message API types and functions (~90 lines) |
+| `portal/src/app/(app)/messages/page.tsx` | Complete rewrite for real API (~600 lines) |
+| `portal/src/app/(app)/projects/[id]/page.tsx` | Added clickable metrics navigation |
 
 ### Phase 5.2: Dashboard Real Data 🔲 PENDING
 
@@ -378,6 +479,7 @@ See `docs/UI_DESIGN_SPEC.md` for complete design specification.
 | `v1.2.1` | Item Editing & Hot Reload | Jan 25, 2026 |
 | `v1.2.2` | HL7 Testing & Runtime Fixes | Jan 25, 2026 |
 | `v1.3.0` | Enterprise UI Design | Jan 25, 2026 |
+| `v1.3.1` | Message Storage & Viewer | Jan 25, 2026 |
 
 ---
 

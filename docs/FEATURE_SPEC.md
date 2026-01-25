@@ -2,9 +2,9 @@
 
 ## Healthcare Integration Engine - Complete Feature Set
 
-**Version:** 1.3.0  
+**Version:** 1.3.1  
 **Last Updated:** January 25, 2026  
-**Status:** Enterprise UI Design Complete - Ready for Implementation
+**Status:** Phase 5.1 Message Storage & Viewer Complete
 
 ---
 
@@ -218,20 +218,21 @@
 | Transforms Sub-Tab | DTL transformation rules | P1 | 🔲 Planned |
 | Routing Sub-Tab | Routing rule definitions | P1 | 🔲 Planned |
 
-### 5.3 Message Viewer
+### 5.3 Message Viewer ✅ (v1.3.1)
 
 | Feature | Description | Priority | Status |
 |---------|-------------|----------|--------|
-| Message Search | Find messages by criteria | P0 | 🔄 In Progress |
-| Message List | Paginated message table | P0 | 🔄 In Progress |
-| Message Detail | View full message content | P0 | 🔄 In Progress |
-| Status Filtering | Filter by status/type | P0 | 🔄 In Progress |
-| Permanent Storage | Store messages in PostgreSQL | P0 | 🔲 Planned |
-| HL7 Syntax Highlighting | Color-coded segment display | P0 | 🔲 Planned |
-| Clickable Metrics | Navigate from item metrics | P0 | 🔲 Planned |
+| Message Search | Find messages by criteria | P0 | ✅ Done |
+| Message List | Paginated message table | P0 | ✅ Done |
+| Message Detail | View full message content | P0 | ✅ Done |
+| Status Filtering | Filter by status/type/direction | P0 | ✅ Done |
+| Permanent Storage | Store messages in PostgreSQL | P0 | ✅ Done |
+| HL7 Syntax Highlighting | Color-coded segment display | P0 | ✅ Done |
+| Clickable Metrics | Navigate from item metrics | P0 | ✅ Done |
+| Message Resend | Replay failed messages | P1 | ✅ Done |
+| Housekeeping API | Purge old messages via API | P1 | ✅ Done |
 | Message Trace | Follow message through route | P1 | 🔲 Planned |
-| Message Resend | Replay failed messages | P1 | 🔲 Planned |
-| Housekeeping UI | Manual/automated purging | P1 | 🔲 Planned |
+| Housekeeping UI | Manual/automated purging UI | P2 | 🔲 Planned |
 | Bulk Operations | Act on multiple messages | P2 | 🔲 Planned |
 
 ### 5.4 Monitoring
