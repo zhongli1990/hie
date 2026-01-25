@@ -8,7 +8,7 @@ CREATE TABLE IF NOT EXISTS workspaces (
     name VARCHAR(255) NOT NULL UNIQUE,
     display_name VARCHAR(255) NOT NULL,
     description TEXT,
-    tenant_id UUID REFERENCES tenants(id) ON DELETE SET NULL,
+    tenant_id UUID REFERENCES hie_tenants(id) ON DELETE SET NULL,
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW(),
     created_by UUID,
