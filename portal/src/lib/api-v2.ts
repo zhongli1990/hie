@@ -191,7 +191,9 @@ export interface ImportResponse {
 
 // API Client
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || '';
+// Always use relative URLs - Next.js rewrites will proxy to the backend
+// This ensures browser requests work correctly in Docker environments
+const API_BASE = '';
 
 class APIError extends Error {
   constructor(public status: number, message: string) {

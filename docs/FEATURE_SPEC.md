@@ -2,9 +2,9 @@
 
 ## Healthcare Integration Engine - Complete Feature Set
 
-**Version:** 0.2.0  
-**Last Updated:** January 21, 2026  
-**Status:** User Management & Authentication Release
+**Version:** 1.2.0  
+**Last Updated:** January 25, 2026  
+**Status:** Full-Stack Integration Complete - LI Engine + Management Portal
 
 ---
 
@@ -86,8 +86,8 @@
 |----------|-------------|----------|--------|
 | HTTP/REST | REST API endpoints | P0 | ✅ Done |
 | File System | Directory watching | P0 | ✅ Done |
-| MLLP | HL7 over TCP | P1 | 🔲 Planned |
-| TCP/IP | Raw TCP connections | P1 | 🔲 Planned |
+| MLLP | HL7 over TCP | P1 | ✅ Done (LI Engine) |
+| TCP/IP | Raw TCP connections | P1 | ✅ Done (LI Engine) |
 | FTP/SFTP | File transfer protocols | P1 | 🔲 Planned |
 | SOAP | Web services | P2 | 🔲 Planned |
 | Kafka | Event streaming | P2 | 🔲 Planned |
@@ -101,7 +101,7 @@
 | MLLP | HL7 over TCP | P0 | ✅ Done |
 | File System | Write to directories | P0 | ✅ Done |
 | HTTP/REST | REST API calls | P1 | 🔲 Planned |
-| TCP/IP | Raw TCP connections | P1 | 🔲 Planned |
+| TCP/IP | Raw TCP connections | P1 | ✅ Done (LI Engine) |
 | FTP/SFTP | File transfer | P1 | 🔲 Planned |
 | SOAP | Web services | P2 | 🔲 Planned |
 | Kafka | Event publishing | P2 | 🔲 Planned |
@@ -159,7 +159,7 @@
 |---------|-------------|----------|--------|
 | JSON Configuration | Primary config format | P0 | ✅ Done |
 | YAML Configuration | Human-friendly format | P0 | ✅ Done |
-| XML Import | Import from IRIS/Rhapsody | P1 | 🔲 Planned |
+| XML Import | Import from IRIS/Rhapsody | P1 | ✅ Done (LI Engine) |
 | Config Validation | Schema-based validation | P0 | ✅ Done |
 | Config Diff | Compare configurations | P1 | 🔲 Planned |
 | Config History | Track config changes | P1 | 🔲 Planned |

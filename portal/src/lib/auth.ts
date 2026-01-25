@@ -2,7 +2,8 @@
  * Auth API helper functions for HIE Portal
  */
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:9302";
+// Always use relative URLs - Next.js rewrites will proxy to the backend
+const API_BASE = "";
 
 export interface User {
   id: string;

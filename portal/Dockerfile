@@ -20,6 +20,9 @@ COPY . .
 
 # Build the application
 ENV NEXT_TELEMETRY_DISABLED 1
+# Set API URL for build-time rewrites configuration
+ARG NEXT_PUBLIC_API_URL=http://hie-api:8081
+ENV NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
 RUN npm run build
 
 # Production image, copy all the files and run next
@@ -37,6 +40,8 @@ RUN adduser --system --uid 1001 nextjs
 COPY --from=builder /app/public ./public
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
+# Copy next.config.js for runtime rewrites (if needed)
+COPY --from=builder /app/next.config.js ./
 
 USER nextjs
 

@@ -1,8 +1,8 @@
 # HIE Implementation Status
 
-**Version:** 1.1.0  
+**Version:** 1.2.0  
 **Last Updated:** January 25, 2026  
-**Status:** Full-Stack Integration In Progress
+**Status:** Full-Stack Integration Complete - Testing Phase
 
 ---
 
@@ -203,12 +203,20 @@ The original HIE engine provides the foundation but needs integration with LI En
 | Layout Integration | ✅ Complete | `portal/src/app/(app)/layout.tsx` |
 | TopNav Integration | ✅ Complete | `portal/src/components/TopNav.tsx` |
 
-### Phase 4.4: Remaining Tasks 🔲 PENDING
+### Phase 4.4: Docker Integration ✅ COMPLETE
+
+| Component | Status | Notes |
+|-----------|--------|-------|
+| Database schema in init-db.sql | ✅ Complete | All tables created on container start |
+| API proxy via Next.js rewrites | ✅ Complete | Browser requests proxied to backend |
+| Sidebar navigation updated | ✅ Complete | Links to /projects instead of /productions |
+| JSONB field parsing | ✅ Complete | Settings properly deserialized |
+
+### Phase 4.5: Remaining Tasks 🔲 PENDING
 
 | Task | Status | Notes |
 |------|--------|-------|
-| Run database migration | 🔲 Pending | Requires PostgreSQL |
-| End-to-end testing | 🔲 Pending | Manual testing with user |
+| End-to-end testing | 🔄 In Progress | Manual testing with user |
 | Real-time WebSocket events | 🔲 Pending | Future enhancement |
 | Visual drag-drop editor | 🔲 Pending | Future enhancement |
 
@@ -227,13 +235,81 @@ The original HIE engine provides the foundation but needs integration with LI En
 
 ---
 
-## 6. Next Steps
+## 6. Docker Deployment
 
-1. **Create Full-Stack Integration Design** - API contracts, data models, UI flows
-2. **Implement Backend APIs** - Workspace, Project, Item CRUD with DB persistence
-3. **Integrate LI Engine** - Connect API to LI ProductionEngine
-4. **Uplift Frontend** - Tab by tab integration with new APIs
-5. **End-to-End Testing** - Full lifecycle testing per use case
+### Running the Full Stack
+
+```bash
+# Start all services
+docker-compose -f docker-compose.full.yml up -d
+
+# Services available:
+# - Portal: http://localhost:9303
+# - API: http://localhost:9302
+# - PostgreSQL: localhost:9310
+# - Redis: localhost:9311
+```
+
+### Default Credentials
+
+- **Email:** admin@hie.nhs.uk
+- **Password:** Admin123!
+
+---
+
+## 7. API Endpoints
+
+### Workspace APIs
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/workspaces` | List all workspaces |
+| POST | `/api/workspaces` | Create workspace |
+| GET | `/api/workspaces/{id}` | Get workspace |
+| PUT | `/api/workspaces/{id}` | Update workspace |
+| DELETE | `/api/workspaces/{id}` | Delete workspace |
+
+### Project APIs
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/workspaces/{ws_id}/projects` | List projects |
+| POST | `/api/workspaces/{ws_id}/projects` | Create project |
+| GET | `/api/workspaces/{ws_id}/projects/{id}` | Get project |
+| PUT | `/api/workspaces/{ws_id}/projects/{id}` | Update project |
+| DELETE | `/api/workspaces/{ws_id}/projects/{id}` | Delete project |
+| POST | `/api/workspaces/{ws_id}/projects/{id}/deploy` | Deploy project |
+| POST | `/api/workspaces/{ws_id}/projects/{id}/start` | Start project |
+| POST | `/api/workspaces/{ws_id}/projects/{id}/stop` | Stop project |
+| GET | `/api/workspaces/{ws_id}/projects/{id}/status` | Get status |
+| POST | `/api/workspaces/{ws_id}/projects/import` | Import IRIS XML |
+
+### Item APIs
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/projects/{id}/items` | List items |
+| POST | `/api/projects/{id}/items` | Create item |
+| GET | `/api/projects/{id}/items/{item_id}` | Get item |
+| PUT | `/api/projects/{id}/items/{item_id}` | Update item |
+| DELETE | `/api/projects/{id}/items/{item_id}` | Delete item |
+
+### Item Type Registry
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/item-types` | List all item types |
+| GET | `/api/item-types/{type}` | Get item type details |
+
+---
+
+## 8. Next Steps
+
+1. ✅ ~~Create Full-Stack Integration Design~~ - Complete
+2. ✅ ~~Implement Backend APIs~~ - Complete
+3. ✅ ~~Integrate LI Engine~~ - Complete
+4. ✅ ~~Uplift Frontend~~ - Complete
+5. 🔄 **End-to-End Testing** - In Progress
 
 ---
 
