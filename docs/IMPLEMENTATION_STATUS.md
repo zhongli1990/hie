@@ -1,8 +1,8 @@
 # HIE Implementation Status
 
-**Version:** 1.2.0  
+**Version:** 1.2.1  
 **Last Updated:** January 25, 2026  
-**Status:** Full-Stack Integration Complete - Testing Phase
+**Status:** Full-Stack Integration Complete - Item Editing & Hot Reload Phase
 
 ---
 
@@ -212,7 +212,27 @@ The original HIE engine provides the foundation but needs integration with LI En
 | Sidebar navigation updated | ✅ Complete | Links to /projects instead of /productions |
 | JSONB field parsing | ✅ Complete | Settings properly deserialized |
 
-### Phase 4.5: Remaining Tasks 🔲 PENDING
+### Phase 4.5: Item Management ✅ COMPLETE
+
+| Feature | Status | Notes |
+|---------|--------|-------|
+| Create Business Service | ✅ Complete | Via Add Item modal |
+| Create Business Process | ✅ Complete | Via Add Item modal |
+| Create Business Operation | ✅ Complete | Via Add Item modal |
+| Delete Items | ✅ Complete | Via delete button |
+| View Item Properties | ✅ Complete | Detail panel shows all settings |
+| **Edit Item Properties** | ✅ Complete | Edit mode with save/cancel |
+| Target Items field (optional) | ✅ Complete | Shows helpful message when empty |
+
+### Phase 4.6: Hot Reload 🔄 IN PROGRESS
+
+| Feature | Status | Notes |
+|---------|--------|-------|
+| Update item settings at runtime | 🔄 In Progress | API endpoint exists, engine reload needed |
+| Graceful item restart | 🔲 Pending | Stop → update config → restart |
+| Live config sync | 🔲 Pending | Push changes to running engine |
+
+### Phase 4.7: Remaining Tasks 🔲 PENDING
 
 | Task | Status | Notes |
 |------|--------|-------|

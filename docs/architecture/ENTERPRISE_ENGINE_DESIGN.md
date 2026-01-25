@@ -1150,6 +1150,108 @@ hie/
 
 ---
 
+## Runtime Architecture (Implementation Details)
+
+This section documents the actual implementation of the LI Engine runtime model.
+
+### Item → Python Class Mapping
+
+Each configured item runs as an instance of a Python class that inherits from the base Host hierarchy:
+
+```
+Host (ABC) - hie/li/hosts/base.py
+├── BusinessService (inbound - receives messages from external systems)
+│   └── HL7TCPService, FileService, HTTPService, etc.
+├── BusinessProcess (routing/transformation)
+│   └── HL7RoutingEngine, MessageRouter, TransformProcess, etc.
+└── BusinessOperation (outbound - sends messages to external systems)
+    └── HL7TCPOperation, FileOperation, HTTPOperation, etc.
+```
+
+### Concurrency Model: Async Workers (Not Threads)
+
+The LI Engine uses **Python asyncio** for non-blocking I/O, not traditional threads:
+
+| Concept | Implementation | Notes |
+|---------|----------------|-------|
+| **Pool Size** | `asyncio.Task` workers | Each item spawns N async tasks |
+| **Message Queue** | `asyncio.Queue` | Per-host queue with configurable size |
+| **Timeout Handling** | `asyncio.wait_for` | Configurable per-message timeout |
+| **Pause/Resume** | `asyncio.Event` | Non-blocking pause mechanism |
+| **Graceful Shutdown** | `asyncio.Event` + `asyncio.wait` | Wait for workers, then cancel |
+
+**Why asyncio over threads?**
+- Healthcare integration is I/O-bound (network, file, database)
+- asyncio provides better performance for I/O-bound workloads
+- No GIL contention issues
+- Simpler debugging and error handling
+- Native Python 3.11+ support
+
+### Worker Loop (from `hie/li/hosts/base.py`)
+
+```python
+async def _worker_loop(self, worker_id: int):
+    """Main worker loop for processing messages."""
+    while not self._shutdown_event.is_set():
+        # Wait if paused
+        await self._pause_event.wait()
+        
+        # Get message from queue with timeout
+        message = await asyncio.wait_for(self._queue.get(), timeout=1.0)
+        
+        # Process with configurable timeout
+        result = await asyncio.wait_for(
+            self._process_message(message),
+            timeout=self.get_setting("Host", "Timeout", 30.0)
+        )
+```
+
+### Hot Reload Architecture
+
+Hot reload allows updating item configuration while the production is running:
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                     HOT RELOAD FLOW                              │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│  1. API receives PUT /api/projects/{id}/items/{item_id}         │
+│     └── Updates database with new settings                       │
+│                                                                  │
+│  2. API calls POST /api/projects/{id}/items/{item_id}/reload    │
+│     └── Signals engine to reload specific item                   │
+│                                                                  │
+│  3. Engine performs graceful item restart:                       │
+│     a. Pause item (stop accepting new messages)                  │
+│     b. Wait for in-flight messages to complete                   │
+│     c. Stop adapter                                              │
+│     d. Load new configuration from database                      │
+│     e. Recreate adapter with new settings                        │
+│     f. Resume item (start accepting messages)                    │
+│                                                                  │
+│  4. No messages lost - queue persists during reload              │
+│                                                                  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### Configuration Lifecycle
+
+```
+┌──────────────┐     ┌──────────────┐     ┌──────────────┐
+│   Database   │────▶│   API/UI     │────▶│   Engine     │
+│  (source of  │     │  (edit &     │     │  (runtime    │
+│   truth)     │◀────│   save)      │◀────│   state)     │
+└──────────────┘     └──────────────┘     └──────────────┘
+       │                                         │
+       │         ┌──────────────┐               │
+       └────────▶│  Hot Reload  │◀──────────────┘
+                 │  (sync DB →  │
+                 │   Engine)    │
+                 └──────────────┘
+```
+
+---
+
 ## Migration Path
 
 ### Phase 1: Core Infrastructure
