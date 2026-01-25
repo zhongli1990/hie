@@ -281,6 +281,7 @@ export default function ProjectDetailPage() {
                   item={selectedItem}
                   itemTypes={itemTypes}
                   projectId={projectId}
+                  existingItems={project.items}
                   onUpdate={loadProject}
                   onDelete={() => handleDeleteItem(selectedItem.id, selectedItem.name)}
                 />
@@ -379,12 +380,59 @@ interface ItemDetailPanelProps {
   item: ProjectItem;
   itemTypes: ItemTypeDefinition[];
   projectId: string;
+  existingItems: ProjectItem[];
   onUpdate: () => void;
   onDelete: () => void;
 }
 
-function ItemDetailPanel({ item, itemTypes, projectId, onUpdate, onDelete }: ItemDetailPanelProps) {
+function ItemDetailPanel({ item, itemTypes, projectId, existingItems, onUpdate, onDelete }: ItemDetailPanelProps) {
+  const [isEditing, setIsEditing] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [editedPoolSize, setEditedPoolSize] = useState(item.pool_size);
+  const [editedEnabled, setEditedEnabled] = useState(item.enabled);
+  const [editedAdapterSettings, setEditedAdapterSettings] = useState<Record<string, unknown>>(item.adapter_settings);
+  const [editedHostSettings, setEditedHostSettings] = useState<Record<string, unknown>>(item.host_settings);
+  
   const itemType = itemTypes.find(t => t.li_class_name === item.class_name || t.iris_class_name === item.class_name);
+
+  // Reset edit state when item changes
+  useEffect(() => {
+    setEditedPoolSize(item.pool_size);
+    setEditedEnabled(item.enabled);
+    setEditedAdapterSettings(item.adapter_settings);
+    setEditedHostSettings(item.host_settings);
+    setIsEditing(false);
+    setError(null);
+  }, [item.id]);
+
+  const handleSave = async () => {
+    setIsSaving(true);
+    setError(null);
+    try {
+      await updateItem(projectId, item.id, {
+        pool_size: editedPoolSize,
+        enabled: editedEnabled,
+        adapter_settings: editedAdapterSettings,
+        host_settings: editedHostSettings,
+      });
+      setIsEditing(false);
+      onUpdate();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to save changes');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleCancel = () => {
+    setEditedPoolSize(item.pool_size);
+    setEditedEnabled(item.enabled);
+    setEditedAdapterSettings(item.adapter_settings);
+    setEditedHostSettings(item.host_settings);
+    setIsEditing(false);
+    setError(null);
+  };
   
   return (
     <div className="space-y-6">
@@ -394,17 +442,54 @@ function ItemDetailPanel({ item, itemTypes, projectId, onUpdate, onDelete }: Ite
           <p className="text-sm text-gray-500">{item.class_name}</p>
         </div>
         <div className="flex gap-2">
-          <button
-            onClick={onDelete}
-            className="p-2 text-red-600 hover:bg-red-50 rounded"
-            title="Delete item"
-          >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-            </svg>
-          </button>
+          {!isEditing ? (
+            <>
+              <button
+                onClick={() => setIsEditing(true)}
+                className="p-2 text-blue-600 hover:bg-blue-50 rounded"
+                title="Edit item"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                </svg>
+              </button>
+              <button
+                onClick={onDelete}
+                className="p-2 text-red-600 hover:bg-red-50 rounded"
+                title="Delete item"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                </svg>
+              </button>
+            </>
+          ) : (
+            <>
+              <button
+                onClick={handleCancel}
+                disabled={isSaving}
+                className="px-3 py-1.5 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSave}
+                disabled={isSaving}
+                className="px-3 py-1.5 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50"
+              >
+                {isSaving ? 'Saving...' : 'Save Changes'}
+              </button>
+            </>
+          )}
         </div>
       </div>
+
+      {error && (
+        <div className="p-3 text-sm text-red-700 bg-red-50 border border-red-200 rounded flex justify-between items-center">
+          <span>{error}</span>
+          <button onClick={() => setError(null)} className="text-red-500 hover:text-red-700">×</button>
+        </div>
+      )}
 
       <div className="grid grid-cols-2 gap-4">
         <div className="bg-gray-50 rounded-lg p-4">
@@ -413,11 +498,34 @@ function ItemDetailPanel({ item, itemTypes, projectId, onUpdate, onDelete }: Ite
         </div>
         <div className="bg-gray-50 rounded-lg p-4">
           <p className="text-xs font-medium text-gray-500 uppercase">Pool Size</p>
-          <p className="mt-1 text-sm font-medium text-gray-900">{item.pool_size}</p>
+          {isEditing ? (
+            <input
+              type="number"
+              min={1}
+              max={100}
+              value={editedPoolSize}
+              onChange={(e) => setEditedPoolSize(Number(e.target.value))}
+              className="mt-1 w-full px-2 py-1 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-blue-500"
+            />
+          ) : (
+            <p className="mt-1 text-sm font-medium text-gray-900">{item.pool_size}</p>
+          )}
         </div>
         <div className="bg-gray-50 rounded-lg p-4">
           <p className="text-xs font-medium text-gray-500 uppercase">Enabled</p>
-          <p className="mt-1 text-sm font-medium text-gray-900">{item.enabled ? 'Yes' : 'No'}</p>
+          {isEditing ? (
+            <label className="mt-1 flex items-center gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={editedEnabled}
+                onChange={(e) => setEditedEnabled(e.target.checked)}
+                className="h-4 w-4 text-blue-600 border-gray-300 rounded"
+              />
+              <span className="text-sm text-gray-700">{editedEnabled ? 'Yes' : 'No'}</span>
+            </label>
+          ) : (
+            <p className="mt-1 text-sm font-medium text-gray-900">{item.enabled ? 'Yes' : 'No'}</p>
+          )}
         </div>
         <div className="bg-gray-50 rounded-lg p-4">
           <p className="text-xs font-medium text-gray-500 uppercase">Category</p>
@@ -425,31 +533,59 @@ function ItemDetailPanel({ item, itemTypes, projectId, onUpdate, onDelete }: Ite
         </div>
       </div>
 
-      {Object.keys(item.adapter_settings).length > 0 && (
+      {(Object.keys(item.adapter_settings).length > 0 || isEditing) && itemType && (
         <div>
           <h3 className="text-sm font-medium text-gray-900 mb-3">Adapter Settings</h3>
-          <div className="bg-gray-50 rounded-lg divide-y">
-            {Object.entries(item.adapter_settings).map(([key, value]) => (
-              <div key={key} className="px-4 py-3 flex justify-between">
-                <span className="text-sm text-gray-600">{key}</span>
-                <span className="text-sm font-medium text-gray-900">{String(value)}</span>
-              </div>
-            ))}
-          </div>
+          {isEditing ? (
+            <div className="space-y-4 bg-gray-50 rounded-lg p-4">
+              {itemType.adapter_settings.map((setting) => (
+                <SettingField
+                  key={setting.key}
+                  setting={setting}
+                  value={editedAdapterSettings[setting.key]}
+                  onChange={(v) => setEditedAdapterSettings({ ...editedAdapterSettings, [setting.key]: v })}
+                  existingItems={existingItems}
+                />
+              ))}
+            </div>
+          ) : (
+            <div className="bg-gray-50 rounded-lg divide-y">
+              {Object.entries(item.adapter_settings).map(([key, value]) => (
+                <div key={key} className="px-4 py-3 flex justify-between">
+                  <span className="text-sm text-gray-600">{key}</span>
+                  <span className="text-sm font-medium text-gray-900">{String(value)}</span>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
 
-      {Object.keys(item.host_settings).length > 0 && (
+      {(Object.keys(item.host_settings).length > 0 || isEditing) && itemType && (
         <div>
           <h3 className="text-sm font-medium text-gray-900 mb-3">Host Settings</h3>
-          <div className="bg-gray-50 rounded-lg divide-y">
-            {Object.entries(item.host_settings).map(([key, value]) => (
-              <div key={key} className="px-4 py-3 flex justify-between">
-                <span className="text-sm text-gray-600">{key}</span>
-                <span className="text-sm font-medium text-gray-900 max-w-xs truncate">{String(value)}</span>
-              </div>
-            ))}
-          </div>
+          {isEditing ? (
+            <div className="space-y-4 bg-gray-50 rounded-lg p-4">
+              {itemType.host_settings.map((setting) => (
+                <SettingField
+                  key={setting.key}
+                  setting={setting}
+                  value={editedHostSettings[setting.key]}
+                  onChange={(v) => setEditedHostSettings({ ...editedHostSettings, [setting.key]: v })}
+                  existingItems={existingItems}
+                />
+              ))}
+            </div>
+          ) : (
+            <div className="bg-gray-50 rounded-lg divide-y">
+              {Object.entries(item.host_settings).map(([key, value]) => (
+                <div key={key} className="px-4 py-3 flex justify-between">
+                  <span className="text-sm text-gray-600">{key}</span>
+                  <span className="text-sm font-medium text-gray-900 max-w-xs truncate">{String(value)}</span>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
 
