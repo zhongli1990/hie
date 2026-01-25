@@ -398,12 +398,57 @@ interface ItemDetailPanelProps {
   onDelete: () => void;
 }
 
+// Generate default HL7 test message
+function generateDefaultHL7Message(): string {
+  const now = new Date();
+  const timestamp = now.toISOString().replace(/[-:T.Z]/g, '').slice(0, 14);
+  const msgId = `TEST${timestamp}`;
+  return [
+    `MSH|^~\\&|HIE|HIE|REMOTE|REMOTE|${timestamp}||ADT^A01|${msgId}|P|2.4`,
+    `EVN|A01|${timestamp}`,
+    `PID|1||TEST123^^^MRN||Doe^John^Q||19800101|M|||123 Main St^^London^^SW1A 1AA^UK`,
+    `PV1|1|I|WARD1^ROOM1^BED1||||12345^Smith^Jane|||MED||||||||V123456`,
+  ].join('\r');
+}
+
+// Format HL7 message for display with segment highlighting
+function formatHL7Display(message: string): React.ReactNode {
+  if (!message) return null;
+  
+  // Handle both \r and \\r as segment separators
+  const segments = message.split(/\\r|\r|\n/).filter(s => s.trim());
+  
+  const segmentColors: Record<string, string> = {
+    'MSH': 'text-blue-400',
+    'EVN': 'text-cyan-400',
+    'PID': 'text-green-400',
+    'PV1': 'text-yellow-400',
+    'MSA': 'text-purple-400',
+    'ERR': 'text-red-400',
+    'OBR': 'text-orange-400',
+    'OBX': 'text-pink-400',
+  };
+  
+  return segments.map((segment, idx) => {
+    const segmentType = segment.substring(0, 3);
+    const colorClass = segmentColors[segmentType] || 'text-gray-300';
+    return (
+      <div key={idx} className={`${colorClass} hover:bg-gray-800 px-1 -mx-1 rounded`}>
+        <span className="text-gray-500 select-none mr-2">{String(idx + 1).padStart(2, '0')}</span>
+        {segment}
+      </div>
+    );
+  });
+}
+
 function ItemDetailPanel({ item, itemTypes, projectId, existingItems, onUpdate, onDelete }: ItemDetailPanelProps) {
   const [isEditing, setIsEditing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isTesting, setIsTesting] = useState(false);
   const [testResult, setTestResult] = useState<TestMessageResult | null>(null);
   const [showTestModal, setShowTestModal] = useState(false);
+  const [testMessage, setTestMessage] = useState(generateDefaultHL7Message());
+  const [sentMessage, setSentMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [editedPoolSize, setEditedPoolSize] = useState(item.pool_size);
   const [editedEnabled, setEditedEnabled] = useState(item.enabled);
@@ -467,16 +512,19 @@ function ItemDetailPanel({ item, itemTypes, projectId, existingItems, onUpdate, 
     setError(null);
   };
 
-  const handleTest = async () => {
+  const handleTest = async (customMessage?: string) => {
     setIsTesting(true);
     setError(null);
     setTestResult(null);
+    const messageToSend = customMessage || testMessage;
+    setSentMessage(messageToSend);
     try {
-      const result = await testItem(projectId, item.name);
+      const result = await testItem(projectId, item.name, messageToSend);
       setTestResult(result);
       setShowTestModal(true);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to send test message');
+      setTestResult({ status: 'error', item_name: item.name, error: err instanceof Error ? err.message : 'Failed to send test message' });
+      setShowTestModal(true);
     } finally {
       setIsTesting(false);
     }
@@ -513,7 +561,7 @@ function ItemDetailPanel({ item, itemTypes, projectId, existingItems, onUpdate, 
               </button>
               {isOperation && (
                 <button
-                  onClick={handleTest}
+                  onClick={() => setShowTestModal(true)}
                   disabled={isTesting}
                   className="p-2 text-purple-600 hover:bg-purple-50 rounded disabled:opacity-50"
                   title="Send test message"
@@ -681,16 +729,17 @@ function ItemDetailPanel({ item, itemTypes, projectId, existingItems, onUpdate, 
         </div>
       )}
 
-      {/* Test Result Modal */}
-      {showTestModal && testResult && (
+      {/* Enhanced Test Message Modal */}
+      {showTestModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl shadow-xl max-w-2xl w-full mx-4 max-h-[80vh] overflow-hidden">
+          <div className="bg-white rounded-xl shadow-xl max-w-4xl w-full mx-4 max-h-[90vh] overflow-hidden">
             <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
-              <h3 className="text-lg font-semibold text-gray-900">
-                Test Message Result
-              </h3>
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900">HL7 Message Tester</h3>
+                <p className="text-sm text-gray-500">Send test messages to {item.name}</p>
+              </div>
               <button
-                onClick={() => setShowTestModal(false)}
+                onClick={() => { setShowTestModal(false); setTestResult(null); }}
                 className="p-1 text-gray-400 hover:text-gray-600"
               >
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -698,51 +747,152 @@ function ItemDetailPanel({ item, itemTypes, projectId, existingItems, onUpdate, 
                 </svg>
               </button>
             </div>
-            <div className="p-6 space-y-4 overflow-y-auto max-h-[60vh]">
-              <div className="flex items-center gap-2">
-                <span className={`px-2 py-1 text-sm font-medium rounded ${
-                  testResult.status === 'sent' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
-                }`}>
-                  {testResult.status === 'sent' ? '✓ Message Sent' : '✗ Failed'}
-                </span>
-                <span className="text-sm text-gray-500">to {item.name}</span>
+            
+            <div className="p-6 space-y-6 overflow-y-auto max-h-[70vh]">
+              {/* Message Editor */}
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <h4 className="text-sm font-medium text-gray-700">Message to Send</h4>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => setTestMessage(generateDefaultHL7Message())}
+                      className="px-2 py-1 text-xs font-medium text-blue-600 bg-blue-50 rounded hover:bg-blue-100"
+                    >
+                      Reset to Default
+                    </button>
+                    <span className="px-2 py-1 text-xs font-medium text-gray-500 bg-gray-100 rounded">
+                      HL7 v2.4
+                    </span>
+                  </div>
+                </div>
+                <textarea
+                  value={testMessage}
+                  onChange={(e) => setTestMessage(e.target.value)}
+                  className="w-full h-40 p-3 font-mono text-sm bg-gray-900 text-green-400 rounded-lg border border-gray-700 focus:border-purple-500 focus:ring-1 focus:ring-purple-500"
+                  placeholder="Enter HL7 message..."
+                  spellCheck={false}
+                />
+                <p className="mt-1 text-xs text-gray-500">
+                  Use \r or newlines to separate segments. Remote: {String(item.adapter_settings?.ipAddress || 'localhost')}:{String(item.adapter_settings?.port || '2575')}
+                </p>
               </div>
-              
-              {testResult.ack && (
-                <div>
-                  <h4 className="text-sm font-medium text-gray-700 mb-2">ACK Response</h4>
-                  <pre className="bg-gray-900 text-green-400 p-4 rounded-lg text-sm overflow-x-auto font-mono whitespace-pre-wrap">
-                    {testResult.ack.split('\\r').join('\n')}
-                  </pre>
-                </div>
-              )}
-              
-              {testResult.result && (
-                <div>
-                  <h4 className="text-sm font-medium text-gray-700 mb-2">Result</h4>
-                  <pre className="bg-gray-900 text-green-400 p-4 rounded-lg text-sm overflow-x-auto font-mono whitespace-pre-wrap">
-                    {testResult.result.split('\\r').join('\n')}
-                  </pre>
-                </div>
-              )}
-              
-              {testResult.error && (
-                <div className="p-4 bg-red-50 border border-red-200 rounded-lg">
-                  <p className="text-sm text-red-700">{testResult.error}</p>
+
+              {/* Send Button */}
+              <div className="flex justify-center">
+                <button
+                  onClick={() => handleTest()}
+                  disabled={isTesting || !testMessage.trim()}
+                  className="px-6 py-2.5 text-sm font-medium text-white bg-purple-600 rounded-lg hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                >
+                  {isTesting ? (
+                    <>
+                      <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                      </svg>
+                      Sending...
+                    </>
+                  ) : (
+                    <>
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+                      </svg>
+                      Send Message
+                    </>
+                  )}
+                </button>
+              </div>
+
+              {/* Results Section */}
+              {testResult && (
+                <div className="space-y-4 pt-4 border-t border-gray-200">
+                  {/* Status Badge */}
+                  <div className="flex items-center gap-3">
+                    <span className={`px-3 py-1.5 text-sm font-medium rounded-full ${
+                      testResult.status === 'sent' 
+                        ? 'bg-green-100 text-green-700' 
+                        : 'bg-red-100 text-red-700'
+                    }`}>
+                      {testResult.status === 'sent' ? '✓ Message Sent Successfully' : '✗ Send Failed'}
+                    </span>
+                    {testResult.status === 'sent' && (
+                      <span className="text-sm text-gray-500">
+                        Response received from remote system
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Sent Message Preview */}
+                  {sentMessage && (
+                    <div>
+                      <h4 className="text-sm font-medium text-gray-700 mb-2 flex items-center gap-2">
+                        <svg className="w-4 h-4 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 11l5-5m0 0l5 5m-5-5v12" />
+                        </svg>
+                        Sent Message
+                      </h4>
+                      <div className="bg-gray-900 p-4 rounded-lg text-sm font-mono overflow-x-auto">
+                        {formatHL7Display(sentMessage)}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* ACK Response */}
+                  {testResult.ack && (
+                    <div>
+                      <h4 className="text-sm font-medium text-gray-700 mb-2 flex items-center gap-2">
+                        <svg className="w-4 h-4 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 13l-5 5m0 0l-5-5m5 5V6" />
+                        </svg>
+                        ACK Response
+                        {testResult.ack.includes('MSA|CA') && (
+                          <span className="px-2 py-0.5 text-xs bg-green-100 text-green-700 rounded">Commit Accept</span>
+                        )}
+                        {testResult.ack.includes('MSA|AA') && (
+                          <span className="px-2 py-0.5 text-xs bg-green-100 text-green-700 rounded">Application Accept</span>
+                        )}
+                        {testResult.ack.includes('MSA|CR') && (
+                          <span className="px-2 py-0.5 text-xs bg-red-100 text-red-700 rounded">Commit Reject</span>
+                        )}
+                        {testResult.ack.includes('MSA|AR') && (
+                          <span className="px-2 py-0.5 text-xs bg-red-100 text-red-700 rounded">Application Reject</span>
+                        )}
+                        {testResult.ack.includes('MSA|AE') && (
+                          <span className="px-2 py-0.5 text-xs bg-yellow-100 text-yellow-700 rounded">Application Error</span>
+                        )}
+                      </h4>
+                      <div className="bg-gray-900 p-4 rounded-lg text-sm font-mono overflow-x-auto">
+                        {formatHL7Display(testResult.ack)}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Error Display */}
+                  {testResult.error && (
+                    <div className="p-4 bg-red-50 border border-red-200 rounded-lg">
+                      <div className="flex items-start gap-3">
+                        <svg className="w-5 h-5 text-red-500 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                        <div>
+                          <h4 className="text-sm font-medium text-red-700">Error</h4>
+                          <p className="text-sm text-red-600 mt-1">{testResult.error}</p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
-            <div className="px-6 py-4 border-t border-gray-200 flex justify-end gap-3">
+
+            {/* Footer */}
+            <div className="px-6 py-4 border-t border-gray-200 flex justify-between items-center bg-gray-50">
+              <div className="text-xs text-gray-500">
+                Protocol: MLLP/TCP • Format: HL7 v2.x
+              </div>
               <button
-                onClick={handleTest}
-                disabled={isTesting}
-                className="px-4 py-2 text-sm font-medium text-purple-600 bg-purple-50 rounded-lg hover:bg-purple-100 disabled:opacity-50"
-              >
-                {isTesting ? 'Sending...' : 'Send Another'}
-              </button>
-              <button
-                onClick={() => setShowTestModal(false)}
-                className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200"
+                onClick={() => { setShowTestModal(false); setTestResult(null); }}
+                className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50"
               >
                 Close
               </button>

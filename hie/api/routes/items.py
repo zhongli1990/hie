@@ -338,6 +338,15 @@ def setup_item_routes(app: web.Application, db_pool) -> None:
                 f"PID|1||TEST123^^^MRN||Doe^John^Q||19800101|M|||123 Main St^^London^^SW1A 1AA^UK\r"
                 f"PV1|1|I|WARD1^ROOM1^BED1||||12345^Smith^Jane|||MED||||||||V123456\r"
             )
+        else:
+            # Normalize segment separators: HL7 requires \r (CR) not \n (LF)
+            # Handle various input formats from textarea editing
+            import re
+            # Replace \r\n, \n, or literal \\r with proper \r
+            hl7_message = re.sub(r'\\r\\n|\\r|\\n|\r\n|\n', '\r', hl7_message)
+            # Ensure message ends with \r
+            if not hl7_message.endswith('\r'):
+                hl7_message += '\r'
         
         try:
             # For operations, use the adapter to send
