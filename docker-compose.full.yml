@@ -63,7 +63,8 @@ services:
       dockerfile: Dockerfile.api
     container_name: hie-api
     ports:
-      - "9302:8081"
+      - "9302:8081"           # Management API
+      - "10001-10020:10001-10020"  # MLLP/TCP ports for HL7 services (20 ports)
     environment:
       - HIE_API_HOST=0.0.0.0
       - HIE_API_PORT=8081
