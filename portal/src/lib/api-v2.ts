@@ -386,6 +386,12 @@ export async function deleteItem(projectId: string, itemId: string): Promise<{ s
   });
 }
 
+export async function reloadItem(projectId: string, itemId: string): Promise<{ status: string; item_id: string; message?: string; engine_state?: Record<string, unknown> }> {
+  return request(`/api/projects/${projectId}/items/${itemId}/reload`, {
+    method: 'POST',
+  });
+}
+
 // Connection APIs
 
 export async function listConnections(projectId: string): Promise<{ connections: Connection[]; total: number }> {

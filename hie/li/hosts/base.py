@@ -312,6 +312,89 @@ class Host(ABC):
         self._state = HostState.RUNNING
         self._log.info("host_resumed")
     
+    async def reload_config(
+        self,
+        pool_size: int | None = None,
+        enabled: bool | None = None,
+        adapter_settings: dict[str, Any] | None = None,
+        host_settings: dict[str, Any] | None = None,
+    ) -> None:
+        """
+        Hot reload configuration without losing messages.
+        
+        This performs a graceful restart:
+        1. Pause to stop accepting new messages
+        2. Wait for in-flight messages to complete
+        3. Stop adapter
+        4. Apply new configuration
+        5. Restart adapter with new settings
+        6. Resume processing
+        
+        Args:
+            pool_size: New pool size (None = keep current)
+            enabled: New enabled state (None = keep current)
+            adapter_settings: New adapter settings (None = keep current)
+            host_settings: New host settings (None = keep current)
+        """
+        was_running = self._state == HostState.RUNNING
+        
+        self._log.info(
+            "config_reload_starting",
+            pool_size=pool_size,
+            enabled=enabled,
+            adapter_settings_keys=list(adapter_settings.keys()) if adapter_settings else None,
+            host_settings_keys=list(host_settings.keys()) if host_settings else None,
+        )
+        
+        try:
+            # 1. Pause if running
+            if was_running:
+                await self.pause()
+            
+            # 2. Wait for queue to drain (with timeout)
+            if self._queue and not self._queue.empty():
+                self._log.info("waiting_for_queue_drain", queue_size=self._queue.qsize())
+                try:
+                    await asyncio.wait_for(self._queue.join(), timeout=30.0)
+                except asyncio.TimeoutError:
+                    self._log.warning("queue_drain_timeout", remaining=self._queue.qsize())
+            
+            # 3. Stop adapter if exists
+            if self._adapter:
+                await self._adapter.stop()
+                self._adapter = None
+            
+            # 4. Apply new configuration
+            if pool_size is not None:
+                self._pool_size = pool_size
+            if enabled is not None:
+                self._enabled = enabled
+            if adapter_settings is not None:
+                self._adapter_settings = adapter_settings
+            if host_settings is not None:
+                self._host_settings = host_settings
+            
+            # 5. Recreate adapter with new settings
+            if self.adapter_class and self._enabled:
+                self._adapter = self.adapter_class(
+                    host=self,
+                    settings=self._adapter_settings,
+                )
+                await self._adapter.start()
+            
+            # 6. Resume if was running and still enabled
+            if was_running and self._enabled:
+                await self.resume()
+            elif not self._enabled:
+                self._state = HostState.STOPPED
+            
+            self._log.info("config_reload_complete")
+            
+        except Exception as e:
+            self._state = HostState.ERROR
+            self._log.error("config_reload_failed", error=str(e))
+            raise
+    
     # =========================================================================
     # Worker Loop
     # =========================================================================

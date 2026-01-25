@@ -226,6 +226,74 @@ def setup_item_routes(app: web.Application, db_pool) -> None:
         
         return web.json_response({"status": "deleted", "item_id": item_id})
     
+    async def reload_item(request: web.Request) -> web.Response:
+        """
+        Hot reload item configuration in a running engine.
+        
+        This endpoint signals the running engine to reload the item's
+        configuration without stopping the entire production. Messages
+        in the queue are preserved during reload.
+        
+        Note: This requires the engine to be running and connected.
+        If no engine is running, this returns success but with a note
+        that changes will apply on next engine start.
+        """
+        project_id = request.match_info["project_id"]
+        item_id = request.match_info["item_id"]
+        
+        try:
+            proj_uuid = UUID(project_id)
+            item_uuid = UUID(item_id)
+        except ValueError:
+            return web.json_response({"error": "Invalid ID"}, status=400)
+        
+        # Get item from database
+        item = await item_repo.get_by_id(item_uuid)
+        if not item:
+            return web.json_response({"error": "Item not found"}, status=404)
+        if item['project_id'] != proj_uuid:
+            return web.json_response({"error": "Item not found in project"}, status=404)
+        
+        # Check if there's a running engine for this project
+        # For now, we store engine references in app state
+        engine = request.app.get('engines', {}).get(str(proj_uuid))
+        
+        if engine:
+            try:
+                # Hot reload the item in the running engine
+                result = await engine.reload_host_config(
+                    name=item['name'],
+                    pool_size=item['pool_size'],
+                    enabled=item['enabled'],
+                    adapter_settings=item['adapter_settings'],
+                    host_settings=item['host_settings'],
+                )
+                logger.info("item_reloaded", item_id=item_id, result=result)
+                return web.json_response({
+                    "status": "reloaded",
+                    "item_id": item_id,
+                    "engine_state": result,
+                })
+            except KeyError:
+                # Host not found in engine (might be newly created)
+                logger.warning("item_not_in_engine", item_id=item_id)
+                return web.json_response({
+                    "status": "pending",
+                    "item_id": item_id,
+                    "message": "Item not yet loaded in engine. Restart project to apply.",
+                })
+            except Exception as e:
+                logger.error("item_reload_failed", item_id=item_id, error=str(e))
+                return web.json_response({"error": str(e)}, status=500)
+        else:
+            # No running engine - changes will apply on next start
+            logger.info("item_reload_no_engine", item_id=item_id)
+            return web.json_response({
+                "status": "saved",
+                "item_id": item_id,
+                "message": "Configuration saved. Changes will apply when project is started.",
+            })
+    
     # ==================== Connection Routes ====================
     
     async def list_connections(request: web.Request) -> web.Response:
@@ -501,6 +569,7 @@ def setup_item_routes(app: web.Application, db_pool) -> None:
     app.router.add_get("/api/projects/{project_id}/items/{item_id}", get_item)
     app.router.add_put("/api/projects/{project_id}/items/{item_id}", update_item)
     app.router.add_delete("/api/projects/{project_id}/items/{item_id}", delete_item)
+    app.router.add_post("/api/projects/{project_id}/items/{item_id}/reload", reload_item)
     
     # Register connection routes
     app.router.add_get("/api/projects/{project_id}/connections", list_connections)

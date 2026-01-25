@@ -501,6 +501,59 @@ class ProductionEngine:
         host._enabled = False
         await self._stop_host(host)
     
+    async def reload_host_config(
+        self,
+        name: str,
+        pool_size: int | None = None,
+        enabled: bool | None = None,
+        adapter_settings: dict[str, Any] | None = None,
+        host_settings: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """
+        Hot reload configuration for a specific host.
+        
+        This allows updating host settings without stopping the entire production.
+        Messages in the queue are preserved during reload.
+        
+        Args:
+            name: Host name to reload
+            pool_size: New pool size (None = keep current)
+            enabled: New enabled state (None = keep current)
+            adapter_settings: New adapter settings (None = keep current)
+            host_settings: New host settings (None = keep current)
+            
+        Returns:
+            Updated host status
+        """
+        host = self._all_hosts.get(name)
+        if not host:
+            raise KeyError(f"Host not found: {name}")
+        
+        self._log.info(
+            "reload_host_config",
+            name=name,
+            pool_size=pool_size,
+            enabled=enabled,
+        )
+        
+        await host.reload_config(
+            pool_size=pool_size,
+            enabled=enabled,
+            adapter_settings=adapter_settings,
+            host_settings=host_settings,
+        )
+        
+        # Update metrics
+        if self._config.metrics_enabled:
+            set_host_status(host.name, type(host).__name__, running=host.state == HostState.RUNNING)
+        
+        return {
+            "name": host.name,
+            "state": host.state.value,
+            "enabled": host.enabled,
+            "pool_size": host.pool_size,
+        }
+    
     def get_status(self) -> dict[str, Any]:
         """Get production status summary."""
         return {
