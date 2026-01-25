@@ -48,6 +48,16 @@ export default function ProjectDetailPage() {
       ]);
       setProject(projectData);
       setItemTypes(typesData.item_types);
+      
+      // Update selectedItem if it exists in the new data
+      if (selectedItem) {
+        const updatedItem = projectData.items.find(i => i.id === selectedItem.id);
+        if (updatedItem) {
+          setSelectedItem(updatedItem);
+        } else {
+          setSelectedItem(null);
+        }
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load project');
     } finally {

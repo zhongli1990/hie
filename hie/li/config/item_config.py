@@ -78,8 +78,8 @@ class ItemConfig(BaseModel):
     foreground: bool = Field(default=False, description="Run in foreground (blocking)")
     
     # Optional attributes
-    category: str = Field(default="", description="Category for grouping in UI")
-    comment: str = Field(default="", description="Human-readable comment")
+    category: str | None = Field(default="", description="Category for grouping in UI")
+    comment: str | None = Field(default="", description="Human-readable comment")
     log_trace_events: bool = Field(default=False, description="Enable trace logging")
     schedule: str = Field(default="", description="Schedule specification")
     

@@ -1,5 +1,46 @@
 # HIE Release Notes
 
+## v1.2.1 - Item Editing & Hot Reload Release
+
+**Release Date:** January 25, 2026  
+**Status:** Production Ready
+
+---
+
+### Overview
+
+This release adds item editing capabilities and hot reload functionality to the HIE Management Portal. Users can now edit item properties directly in the UI and apply changes to running engines without restarting.
+
+---
+
+### New Features
+
+#### Item Editing
+- **Edit Mode** - Click pencil icon to enter edit mode for any item
+- **Editable Fields** - pool_size, enabled, adapter_settings, host_settings
+- **Save/Cancel** - Save changes or cancel to revert
+
+#### Hot Reload
+- **Reload Button** - Green refresh icon to apply changes to running engine
+- **Graceful Restart** - Pauses item, drains queue, applies config, resumes
+- **No Message Loss** - Queue persists during reload
+- **API Endpoint** - `POST /api/projects/{id}/items/{item_id}/reload`
+
+#### Backend Implementation
+- `Host.reload_config()` - Base class method for graceful config reload
+- `ProductionEngine.reload_host_config()` - Engine-level reload orchestration
+
+---
+
+### Bug Fixes
+
+- **ItemConfig category validation** - Allow `None` for optional category/comment fields
+- **UI refresh after save** - Selected item now updates after saving changes
+- Fixed JSONB field parsing in repositories (settings returned as dict, not string)
+- Fixed API URL configuration for Docker environments (relative URLs for proxy)
+
+---
+
 ## v1.2.0 - Full-Stack Integration Release
 
 **Release Date:** January 25, 2026  
