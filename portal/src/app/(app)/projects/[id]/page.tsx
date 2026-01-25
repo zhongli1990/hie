@@ -13,6 +13,7 @@ import {
   updateItem,
   deleteItem,
   reloadItem,
+  testItem,
   createConnection,
   deleteConnection,
   listItemTypes,
@@ -21,6 +22,7 @@ import {
   type Connection,
   type ItemCreate,
   type ItemTypeDefinition,
+  type TestMessageResult,
 } from '@/lib/api-v2';
 
 export default function ProjectDetailPage() {
@@ -399,6 +401,9 @@ interface ItemDetailPanelProps {
 function ItemDetailPanel({ item, itemTypes, projectId, existingItems, onUpdate, onDelete }: ItemDetailPanelProps) {
   const [isEditing, setIsEditing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [isTesting, setIsTesting] = useState(false);
+  const [testResult, setTestResult] = useState<TestMessageResult | null>(null);
+  const [showTestModal, setShowTestModal] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [editedPoolSize, setEditedPoolSize] = useState(item.pool_size);
   const [editedEnabled, setEditedEnabled] = useState(item.enabled);
@@ -406,6 +411,7 @@ function ItemDetailPanel({ item, itemTypes, projectId, existingItems, onUpdate, 
   const [editedHostSettings, setEditedHostSettings] = useState<Record<string, unknown>>(item.host_settings);
   
   const itemType = itemTypes.find(t => t.li_class_name === item.class_name || t.iris_class_name === item.class_name);
+  const isOperation = item.item_type === 'operation';
 
   // Reset edit state when item changes
   useEffect(() => {
@@ -460,6 +466,21 @@ function ItemDetailPanel({ item, itemTypes, projectId, existingItems, onUpdate, 
     setIsEditing(false);
     setError(null);
   };
+
+  const handleTest = async () => {
+    setIsTesting(true);
+    setError(null);
+    setTestResult(null);
+    try {
+      const result = await testItem(projectId, item.name);
+      setTestResult(result);
+      setShowTestModal(true);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to send test message');
+    } finally {
+      setIsTesting(false);
+    }
+  };
   
   return (
     <div className="space-y-6">
@@ -490,6 +511,26 @@ function ItemDetailPanel({ item, itemTypes, projectId, existingItems, onUpdate, 
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
                 </svg>
               </button>
+              {isOperation && (
+                <button
+                  onClick={handleTest}
+                  disabled={isTesting}
+                  className="p-2 text-purple-600 hover:bg-purple-50 rounded disabled:opacity-50"
+                  title="Send test message"
+                >
+                  {isTesting ? (
+                    <svg className="w-5 h-5 animate-spin" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                  ) : (
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                  )}
+                </button>
+              )}
               <button
                 onClick={onDelete}
                 className="p-2 text-red-600 hover:bg-red-50 rounded"
@@ -636,6 +677,76 @@ function ItemDetailPanel({ item, itemTypes, projectId, existingItems, onUpdate, 
                 <p className="mt-1 text-lg font-semibold text-blue-900">{String(value)}</p>
               </div>
             ))}
+          </div>
+        </div>
+      )}
+
+      {/* Test Result Modal */}
+      {showTestModal && testResult && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl shadow-xl max-w-2xl w-full mx-4 max-h-[80vh] overflow-hidden">
+            <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
+              <h3 className="text-lg font-semibold text-gray-900">
+                Test Message Result
+              </h3>
+              <button
+                onClick={() => setShowTestModal(false)}
+                className="p-1 text-gray-400 hover:text-gray-600"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            <div className="p-6 space-y-4 overflow-y-auto max-h-[60vh]">
+              <div className="flex items-center gap-2">
+                <span className={`px-2 py-1 text-sm font-medium rounded ${
+                  testResult.status === 'sent' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
+                }`}>
+                  {testResult.status === 'sent' ? '✓ Message Sent' : '✗ Failed'}
+                </span>
+                <span className="text-sm text-gray-500">to {item.name}</span>
+              </div>
+              
+              {testResult.ack && (
+                <div>
+                  <h4 className="text-sm font-medium text-gray-700 mb-2">ACK Response</h4>
+                  <pre className="bg-gray-900 text-green-400 p-4 rounded-lg text-sm overflow-x-auto font-mono whitespace-pre-wrap">
+                    {testResult.ack.split('\\r').join('\n')}
+                  </pre>
+                </div>
+              )}
+              
+              {testResult.result && (
+                <div>
+                  <h4 className="text-sm font-medium text-gray-700 mb-2">Result</h4>
+                  <pre className="bg-gray-900 text-green-400 p-4 rounded-lg text-sm overflow-x-auto font-mono whitespace-pre-wrap">
+                    {testResult.result.split('\\r').join('\n')}
+                  </pre>
+                </div>
+              )}
+              
+              {testResult.error && (
+                <div className="p-4 bg-red-50 border border-red-200 rounded-lg">
+                  <p className="text-sm text-red-700">{testResult.error}</p>
+                </div>
+              )}
+            </div>
+            <div className="px-6 py-4 border-t border-gray-200 flex justify-end gap-3">
+              <button
+                onClick={handleTest}
+                disabled={isTesting}
+                className="px-4 py-2 text-sm font-medium text-purple-600 bg-purple-50 rounded-lg hover:bg-purple-100 disabled:opacity-50"
+              >
+                {isTesting ? 'Sending...' : 'Send Another'}
+              </button>
+              <button
+                onClick={() => setShowTestModal(false)}
+                className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200"
+              >
+                Close
+              </button>
+            </div>
           </div>
         </div>
       )}

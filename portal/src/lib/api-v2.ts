@@ -392,6 +392,22 @@ export async function reloadItem(projectId: string, itemId: string): Promise<{ s
   });
 }
 
+export interface TestMessageResult {
+  status: string;
+  item_name: string;
+  ack?: string;
+  result?: string;
+  message_id?: string;
+  error?: string;
+}
+
+export async function testItem(projectId: string, itemName: string, message?: string): Promise<TestMessageResult> {
+  return request(`/api/projects/${projectId}/items/${itemName}/test`, {
+    method: 'POST',
+    body: message ? JSON.stringify({ message }) : undefined,
+  });
+}
+
 // Connection APIs
 
 export async function listConnections(projectId: string): Promise<{ connections: Connection[]; total: number }> {
