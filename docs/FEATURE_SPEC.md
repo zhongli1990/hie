@@ -2,9 +2,9 @@
 
 ## Healthcare Integration Engine - Complete Feature Set
 
-**Version:** 1.2.2  
+**Version:** 1.3.0  
 **Last Updated:** January 25, 2026  
-**Status:** Full-Stack Integration Complete - HL7 Testing & Runtime Fixes
+**Status:** Enterprise UI Design Complete - Ready for Implementation
 
 ---
 
@@ -183,11 +183,14 @@
 
 | Feature | Description | Priority | Status |
 |---------|-------------|----------|--------|
-| Production Overview | Status of all productions | P0 | ✅ Done |
-| Message Statistics | Throughput, latency metrics | P0 | ✅ Done |
+| Production Overview | Status of all productions | P0 | 🔄 In Progress |
+| Message Statistics | Throughput, latency metrics | P0 | 🔄 In Progress |
 | System Health | Service status indicators | P0 | ✅ Done |
-| Recent Activity | Live activity feed | P0 | ✅ Done |
+| Recent Activity | Live activity feed | P0 | 🔲 Planned |
 | Quick Actions | Common operations | P1 | ✅ Done |
+| Project Tree View | Expandable project/item list | P0 | 🔲 Planned |
+| Throughput Sparkline | Mini chart for message rate | P1 | 🔲 Planned |
+| Auto-Refresh | Polling every 10 seconds | P1 | 🔲 Planned |
 | Customizable Widgets | User-configurable dashboard | P2 | 🔲 Planned |
 
 ### 5.2 Production Configuration
@@ -203,16 +206,32 @@
 | Connection Drawing | Visual item connections | P1 | 🔲 Planned |
 | Config Import/Export | JSON/YAML download/upload | P1 | 🔲 Planned |
 
+### 5.2.1 Configure Tab Sub-Menus
+
+| Feature | Description | Priority | Status |
+|---------|-------------|----------|--------|
+| Sub-Tab Navigation | Tab menu for configuration domains | P0 | 🔲 Planned |
+| Workspaces Sub-Tab | Workspace CRUD management | P0 | 🔲 Planned |
+| Projects Sub-Tab | Project templates | P1 | 🔲 Planned |
+| Items Sub-Tab | Item type registry viewer | P0 | 🔲 Planned |
+| Schemas Sub-Tab | HL7/FHIR schema definitions | P1 | 🔲 Planned |
+| Transforms Sub-Tab | DTL transformation rules | P1 | 🔲 Planned |
+| Routing Sub-Tab | Routing rule definitions | P1 | 🔲 Planned |
+
 ### 5.3 Message Viewer
 
 | Feature | Description | Priority | Status |
 |---------|-------------|----------|--------|
-| Message Search | Find messages by criteria | P0 | ✅ Done |
-| Message List | Paginated message table | P0 | ✅ Done |
-| Message Detail | View full message content | P0 | ✅ Done |
-| Status Filtering | Filter by status/type | P0 | ✅ Done |
+| Message Search | Find messages by criteria | P0 | 🔄 In Progress |
+| Message List | Paginated message table | P0 | 🔄 In Progress |
+| Message Detail | View full message content | P0 | 🔄 In Progress |
+| Status Filtering | Filter by status/type | P0 | 🔄 In Progress |
+| Permanent Storage | Store messages in PostgreSQL | P0 | 🔲 Planned |
+| HL7 Syntax Highlighting | Color-coded segment display | P0 | 🔲 Planned |
+| Clickable Metrics | Navigate from item metrics | P0 | 🔲 Planned |
 | Message Trace | Follow message through route | P1 | 🔲 Planned |
 | Message Resend | Replay failed messages | P1 | 🔲 Planned |
+| Housekeeping UI | Manual/automated purging | P1 | 🔲 Planned |
 | Bulk Operations | Act on multiple messages | P2 | 🔲 Planned |
 
 ### 5.4 Monitoring

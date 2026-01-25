@@ -1,8 +1,8 @@
 # HIE Implementation Status
 
-**Version:** 1.2.2  
+**Version:** 1.3.0  
 **Last Updated:** January 25, 2026  
-**Status:** Full-Stack Integration Complete - HL7 Testing & Runtime Fixes
+**Status:** Enterprise UI Design Complete - Ready for Implementation
 
 ---
 
@@ -270,17 +270,87 @@ The original HIE engine provides the foundation but needs integration with LI En
 - `portal/src/lib/api-v2.ts` - `testItem()` API function
 - `portal/src/app/(app)/projects/[id]/page.tsx` - Test button and modal
 
-### Phase 4.8: Remaining Tasks 🔲 PENDING
+### Phase 4.8: Enhanced HL7 Message Tester ✅ COMPLETE
 
-| Task | Status | Notes |
-|------|--------|-------|
-| Real-time WebSocket events | 🔲 Pending | Future enhancement |
-| Visual drag-drop editor | 🔲 Pending | Future enhancement |
-| Message trace viewer | 🔲 Pending | Future enhancement |
+| Feature | Status | Notes |
+|---------|--------|-------|
+| Editable message textarea | ✅ Complete | Dark-themed monospace editor |
+| HL7 segment color coding | ✅ Complete | MSH=blue, PID=green, etc. |
+| Line numbers | ✅ Complete | Numbered segment display |
+| ACK type badges | ✅ Complete | CA/AA/CR/AR/AE detection |
+| Segment separator fix | ✅ Complete | Normalize \n to \r for MLLP |
+| Reset to default | ✅ Complete | Regenerate test message |
 
 ---
 
-## 5. Git Tags
+## 5. Enterprise UI Design (v1.3.0) 🔲 PLANNED
+
+See `docs/UI_DESIGN_SPEC.md` for complete design specification.
+
+### Phase 5.1: Message Storage & Viewer 🔲 PENDING
+
+| Task | Status | Effort | Notes |
+|------|--------|--------|-------|
+| Create messages table | 🔲 Pending | 1h | PostgreSQL schema with permanent storage |
+| Add message storage to adapters | 🔲 Pending | 2h | Store on receive/send |
+| Create messages API endpoints | 🔲 Pending | 2h | List, detail, resend |
+| Connect Messages tab to API | 🔲 Pending | 3h | Replace mock data |
+| Add clickable metrics | 🔲 Pending | 1h | Navigate to filtered Messages |
+
+**Design Decisions:**
+- Messages stored permanently in PostgreSQL (manual/automated housekeeping for purging)
+- HL7 syntax highlighting with color-coded segments
+- Click item metrics → navigate to Messages tab with filter
+
+### Phase 5.2: Dashboard Real Data 🔲 PENDING
+
+| Task | Status | Effort | Notes |
+|------|--------|--------|-------|
+| Create dashboard API endpoints | 🔲 Pending | 2h | Stats, throughput, activity |
+| Connect Dashboard to API | 🔲 Pending | 2h | Replace mock data |
+| Add project tree view | 🔲 Pending | 2h | Expandable items |
+| Add auto-refresh | 🔲 Pending | 1h | Polling every 10s with refresh button |
+
+### Phase 5.3: Configure Sub-Tabs 🔲 PENDING
+
+| Task | Status | Effort | Notes |
+|------|--------|--------|-------|
+| Create sub-tab navigation | 🔲 Pending | 1h | Tab component |
+| Workspaces sub-tab | 🔲 Pending | 2h | CRUD UI |
+| Items registry sub-tab | 🔲 Pending | 2h | Read-only list |
+| Schemas sub-tab | 🔲 Pending | 3h | Schema viewer |
+| Transforms sub-tab (DTL) | 🔲 Pending | 4h | Basic DTL editor |
+| Routes sub-tab | 🔲 Pending | 3h | Routing rule editor |
+
+**Design Decisions:**
+- Configure tab has sub-tab menu for different configuration domains
+- Sub-tabs: Workspaces, Projects, Items, Schemas, Transforms, Routing
+
+### Phase 5.4: Monitoring Charts 🔲 PENDING
+
+| Task | Status | Effort | Notes |
+|------|--------|--------|-------|
+| Create chart placeholder component | 🔲 Pending | 1h | Scalable wrapper for future library |
+| Simple CSS bar charts | 🔲 Pending | 2h | Phase 1 charts |
+| Per-item metrics table | 🔲 Pending | 2h | Real data |
+| System resources display | 🔲 Pending | 2h | CPU/memory/disk |
+
+**Design Decisions:**
+- Start with simple CSS/SVG charts
+- Scalable placeholder for Recharts/Chart.js in future
+
+### Phase 5.5: Advanced Features 🔲 PENDING
+
+| Task | Status | Effort | Notes |
+|------|--------|--------|-------|
+| WebSocket real-time updates | 🔲 Pending | 4h | Replace polling |
+| Advanced charting library | 🔲 Pending | 3h | Recharts integration |
+| Message trace visualization | 🔲 Pending | 4h | Flow diagram |
+| Housekeeping UI | 🔲 Pending | 2h | Purge old messages |
+
+---
+
+## 6. Git Tags
 
 | Tag | Description | Date |
 |-----|-------------|------|
@@ -293,6 +363,7 @@ The original HIE engine provides the foundation but needs integration with LI En
 | `v1.2.0` | Full-Stack Integration | Jan 25, 2026 |
 | `v1.2.1` | Item Editing & Hot Reload | Jan 25, 2026 |
 | `v1.2.2` | HL7 Testing & Runtime Fixes | Jan 25, 2026 |
+| `v1.3.0` | Enterprise UI Design | Jan 25, 2026 |
 
 ---
 

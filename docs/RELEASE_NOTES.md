@@ -1,5 +1,94 @@
 # HIE Release Notes
 
+## v1.3.0 - Enterprise UI Design Release
+
+**Release Date:** January 25, 2026  
+**Status:** Design Complete - Ready for Implementation
+
+---
+
+### Overview
+
+This release completes the enterprise UI design specification for the HIE Management Portal. It includes comprehensive designs for the Dashboard, Messages, Configure, and Monitoring tabs with real-time data integration, permanent message storage, and scalable chart components.
+
+---
+
+### Design Documents
+
+- **UI Design Specification:** `docs/UI_DESIGN_SPEC.md` - Complete UI/UX design for all portal tabs
+
+---
+
+### Design Highlights
+
+#### Messages Tab - Real-Time Message Viewer
+- **Permanent Storage** - Messages stored in PostgreSQL (manual/automated housekeeping for purging)
+- **HL7 Syntax Highlighting** - Color-coded segments (MSH=blue, PID=green, PV1=yellow, etc.)
+- **Clickable Metrics** - Click item metrics → navigate to filtered Messages view
+- **Message Resend** - Replay failed messages with one click
+- **Parsed View** - JSON tree view of HL7 fields
+
+#### Dashboard Tab - Live Metrics Hub
+- **Real Data Integration** - Replace mock data with live API calls
+- **Project Tree View** - Expandable project/item list with status
+- **Throughput Sparkline** - Mini chart for message rate
+- **Auto-Refresh** - Polling every 10 seconds with refresh button
+
+#### Configure Tab - Sub-Tab Navigation
+- **Workspaces** - Workspace CRUD management
+- **Projects** - Project templates
+- **Items** - Item type registry viewer
+- **Schemas** - HL7/FHIR schema definitions
+- **Transforms** - DTL transformation rules editor
+- **Routing** - Routing rule definitions
+
+#### Monitoring Tab - Prometheus Metrics
+- **Simple Charts** - CSS/SVG bar charts (scalable placeholder for Recharts/Chart.js)
+- **Per-Item Metrics** - Real data table
+- **System Resources** - CPU/memory/disk usage
+
+---
+
+### Implementation Phases
+
+| Phase | Focus | Effort | Priority |
+|-------|-------|--------|----------|
+| 5.1 | Message Storage & Viewer | 9h | High |
+| 5.2 | Dashboard Real Data | 7h | High |
+| 5.3 | Configure Sub-Tabs | 15h | Medium |
+| 5.4 | Monitoring Charts | 7h | Medium |
+| 5.5 | Advanced Features | 13h | Low |
+| **Total** | | **51h** | |
+
+---
+
+### Enhanced HL7 Message Tester
+
+Building on v1.2.2, this release also includes:
+
+| Feature | Description |
+|---------|-------------|
+| Editable message textarea | Dark-themed monospace editor |
+| HL7 segment color coding | MSH=blue, PID=green, PV1=yellow, etc. |
+| Line numbers | Numbered segment display |
+| ACK type badges | CA/AA/CR/AR/AE detection with color coding |
+| Segment separator fix | Normalize \n to \r for MLLP compliance |
+| Reset to default | Regenerate fresh test message |
+
+---
+
+### Files Added/Changed
+
+| File | Change |
+|------|--------|
+| `docs/UI_DESIGN_SPEC.md` | **NEW** - Complete UI design specification |
+| `docs/FEATURE_SPEC.md` | Updated with new UI features |
+| `docs/IMPLEMENTATION_STATUS.md` | Added Phase 5 UI design tasks |
+| `hie/api/routes/items.py` | Segment separator normalization |
+| `portal/src/app/(app)/projects/[id]/page.tsx` | Enhanced HL7 Message Tester |
+
+---
+
 ## v1.2.2 - HL7 Testing & Runtime Fixes Release
 
 **Release Date:** January 25, 2026  
