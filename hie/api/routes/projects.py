@@ -232,12 +232,15 @@ def setup_project_routes(app: web.Application, db_pool) -> None:
         if _engine_manager.is_running(proj_uuid):
             project['state'] = 'running'
             status = await _engine_manager.get_status(proj_uuid)
-            # Update item states from engine
-            item_states = {h['name']: h for h in status.get('hosts', {}).values()}
+            # Update item states from engine (hosts dict is keyed by name)
+            item_states = status.get('hosts', {})
             for item in project['items']:
                 if item['name'] in item_states:
                     item['state'] = item_states[item['name']].get('state')
-                    item['metrics'] = item_states[item['name']].get('metrics')
+                    item['metrics'] = {
+                        'messages_received': item_states[item['name']].get('messages_received', 0),
+                        'messages_failed': item_states[item['name']].get('messages_failed', 0),
+                    }
         
         response = ProjectDetailResponse(
             **{k: v for k, v in project.items() if k not in ('items', 'connections', 'routing_rules')},
@@ -389,6 +392,15 @@ def setup_project_routes(app: web.Application, db_pool) -> None:
             return web.json_response({"error": "Project not found"}, status=404)
         
         try:
+            # Check if already running
+            if _engine_manager.is_running(proj_uuid):
+                return web.json_response({
+                    "status": "already_running",
+                    "project_id": project_id,
+                    "state": "running",
+                    "message": "Project is already running",
+                })
+            
             # Deploy if not already deployed
             if proj_uuid not in _engine_manager._engines:
                 full_config = await project_repo.get_full_config(proj_uuid)
