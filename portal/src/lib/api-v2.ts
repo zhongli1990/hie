@@ -636,6 +636,73 @@ export async function getDashboardProjects(): Promise<{ projects: DashboardProje
   return request('/api/dashboard/projects');
 }
 
+// Monitoring Types
+export interface MonitoringMetrics {
+  messages_per_second: number;
+  avg_latency_ms: number;
+  p99_latency_ms: number;
+  error_rate: number;
+  queue_depth: number;
+  messages_last_hour: number;
+  errors_last_hour: number;
+  timestamp: string;
+}
+
+export interface MonitoringThroughputPoint {
+  time: string;
+  total: number;
+  inbound: number;
+  outbound: number;
+  errors: number;
+  avg_latency: number;
+}
+
+export interface MonitoringThroughput {
+  minutes: number;
+  data: MonitoringThroughputPoint[];
+  total_messages: number;
+  total_errors: number;
+}
+
+export interface MonitoringItem {
+  name: string;
+  type: string;
+  direction: string;
+  message_count: number;
+  error_count: number;
+  avg_latency_ms: number;
+  max_latency_ms: number;
+  error_rate: number;
+}
+
+export interface MonitoringProject {
+  id: string;
+  name: string;
+  state: string;
+  messages_processed: number;
+  messages_per_second: number;
+  avg_latency_ms: number;
+  error_rate: number;
+  status: 'healthy' | 'warning' | 'critical';
+}
+
+// Monitoring APIs
+export async function getMonitoringMetrics(): Promise<MonitoringMetrics> {
+  return request('/api/monitoring/metrics');
+}
+
+export async function getMonitoringThroughput(minutes: number = 30): Promise<MonitoringThroughput> {
+  return request(`/api/monitoring/throughput?minutes=${minutes}`);
+}
+
+export async function getMonitoringItems(): Promise<{ items: MonitoringItem[]; total: number }> {
+  return request('/api/monitoring/items');
+}
+
+export async function getMonitoringProjects(): Promise<{ projects: MonitoringProject[]; total: number }> {
+  return request('/api/monitoring/projects');
+}
+
 // Export all
 export const apiV2 = {
   // Workspaces

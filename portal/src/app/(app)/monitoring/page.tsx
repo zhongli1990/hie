@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import {
   Activity,
   ArrowDown,
@@ -14,6 +14,14 @@ import {
   Wifi,
   Zap,
 } from "lucide-react";
+import {
+  getMonitoringMetrics,
+  getMonitoringThroughput,
+  getMonitoringProjects,
+  MonitoringMetrics,
+  MonitoringThroughputPoint,
+  MonitoringProject,
+} from "@/lib/api-v2";
 
 interface MetricData {
   current: number;
@@ -125,48 +133,45 @@ function SimpleChart({ data, height = 60 }: { data: number[]; height?: number })
 }
 
 export default function MonitoringPage() {
-  const [metrics, setMetrics] = useState<SystemMetrics | null>(null);
-  const [productions, setProductions] = useState<ProductionMetric[]>([]);
+  const [metrics, setMetrics] = useState<MonitoringMetrics | null>(null);
+  const [productions, setProductions] = useState<MonitoringProject[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [autoRefresh, setAutoRefresh] = useState(true);
-  const [throughputHistory, setThroughputHistory] = useState<number[]>([]);
+  const [throughputData, setThroughputData] = useState<MonitoringThroughputPoint[]>([]);
+  const [lastUpdate, setLastUpdate] = useState<Date>(new Date());
+
+  const loadMetrics = useCallback(async (isRefresh = false) => {
+    if (isRefresh) setRefreshing(true);
+    else setLoading(true);
+    
+    try {
+      const [metricsData, throughputResult, projectsData] = await Promise.all([
+        getMonitoringMetrics(),
+        getMonitoringThroughput(30),
+        getMonitoringProjects(),
+      ]);
+      
+      setMetrics(metricsData);
+      setThroughputData(throughputResult.data || []);
+      setProductions(projectsData.projects || []);
+      setLastUpdate(new Date());
+    } catch (error) {
+      console.error('Failed to load monitoring data:', error);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }, []);
 
   useEffect(() => {
-    const loadMetrics = () => {
-      // Mock data - will be replaced with API calls
-      const mockMetrics: SystemMetrics = {
-        messagesPerSecond: { current: 127, previous: 121, unit: "msg/s", trend: "up" },
-        avgLatency: { current: 45, previous: 52, unit: "ms", trend: "down" },
-        errorRate: { current: 0.02, previous: 0.03, unit: "%", trend: "down" },
-        activeConnections: { current: 24, previous: 22, unit: "", trend: "up" },
-        queueDepth: { current: 156, previous: 189, unit: "msgs", trend: "down" },
-        cpuUsage: { current: 34, previous: 31, unit: "%", trend: "up" },
-        memoryUsage: { current: 62, previous: 58, unit: "%", trend: "up" },
-        diskUsage: { current: 45, previous: 44, unit: "%", trend: "stable" },
-      };
-
-      const mockProductions: ProductionMetric[] = [
-        { name: "NHS-ADT-Integration", messagesProcessed: 45892, messagesPerSecond: 85, avgLatency: 42, errorRate: 0.01, status: "healthy" },
-        { name: "Lab-Results-Feed", messagesProcessed: 12456, messagesPerSecond: 32, avgLatency: 67, errorRate: 0.05, status: "warning" },
-        { name: "Radiology-Orders", messagesProcessed: 8234, messagesPerSecond: 10, avgLatency: 89, errorRate: 0.02, status: "healthy" },
-      ];
-
-      // Generate random throughput history
-      const history = Array.from({ length: 30 }, () => Math.floor(Math.random() * 50) + 100);
-
-      setMetrics(mockMetrics);
-      setProductions(mockProductions);
-      setThroughputHistory(history);
-      setLoading(false);
-    };
-
     loadMetrics();
-
+    
     if (autoRefresh) {
-      const interval = setInterval(loadMetrics, 5000);
+      const interval = setInterval(() => loadMetrics(true), 5000);
       return () => clearInterval(interval);
     }
-  }, [autoRefresh]);
+  }, [autoRefresh, loadMetrics]);
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -211,35 +216,35 @@ export default function MonitoringPage() {
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <MetricCard
           title="Throughput"
-          value={metrics?.messagesPerSecond.current ?? 0}
+          value={metrics?.messages_per_second ?? 0}
           unit="msg/s"
-          trend={metrics?.messagesPerSecond.trend ?? "stable"}
+          trend="stable"
           icon={Zap}
           color="blue"
         />
         <MetricCard
           title="Avg Latency"
-          value={metrics?.avgLatency.current ?? 0}
+          value={metrics?.avg_latency_ms ?? 0}
           unit="ms"
-          trend={metrics?.avgLatency.trend ?? "stable"}
+          trend="stable"
           icon={Clock}
           color="green"
         />
         <MetricCard
           title="Error Rate"
-          value={metrics?.errorRate.current ?? 0}
+          value={metrics?.error_rate ?? 0}
           unit="%"
-          trend={metrics?.errorRate.trend ?? "stable"}
+          trend="stable"
           icon={Activity}
-          color={metrics?.errorRate.current && metrics.errorRate.current > 1 ? "red" : "green"}
+          color={metrics?.error_rate && metrics.error_rate > 1 ? "red" : "green"}
         />
         <MetricCard
           title="Queue Depth"
-          value={metrics?.queueDepth.current ?? 0}
+          value={metrics?.queue_depth ?? 0}
           unit="msgs"
-          trend={metrics?.queueDepth.trend ?? "stable"}
+          trend="stable"
           icon={Database}
-          color={metrics?.queueDepth.current && metrics.queueDepth.current > 500 ? "yellow" : "blue"}
+          color={metrics?.queue_depth && metrics.queue_depth > 500 ? "yellow" : "blue"}
         />
       </div>
 
@@ -252,7 +257,7 @@ export default function MonitoringPage() {
         {loading ? (
           <div className="h-16 animate-pulse rounded bg-gray-200" />
         ) : (
-          <SimpleChart data={throughputHistory} height={80} />
+          <SimpleChart data={throughputData.map(d => d.total)} height={80} />
         )}
         <div className="mt-2 flex justify-between text-xs text-gray-400">
           <span>30 min ago</span>
@@ -289,19 +294,19 @@ export default function MonitoringPage() {
                   </div>
                   <div className="mt-3 grid grid-cols-4 gap-4 text-center">
                     <div>
-                      <p className="text-lg font-semibold text-gray-900">{prod.messagesPerSecond}</p>
+                      <p className="text-lg font-semibold text-gray-900">{prod.messages_per_second}</p>
                       <p className="text-xs text-gray-500">msg/s</p>
                     </div>
                     <div>
-                      <p className="text-lg font-semibold text-gray-900">{prod.avgLatency}</p>
+                      <p className="text-lg font-semibold text-gray-900">{prod.avg_latency_ms}</p>
                       <p className="text-xs text-gray-500">ms avg</p>
                     </div>
                     <div>
-                      <p className="text-lg font-semibold text-gray-900">{prod.errorRate}%</p>
+                      <p className="text-lg font-semibold text-gray-900">{prod.error_rate}%</p>
                       <p className="text-xs text-gray-500">errors</p>
                     </div>
                     <div>
-                      <p className="text-lg font-semibold text-gray-900">{(prod.messagesProcessed / 1000).toFixed(1)}k</p>
+                      <p className="text-lg font-semibold text-gray-900">{(prod.messages_processed / 1000).toFixed(1)}k</p>
                       <p className="text-xs text-gray-500">total</p>
                     </div>
                   </div>
@@ -311,77 +316,61 @@ export default function MonitoringPage() {
           </div>
         </div>
 
-        {/* System Resources */}
+        {/* Message Statistics */}
         <div className="rounded-xl border border-gray-200 bg-white shadow-sm">
           <div className="border-b border-gray-200 px-5 py-4">
-            <h2 className="text-sm font-semibold text-gray-900">System Resources</h2>
+            <h2 className="text-sm font-semibold text-gray-900">Message Statistics (Last Hour)</h2>
           </div>
           <div className="space-y-5 p-5">
-            {/* CPU */}
+            {/* Messages Processed */}
             <div>
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <Cpu className="h-4 w-4 text-gray-400" />
-                  <span className="text-sm text-gray-700">CPU Usage</span>
+                  <Activity className="h-4 w-4 text-gray-400" />
+                  <span className="text-sm text-gray-700">Messages Processed</span>
                 </div>
-                <span className="text-sm font-medium text-gray-900">{metrics?.cpuUsage.current ?? 0}%</span>
-              </div>
-              <div className="mt-2">
-                <ProgressBar
-                  value={metrics?.cpuUsage.current ?? 0}
-                  max={100}
-                  color={metrics?.cpuUsage.current && metrics.cpuUsage.current > 80 ? "red" : metrics?.cpuUsage.current && metrics.cpuUsage.current > 60 ? "yellow" : "green"}
-                />
+                <span className="text-sm font-medium text-gray-900">{metrics?.messages_last_hour ?? 0}</span>
               </div>
             </div>
 
-            {/* Memory */}
+            {/* Errors */}
+            <div>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Database className="h-4 w-4 text-gray-400" />
+                  <span className="text-sm text-gray-700">Errors</span>
+                </div>
+                <span className="text-sm font-medium text-red-600">{metrics?.errors_last_hour ?? 0}</span>
+              </div>
+            </div>
+
+            {/* P99 Latency */}
+            <div>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Clock className="h-4 w-4 text-gray-400" />
+                  <span className="text-sm text-gray-700">P99 Latency</span>
+                </div>
+                <span className="text-sm font-medium text-gray-900">{metrics?.p99_latency_ms ?? 0} ms</span>
+              </div>
+            </div>
+
+            {/* Queue Depth */}
             <div>
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <Server className="h-4 w-4 text-gray-400" />
-                  <span className="text-sm text-gray-700">Memory Usage</span>
+                  <span className="text-sm text-gray-700">Queue Depth</span>
                 </div>
-                <span className="text-sm font-medium text-gray-900">{metrics?.memoryUsage.current ?? 0}%</span>
-              </div>
-              <div className="mt-2">
-                <ProgressBar
-                  value={metrics?.memoryUsage.current ?? 0}
-                  max={100}
-                  color={metrics?.memoryUsage.current && metrics.memoryUsage.current > 80 ? "red" : metrics?.memoryUsage.current && metrics.memoryUsage.current > 60 ? "yellow" : "green"}
-                />
+                <span className="text-sm font-medium text-gray-900">{metrics?.queue_depth ?? 0}</span>
               </div>
             </div>
 
-            {/* Disk */}
-            <div>
+            {/* Last Updated */}
+            <div className="pt-2 border-t border-gray-100">
               <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <HardDrive className="h-4 w-4 text-gray-400" />
-                  <span className="text-sm text-gray-700">Disk Usage</span>
-                </div>
-                <span className="text-sm font-medium text-gray-900">{metrics?.diskUsage.current ?? 0}%</span>
-              </div>
-              <div className="mt-2">
-                <ProgressBar
-                  value={metrics?.diskUsage.current ?? 0}
-                  max={100}
-                  color={metrics?.diskUsage.current && metrics.diskUsage.current > 80 ? "red" : metrics?.diskUsage.current && metrics.diskUsage.current > 60 ? "yellow" : "blue"}
-                />
-              </div>
-            </div>
-
-            {/* Connections */}
-            <div>
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <Wifi className="h-4 w-4 text-gray-400" />
-                  <span className="text-sm text-gray-700">Active Connections</span>
-                </div>
-                <span className="text-sm font-medium text-gray-900">{metrics?.activeConnections.current ?? 0}</span>
-              </div>
-              <div className="mt-2">
-                <ProgressBar value={metrics?.activeConnections.current ?? 0} max={100} color="blue" />
+                <span className="text-xs text-gray-500">Last updated</span>
+                <span className="text-xs text-gray-500">{lastUpdate.toLocaleTimeString()}</span>
               </div>
             </div>
           </div>
