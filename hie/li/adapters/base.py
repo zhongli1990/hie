@@ -102,7 +102,7 @@ class Adapter(ABC):
     
     def get_setting(self, name: str, default: Any = None) -> Any:
         """
-        Get a setting value.
+        Get a setting value (case-insensitive lookup).
         
         Args:
             name: Setting name
@@ -111,7 +111,17 @@ class Adapter(ABC):
         Returns:
             Setting value or default
         """
-        return self._settings.get(name, default)
+        # Try exact match first
+        if name in self._settings:
+            return self._settings[name]
+        
+        # Try case-insensitive match
+        name_lower = name.lower()
+        for key, value in self._settings.items():
+            if key.lower() == name_lower:
+                return value
+        
+        return default
     
     async def start(self) -> None:
         """
