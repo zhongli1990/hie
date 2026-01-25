@@ -1,5 +1,44 @@
 # HIE Release Notes
 
+## v1.3.3 - Dashboard Real Data
+
+**Release Date:** January 25, 2026  
+**Status:** Phase 5.2 Complete
+
+---
+
+### Overview
+
+This release implements Phase 5.2 of the Enterprise UI Design - Dashboard Real Data. The Dashboard now displays live data from the database with auto-refresh every 10 seconds.
+
+---
+
+### New Features
+
+#### Dashboard API Endpoints
+- **Stats API** - `GET /api/dashboard/stats` - Projects, items, messages, error rate
+- **Throughput API** - `GET /api/dashboard/throughput` - Time-series message data
+- **Activity API** - `GET /api/dashboard/activity` - Recent activity feed
+- **Projects API** - `GET /api/dashboard/projects` - Projects with items tree
+
+#### Dashboard UI
+- **Real Metrics** - Live data from PostgreSQL (projects, items, messages, error rate)
+- **Project Tree View** - Expandable project list with items and message counts
+- **Recent Activity** - Live feed from portal_messages table
+- **Auto-Refresh** - Polls every 10 seconds with manual refresh button
+- **Clickable Items** - Navigate to Messages tab with filters
+
+---
+
+### Files Changed
+
+- `hie/api/routes/dashboard.py` - New dashboard API routes (~300 lines)
+- `hie/api/server.py` - Register dashboard routes
+- `portal/src/lib/api-v2.ts` - Dashboard API types and functions
+- `portal/src/app/(app)/dashboard/page.tsx` - Connected to real API
+
+---
+
 ## v1.3.2 - Inbound Message Storage & UI Fixes
 
 **Release Date:** January 25, 2026  

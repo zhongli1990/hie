@@ -1,8 +1,8 @@
 # HIE Implementation Status
 
-**Version:** 1.3.2  
+**Version:** 1.3.3  
 **Last Updated:** January 25, 2026  
-**Status:** Phase 5.1 Message Storage & Viewer Complete with Bug Fixes
+**Status:** Phase 5.2 Dashboard Real Data Complete
 
 ---
 
@@ -431,14 +431,32 @@ def extract_ack_type(ack_content: bytes) -> Optional[str]
 - `hie/li/hosts/hl7.py` - Integrate message storage into HL7TCPService
 - `portal/src/app/(app)/messages/page.tsx` - Add workspace/project/item selectors
 
-### Phase 5.2: Dashboard Real Data 🔲 PENDING
+### Phase 5.2: Dashboard Real Data ✅ COMPLETE (v1.3.3)
 
 | Task | Status | Effort | Notes |
 |------|--------|--------|-------|
-| Create dashboard API endpoints | 🔲 Pending | 2h | Stats, throughput, activity |
-| Connect Dashboard to API | 🔲 Pending | 2h | Replace mock data |
-| Add project tree view | 🔲 Pending | 2h | Expandable items |
-| Add auto-refresh | 🔲 Pending | 1h | Polling every 10s with refresh button |
+| Create dashboard API endpoints | ✅ Done | 2h | Stats, throughput, activity, projects |
+| Connect Dashboard to API | ✅ Done | 2h | Real data from PostgreSQL |
+| Add project tree view | ✅ Done | 2h | Expandable items with message counts |
+| Add auto-refresh | ✅ Done | 1h | Polling every 10s with refresh button |
+
+#### API Endpoints
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/dashboard/stats` | GET | Dashboard statistics (projects, items, messages, error rate) |
+| `/api/dashboard/throughput` | GET | Message throughput time-series data |
+| `/api/dashboard/activity` | GET | Recent activity feed from messages |
+| `/api/dashboard/projects` | GET | Projects with items tree and message counts |
+
+#### Files Changed
+
+| File | Changes |
+|------|---------|
+| `hie/api/routes/dashboard.py` | New file with 4 API endpoints (~300 lines) |
+| `hie/api/server.py` | Register dashboard routes |
+| `portal/src/lib/api-v2.ts` | Added dashboard API types and functions |
+| `portal/src/app/(app)/dashboard/page.tsx` | Connected to real API with tree view |
 
 ### Phase 5.3: Configure Sub-Tabs 🔲 PENDING
 
@@ -495,6 +513,7 @@ def extract_ack_type(ack_content: bytes) -> Optional[str]
 | `v1.3.0` | Enterprise UI Design | Jan 25, 2026 |
 | `v1.3.1` | Message Storage & Viewer | Jan 25, 2026 |
 | `v1.3.2` | Inbound Message Storage & UI Fixes | Jan 25, 2026 |
+| `v1.3.3` | Dashboard Real Data | Jan 25, 2026 |
 
 ---
 
