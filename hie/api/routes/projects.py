@@ -82,7 +82,12 @@ class EngineManager:
         )
         
         engine = ProductionEngine(engine_config)
+        engine.project_id = project_id  # Track project_id for message storage
         await engine.load_from_config(production_config)
+        
+        # Set project_id on all hosts for message storage
+        for host in engine._all_hosts.values():
+            host.project_id = project_id
         
         self._engines[project_id] = engine
         

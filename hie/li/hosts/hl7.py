@@ -12,8 +12,10 @@ validation, and ACK generation.
 from __future__ import annotations
 
 import asyncio
+import time
 from datetime import datetime, timezone
 from typing import Any, TYPE_CHECKING
+from uuid import UUID
 
 import structlog
 
@@ -26,6 +28,38 @@ if TYPE_CHECKING:
     from hie.li.config import ItemConfig
 
 logger = structlog.get_logger(__name__)
+
+
+async def _store_inbound_message(
+    project_id: UUID,
+    item_name: str,
+    raw_content: bytes,
+    ack_content: bytes | None,
+    message_type: str | None,
+    status: str,
+    latency_ms: int | None = None,
+    error_message: str | None = None,
+    remote_host: str | None = None,
+    remote_port: int | None = None,
+) -> None:
+    """Store inbound message in portal_messages table."""
+    try:
+        from hie.api.services.message_store import store_and_complete_message
+        await store_and_complete_message(
+            project_id=project_id,
+            item_name=item_name,
+            item_type="service",
+            direction="inbound",
+            raw_content=raw_content,
+            status=status,
+            ack_content=ack_content,
+            latency_ms=latency_ms,
+            error_message=error_message,
+            remote_host=remote_host,
+            remote_port=remote_port,
+        )
+    except Exception as e:
+        logger.warning("inbound_message_storage_failed", error=str(e))
 
 
 class HL7TCPService(BusinessService):
@@ -133,16 +167,19 @@ class HL7TCPService(BusinessService):
         Returns:
             Message object with parsed view and ACK
         """
+        start_time = time.time()
         received_at = datetime.now(timezone.utc)
         
         # Parse message
         parsed: HL7ParsedView | None = None
         ack: bytes | None = None
         validation_errors = []
+        message_type: str | None = None
         
         try:
             if self._schema:
                 parsed = self._schema.parse(data)
+                message_type = parsed.get_message_type() if parsed else None
                 
                 # Validate
                 validation_errors = self._schema.validate(data)
@@ -167,17 +204,36 @@ class HL7TCPService(BusinessService):
                 validation_errors=validation_errors,
             )
             
+            latency_ms = int((time.time() - start_time) * 1000)
+            
             self._log.debug(
                 "hl7_message_received",
-                message_type=parsed.get_message_type() if parsed else None,
+                message_type=message_type,
                 control_id=parsed.get_message_control_id() if parsed else None,
                 valid=len(validation_errors) == 0,
             )
+            
+            # Store inbound message in portal_messages
+            project_id = getattr(self, 'project_id', None)
+            if project_id:
+                status = "completed" if not validation_errors else "error"
+                error_msg = "; ".join(str(e) for e in validation_errors[:3]) if validation_errors else None
+                asyncio.create_task(_store_inbound_message(
+                    project_id=project_id,
+                    item_name=self.name,
+                    raw_content=data,
+                    ack_content=ack,
+                    message_type=message_type,
+                    status=status,
+                    latency_ms=latency_ms,
+                    error_message=error_msg,
+                ))
             
             return message
         
         except Exception as e:
             self._log.error("hl7_message_parse_error", error=str(e))
+            latency_ms = int((time.time() - start_time) * 1000)
             
             # Generate error ACK if possible
             if self._schema and self._ack_mode != "Never":
@@ -197,6 +253,20 @@ class HL7TCPService(BusinessService):
                 source=self.name,
                 error=str(e),
             )
+            
+            # Store error message in portal_messages
+            project_id = getattr(self, 'project_id', None)
+            if project_id:
+                asyncio.create_task(_store_inbound_message(
+                    project_id=project_id,
+                    item_name=self.name,
+                    raw_content=data,
+                    ack_content=ack,
+                    message_type=None,
+                    status="error",
+                    latency_ms=latency_ms,
+                    error_message=str(e),
+                ))
             
             return message
     
