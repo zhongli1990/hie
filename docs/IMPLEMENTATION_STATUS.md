@@ -1,8 +1,8 @@
 # HIE Implementation Status
 
-**Version:** 1.3.4  
+**Version:** 1.3.5  
 **Last Updated:** January 25, 2026  
-**Status:** Phase 5.3 Configure Sub-Tabs Complete
+**Status:** Phase 5.4 Monitoring Charts Complete
 
 ---
 
@@ -487,11 +487,48 @@ def extract_ack_type(ack_content: bytes) -> Optional[str]
 - Configure tab has sub-tab menu for different configuration domains
 - Sub-tabs: Workspaces, Projects, Items, Schemas, Transforms, Routing
 
-### Phase 5.4: Monitoring Charts 🔲 PENDING
+### Phase 5.4: Monitoring Charts ✅ COMPLETE (v1.3.5)
 
 | Task | Status | Effort | Notes |
 |------|--------|--------|-------|
-| Create chart placeholder component | 🔲 Pending | 1h | Scalable wrapper for future library |
+| Create monitoring API endpoints | ✅ Done | 2h | Metrics, throughput, items, projects |
+| Connect Monitoring page to API | ✅ Done | 2h | Real-time data with auto-refresh |
+| Throughput chart | ✅ Done | 1h | Per-minute message counts |
+| Project performance metrics | ✅ Done | 1h | Health status indicators |
+
+#### API Endpoints
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/monitoring/metrics` | GET | Real-time system metrics |
+| `/api/monitoring/throughput` | GET | Time-series throughput data |
+| `/api/monitoring/items` | GET | Per-item metrics |
+| `/api/monitoring/projects` | GET | Per-project performance |
+
+#### Files Changed
+
+| File | Changes |
+|------|---------|
+| `hie/api/routes/monitoring.py` | New file with 4 API endpoints (~270 lines) |
+| `hie/api/server.py` | Register monitoring routes |
+| `portal/src/lib/api-v2.ts` | Added monitoring API types and functions |
+| `portal/src/app/(app)/monitoring/page.tsx` | Connected to real API |
+
+### Phase 5.5: Advanced Features 🔲 PENDING (Future)
+
+| Task | Status | Effort | Notes |
+|------|--------|--------|-------|
+| WebSocket real-time updates | 🔲 Pending | 4h | Replace polling |
+| Housekeeping UI | 🔲 Pending | 3h | Message cleanup interface |
+| Alert configuration | 🔲 Pending | 4h | Threshold-based alerts |
+
+---
+
+### Phase 5.4 (Original): Monitoring Charts 🔲 PENDING
+
+| Task | Status | Effort | Notes |
+|------|--------|--------|-------|
+| Create chart placeholder component | ✅ Done | 1h | Scalable wrapper for future library |
 | Simple CSS bar charts | 🔲 Pending | 2h | Phase 1 charts |
 | Per-item metrics table | 🔲 Pending | 2h | Real data |
 | System resources display | 🔲 Pending | 2h | CPU/memory/disk |
@@ -529,6 +566,7 @@ def extract_ack_type(ack_content: bytes) -> Optional[str]
 | `v1.3.2` | Inbound Message Storage & UI Fixes | Jan 25, 2026 |
 | `v1.3.3` | Dashboard Real Data | Jan 25, 2026 |
 | `v1.3.4` | Configure Sub-Tabs | Jan 25, 2026 |
+| `v1.3.5` | Monitoring Charts | Jan 25, 2026 |
 
 ---
 

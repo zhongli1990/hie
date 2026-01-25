@@ -1,5 +1,44 @@
 # HIE Release Notes
 
+## v1.3.5 - Monitoring Charts
+
+**Release Date:** January 25, 2026  
+**Status:** Phase 5.4 Complete
+
+---
+
+### Overview
+
+This release implements Phase 5.4 of the Enterprise UI Design - Monitoring Charts. The Monitoring page now displays real-time metrics from the database with auto-refresh every 5 seconds.
+
+---
+
+### New Features
+
+#### Monitoring API Endpoints
+- **Metrics API** - `GET /api/monitoring/metrics` - Real-time system metrics
+- **Throughput API** - `GET /api/monitoring/throughput` - Time-series data
+- **Items API** - `GET /api/monitoring/items` - Per-item metrics
+- **Projects API** - `GET /api/monitoring/projects` - Per-project performance
+
+#### Monitoring UI
+- **Real-time Metrics** - Throughput, latency, error rate, queue depth
+- **Throughput Chart** - Per-minute message counts (last 30 minutes)
+- **Project Performance** - Health status with color indicators
+- **Message Statistics** - Processed, errors, P99 latency
+- **Auto-Refresh** - Polls every 5 seconds with toggle
+
+---
+
+### Files Changed
+
+- `hie/api/routes/monitoring.py` - New monitoring API routes (~270 lines)
+- `hie/api/server.py` - Register monitoring routes
+- `portal/src/lib/api-v2.ts` - Monitoring API types and functions
+- `portal/src/app/(app)/monitoring/page.tsx` - Connected to real API
+
+---
+
 ## v1.3.4 - Configure Sub-Tabs
 
 **Release Date:** January 25, 2026  
