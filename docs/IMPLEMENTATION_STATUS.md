@@ -1,8 +1,8 @@
 # HIE Implementation Status
 
-**Version:** 1.2.1  
+**Version:** 1.2.2  
 **Last Updated:** January 25, 2026  
-**Status:** Full-Stack Integration Complete - Item Editing & Hot Reload Phase
+**Status:** Full-Stack Integration Complete - HL7 Testing & Runtime Fixes
 
 ---
 
@@ -247,13 +247,36 @@ The original HIE engine provides the foundation but needs integration with LI En
 - `hie/api/routes/items.py` - `/reload` endpoint
 - `portal/src/app/(app)/projects/[id]/page.tsx` - UI reload button
 
-### Phase 4.7: Remaining Tasks 🔲 PENDING
+### Phase 4.7: HL7 Testing ✅ COMPLETE
+
+| Feature | Status | Notes |
+|---------|--------|-------|
+| Test message endpoint | ✅ Complete | `POST /api/projects/{id}/items/{item_name}/test` |
+| Test button in UI | ✅ Complete | Purple play icon for operations |
+| ACK response modal | ✅ Complete | Shows formatted HL7 ACK |
+| Auto-generated ADT^A01 | ✅ Complete | Realistic test patient data |
+| Case-insensitive settings | ✅ Complete | Adapter settings lookup fixed |
+
+**Test Flow:**
+1. Click purple play button (▶) on outbound operation
+2. System generates ADT^A01 test message
+3. Message sent via MLLP to configured remote host
+4. ACK response displayed in modal
+5. Option to "Send Another" for repeated testing
+
+**Key Files:**
+- `hie/li/adapters/base.py` - Case-insensitive `get_setting()` method
+- `hie/api/routes/items.py` - `test_item` endpoint
+- `portal/src/lib/api-v2.ts` - `testItem()` API function
+- `portal/src/app/(app)/projects/[id]/page.tsx` - Test button and modal
+
+### Phase 4.8: Remaining Tasks 🔲 PENDING
 
 | Task | Status | Notes |
 |------|--------|-------|
-| End-to-end testing | 🔄 In Progress | Manual testing with user |
 | Real-time WebSocket events | 🔲 Pending | Future enhancement |
 | Visual drag-drop editor | 🔲 Pending | Future enhancement |
+| Message trace viewer | 🔲 Pending | Future enhancement |
 
 ---
 
@@ -268,6 +291,8 @@ The original HIE engine provides the foundation but needs integration with LI En
 | `v0.3.0-li-phase3` | LI Enterprise Features | Jan 25, 2026 |
 | `v1.0.0-li` | LI Production Ready | Jan 25, 2026 |
 | `v1.2.0` | Full-Stack Integration | Jan 25, 2026 |
+| `v1.2.1` | Item Editing & Hot Reload | Jan 25, 2026 |
+| `v1.2.2` | HL7 Testing & Runtime Fixes | Jan 25, 2026 |
 
 ---
 

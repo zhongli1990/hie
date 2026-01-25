@@ -1,5 +1,89 @@
 # HIE Release Notes
 
+## v1.2.2 - HL7 Testing & Runtime Fixes Release
+
+**Release Date:** January 25, 2026  
+**Status:** Production Ready
+
+---
+
+### Overview
+
+This release adds HL7 message testing capabilities and fixes critical runtime issues with adapter settings. Users can now send test messages through outbound operations directly from the UI and verify end-to-end connectivity with remote HL7 systems.
+
+---
+
+### New Features
+
+#### HL7 Test Message Button
+- **Test Button** - Purple play icon (▶) on outbound operation items
+- **Auto-generated Test Message** - Sends ADT^A01 with realistic patient data
+- **ACK Response Display** - Modal shows formatted HL7 ACK from remote system
+- **Send Another** - Repeat test without closing modal
+- **API Endpoint** - `POST /api/projects/{id}/items/{item_name}/test`
+
+#### Full-Stack Test Flow
+```
+UI Button Click → Portal → API → Engine → MLLP Adapter → Remote System → ACK
+```
+
+---
+
+### Bug Fixes
+
+#### Critical: Adapter Settings Case-Sensitivity
+- **Root Cause** - Database stores settings in camelCase (`port`, `ipAddress`) but adapter code looked up PascalCase (`Port`, `IPAddress`)
+- **Fix** - Made `Adapter.get_setting()` case-insensitive with fallback matching
+- **Impact** - HL7 receivers now bind to configured ports (was defaulting to 2575)
+- **Impact** - HL7 senders now connect to configured remote hosts (was defaulting to localhost:2575)
+
+#### Docker Port Mapping for macOS
+- Reduced MLLP port range from 10001-19999 to 10001-10020 to avoid Docker timeout
+- Reverted from `network_mode: host` (doesn't work on macOS Docker Desktop)
+- Fixed portal API URL configuration for Docker service networking
+
+#### Backend API Fixes
+- Fixed `get_project` endpoint accessing host states dictionary incorrectly
+- Fixed `start_project` to check if engine is already running before starting
+- Fixed `deploy` route calling non-existent `add_setting` method (changed to `set_setting`)
+
+---
+
+### Files Changed
+
+| File | Change |
+|------|--------|
+| `hie/li/adapters/base.py` | Case-insensitive `get_setting()` method |
+| `hie/api/routes/items.py` | Added `test_item` endpoint |
+| `hie/api/routes/projects.py` | Fixed deploy, start, get_project bugs |
+| `portal/src/lib/api-v2.ts` | Added `testItem()` API function |
+| `portal/src/app/(app)/projects/[id]/page.tsx` | Test button and result modal |
+| `docker-compose.full.yml` | Fixed port mappings for macOS |
+
+---
+
+### Testing
+
+#### Verified Working:
+- HL7 receiver binds to configured port (10001)
+- HL7 sender connects to configured remote (192.168.0.17:35001)
+- Test message sent from UI receives ACK response
+- Full end-to-end message flow confirmed
+
+#### Test Commands:
+```bash
+# Test HL7 receiver port
+nc -zv localhost 10001
+
+# Send test HL7 message via netcat
+printf '\x0bMSH|^~\\&|TEST|TEST|HIE|HIE|20260125||ADT^A01|123|P|2.4\x1c\r' | nc localhost 10001
+
+# Send test via API
+curl -X POST "http://localhost:9302/api/projects/{project_id}/items/{item_name}/test"
+```
+
+---
+
 ## v1.2.1 - Item Editing & Hot Reload Release
 
 **Release Date:** January 25, 2026  

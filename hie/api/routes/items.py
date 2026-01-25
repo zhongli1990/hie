@@ -30,6 +30,7 @@ from hie.api.repositories import (
     ConnectionRepository,
     RoutingRuleRepository,
 )
+from hie.api.routes.projects import _engine_manager
 
 logger = structlog.get_logger(__name__)
 
@@ -293,6 +294,67 @@ def setup_item_routes(app: web.Application, db_pool) -> None:
                 "item_id": item_id,
                 "message": "Configuration saved. Changes will apply when project is started.",
             })
+    
+    # ==================== Test Message Route ====================
+    
+    async def test_item(request: web.Request) -> web.Response:
+        """Send a test HL7 message through an outbound operation."""
+        project_id = request.match_info["project_id"]
+        item_name = request.match_info["item_name"]
+        
+        try:
+            proj_uuid = UUID(project_id)
+        except ValueError:
+            return web.json_response({"error": "Invalid project ID"}, status=400)
+        
+        # Check if engine is running
+        if not _engine_manager.is_running(proj_uuid):
+            return web.json_response({"error": "Project is not running. Deploy and start the project first."}, status=400)
+        
+        engine = _engine_manager._engines.get(proj_uuid)
+        if not engine:
+            return web.json_response({"error": "Engine not found"}, status=404)
+        
+        # Get the host (operation)
+        host = engine.get_host(item_name)
+        if not host:
+            return web.json_response({"error": f"Item '{item_name}' not found in running engine"}, status=404)
+        
+        # Get message from request body or use default test message
+        try:
+            data = await request.json() if request.can_read_body else {}
+        except:
+            data = {}
+        
+        hl7_message = data.get('message')
+        if not hl7_message:
+            # Generate a default ADT^A01 test message
+            from datetime import datetime
+            timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
+            msg_id = f"TEST{timestamp}"
+            hl7_message = (
+                f"MSH|^~\\&|HIE|HIE|REMOTE|REMOTE|{timestamp}||ADT^A01|{msg_id}|P|2.4\r"
+                f"EVN|A01|{timestamp}\r"
+                f"PID|1||TEST123^^^MRN||Doe^John^Q||19800101|M|||123 Main St^^London^^SW1A 1AA^UK\r"
+                f"PV1|1|I|WARD1^ROOM1^BED1||||12345^Smith^Jane|||MED||||||||V123456\r"
+            )
+        
+        try:
+            # For operations, use the adapter to send
+            adapter = host._adapter
+            if adapter and hasattr(adapter, 'send'):
+                msg_bytes = hl7_message.encode() if isinstance(hl7_message, str) else hl7_message
+                ack = await adapter.send(msg_bytes)
+                return web.json_response({
+                    "status": "sent",
+                    "item_name": item_name,
+                    "ack": ack.decode() if isinstance(ack, bytes) else str(ack) if ack else "No ACK",
+                })
+            else:
+                return web.json_response({"error": "Item does not support sending messages. Only outbound operations can be tested."}, status=400)
+        except Exception as e:
+            logger.error("test_item_failed", item_name=item_name, error=str(e))
+            return web.json_response({"error": str(e)}, status=500)
     
     # ==================== Connection Routes ====================
     
@@ -570,6 +632,7 @@ def setup_item_routes(app: web.Application, db_pool) -> None:
     app.router.add_put("/api/projects/{project_id}/items/{item_id}", update_item)
     app.router.add_delete("/api/projects/{project_id}/items/{item_id}", delete_item)
     app.router.add_post("/api/projects/{project_id}/items/{item_id}/reload", reload_item)
+    app.router.add_post("/api/projects/{project_id}/items/{item_name}/test", test_item)
     
     # Register connection routes
     app.router.add_get("/api/projects/{project_id}/connections", list_connections)

@@ -2,9 +2,9 @@
 
 ## Healthcare Integration Engine - Complete Feature Set
 
-**Version:** 1.2.0  
+**Version:** 1.2.2  
 **Last Updated:** January 25, 2026  
-**Status:** Full-Stack Integration Complete - LI Engine + Management Portal
+**Status:** Full-Stack Integration Complete - HL7 Testing & Runtime Fixes
 
 ---
 
@@ -170,9 +170,10 @@
 |---------|-------------|----------|--------|
 | REST API | Management API | P0 | ✅ Done |
 | CLI Tools | Command-line management | P0 | ✅ Done |
-| Hot Reload | Update config without restart | P1 | 🔲 Planned |
+| Hot Reload | Update config without restart | P1 | ✅ Done |
 | Graceful Shutdown | Complete in-flight messages | P0 | ✅ Done |
 | Health Checks | Liveness/readiness probes | P0 | ✅ Done |
+| HL7 Test Messages | Send test messages via UI | P1 | ✅ Done |
 
 ---
 
