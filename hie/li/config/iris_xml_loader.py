@@ -66,7 +66,7 @@ class IRISXMLLoader:
             "EnsLib.HL7.Operation.FTPOperation": "li.hosts.hl7.HL7FTPOperation",
             
             # HL7 Processes
-            "EnsLib.HL7.MsgRouter.RoutingEngine": "li.hosts.hl7.HL7RoutingEngine",
+            "EnsLib.HL7.MsgRouter.RoutingEngine": "li.hosts.routing.HL7RoutingEngine",
             "EnsLib.HL7.SequenceManager": "li.hosts.hl7.HL7SequenceManager",
             
             # Generic Routing
@@ -158,6 +158,20 @@ class IRISXMLLoader:
             raise ValueError("No XData ProductionDefinition found in .cls file")
         
         xml_content = match.group(1).strip()
+        return self.load_from_xml(xml_content)
+    
+    def load_from_string(self, xml_content: str) -> ProductionConfig:
+        """
+        Load production from XML string.
+        
+        Alias for load_from_xml for convenience.
+        
+        Args:
+            xml_content: XML string containing <Production> element
+            
+        Returns:
+            ProductionConfig object
+        """
         return self.load_from_xml(xml_content)
     
     def load_from_xml(self, xml_content: str) -> ProductionConfig:

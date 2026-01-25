@@ -524,12 +524,21 @@ class BusinessProcess(Host):
     Key settings:
     - BusinessRuleName: Name of routing rule set
     - ValidationSchema: Schema for validation
+    - TargetConfigNames: Default targets if no rule matches
     """
     
     @property
     def business_rule_name(self) -> str | None:
         """Get business rule name."""
         return self.get_setting("Host", "BusinessRuleName")
+    
+    @property
+    def target_config_names(self) -> list[str]:
+        """Get list of default target config names."""
+        targets = self.get_setting("Host", "TargetConfigNames", "")
+        if not targets:
+            return []
+        return [t.strip() for t in str(targets).split(",") if t.strip()]
     
     async def on_message(self, message: Any) -> Any | list[Any] | None:
         """

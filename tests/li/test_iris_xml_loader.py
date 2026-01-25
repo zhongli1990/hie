@@ -102,7 +102,7 @@ class TestIRISXMLLoader:
         assert service.class_name == "li.hosts.hl7.HL7TCPService"
         
         router = config.get_item("ADT Router")
-        assert router.class_name == "li.hosts.hl7.HL7RoutingEngine"
+        assert router.class_name == "li.hosts.routing.HL7RoutingEngine"
         
         operation = config.get_item("HL7 to PACS")
         assert operation.class_name == "li.hosts.hl7.HL7TCPOperation"
