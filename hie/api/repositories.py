@@ -17,6 +17,17 @@ import structlog
 logger = structlog.get_logger(__name__)
 
 
+def _parse_jsonb_fields(row_dict: dict, fields: list[str]) -> dict:
+    """Parse JSONB fields from string to dict if needed."""
+    for field in fields:
+        if field in row_dict and isinstance(row_dict[field], str):
+            try:
+                row_dict[field] = json.loads(row_dict[field])
+            except (json.JSONDecodeError, TypeError):
+                pass
+    return row_dict
+
+
 class WorkspaceRepository:
     """Repository for workspace CRUD operations."""
     
@@ -33,7 +44,7 @@ class WorkspaceRepository:
             ORDER BY w.display_name
         """
         rows = await self._pool.fetch(query, tenant_id)
-        return [dict(r) for r in rows]
+        return [_parse_jsonb_fields(dict(r), ['settings']) for r in rows]
     
     async def get_by_id(self, workspace_id: UUID) -> Optional[dict]:
         """Get workspace by ID."""
@@ -44,7 +55,7 @@ class WorkspaceRepository:
             WHERE w.id = $1
         """
         row = await self._pool.fetchrow(query, workspace_id)
-        return dict(row) if row else None
+        return _parse_jsonb_fields(dict(row), ['settings']) if row else None
     
     async def get_by_name(self, name: str) -> Optional[dict]:
         """Get workspace by name."""
@@ -55,7 +66,7 @@ class WorkspaceRepository:
             WHERE w.name = $1
         """
         row = await self._pool.fetchrow(query, name)
-        return dict(row) if row else None
+        return _parse_jsonb_fields(dict(row), ['settings']) if row else None
     
     async def create(
         self,
@@ -76,7 +87,7 @@ class WorkspaceRepository:
             query, name, display_name, description, tenant_id, created_by,
             json.dumps(settings or {})
         )
-        return dict(row)
+        return _parse_jsonb_fields(dict(row), ['settings'])
     
     async def update(self, workspace_id: UUID, **kwargs) -> Optional[dict]:
         """Update workspace fields."""
@@ -107,7 +118,7 @@ class WorkspaceRepository:
             RETURNING *, (SELECT COUNT(*) FROM projects p WHERE p.workspace_id = workspaces.id) as projects_count
         """
         row = await self._pool.fetchrow(query, *values)
-        return dict(row) if row else None
+        return _parse_jsonb_fields(dict(row), ['settings']) if row else None
     
     async def delete(self, workspace_id: UUID) -> bool:
         """Delete workspace and all its projects."""
@@ -133,7 +144,7 @@ class ProjectRepository:
             ORDER BY p.display_name
         """
         rows = await self._pool.fetch(query, workspace_id)
-        return [dict(r) for r in rows]
+        return [_parse_jsonb_fields(dict(r), ['settings']) for r in rows]
     
     async def get_by_id(self, project_id: UUID) -> Optional[dict]:
         """Get project by ID."""
@@ -145,7 +156,7 @@ class ProjectRepository:
             WHERE p.id = $1
         """
         row = await self._pool.fetchrow(query, project_id)
-        return dict(row) if row else None
+        return _parse_jsonb_fields(dict(row), ['settings']) if row else None
     
     async def get_by_name(self, workspace_id: UUID, name: str) -> Optional[dict]:
         """Get project by workspace and name."""
@@ -157,7 +168,7 @@ class ProjectRepository:
             WHERE p.workspace_id = $1 AND p.name = $2
         """
         row = await self._pool.fetchrow(query, workspace_id, name)
-        return dict(row) if row else None
+        return _parse_jsonb_fields(dict(row), ['settings']) if row else None
     
     async def create(
         self,
@@ -179,7 +190,7 @@ class ProjectRepository:
             query, workspace_id, name, display_name, description, enabled, created_by,
             json.dumps(settings or {})
         )
-        return dict(row)
+        return _parse_jsonb_fields(dict(row), ['settings'])
     
     async def update(self, project_id: UUID, **kwargs) -> Optional[dict]:
         """Update project fields."""
@@ -212,7 +223,7 @@ class ProjectRepository:
                 (SELECT COUNT(*) FROM project_connections pc WHERE pc.project_id = projects.id) as connections_count
         """
         row = await self._pool.fetchrow(query, *values)
-        return dict(row) if row else None
+        return _parse_jsonb_fields(dict(row), ['settings']) if row else None
     
     async def update_state(self, project_id: UUID, state: str) -> Optional[dict]:
         """Update project state."""
@@ -229,7 +240,7 @@ class ProjectRepository:
                 (SELECT COUNT(*) FROM project_connections pc WHERE pc.project_id = projects.id) as connections_count
         """
         row = await self._pool.fetchrow(query, project_id)
-        return dict(row) if row else None
+        return _parse_jsonb_fields(dict(row), ['settings']) if row else None
     
     async def delete(self, project_id: UUID) -> bool:
         """Delete project and all its items/connections."""
@@ -273,19 +284,19 @@ class ItemRepository:
             ORDER BY name
         """
         rows = await self._pool.fetch(query, project_id)
-        return [dict(r) for r in rows]
+        return [_parse_jsonb_fields(dict(r), ['adapter_settings', 'host_settings']) for r in rows]
     
     async def get_by_id(self, item_id: UUID) -> Optional[dict]:
         """Get item by ID."""
         query = "SELECT * FROM project_items WHERE id = $1"
         row = await self._pool.fetchrow(query, item_id)
-        return dict(row) if row else None
+        return _parse_jsonb_fields(dict(row), ['adapter_settings', 'host_settings']) if row else None
     
     async def get_by_name(self, project_id: UUID, name: str) -> Optional[dict]:
         """Get item by project and name."""
         query = "SELECT * FROM project_items WHERE project_id = $1 AND name = $2"
         row = await self._pool.fetchrow(query, project_id, name)
-        return dict(row) if row else None
+        return _parse_jsonb_fields(dict(row), ['adapter_settings', 'host_settings']) if row else None
     
     async def create(
         self,
@@ -320,7 +331,7 @@ class ItemRepository:
             json.dumps(host_settings or {}),
             comment
         )
-        return dict(row)
+        return _parse_jsonb_fields(dict(row), ['adapter_settings', 'host_settings'])
     
     async def update(self, item_id: UUID, **kwargs) -> Optional[dict]:
         """Update item fields."""
@@ -351,7 +362,7 @@ class ItemRepository:
             RETURNING *
         """
         row = await self._pool.fetchrow(query, *values)
-        return dict(row) if row else None
+        return _parse_jsonb_fields(dict(row), ['adapter_settings', 'host_settings']) if row else None
     
     async def delete(self, item_id: UUID) -> bool:
         """Delete item."""
