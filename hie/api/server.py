@@ -85,12 +85,14 @@ class APIServer:
                 setup_item_type_routes,
             )
             from hie.api.routes.messages import register_routes as register_message_routes
+            from hie.api.routes.dashboard import setup_dashboard_routes
             from hie.api.services.message_store import set_db_pool as set_message_store_pool
             setup_workspace_routes(self.app, self.db_pool)
             setup_project_routes(self.app, self.db_pool)
             setup_item_routes(self.app, self.db_pool)
             setup_item_type_routes(self.app, self.db_pool)
             register_message_routes(self.app)
+            setup_dashboard_routes(self.app, self.db_pool)
             set_message_store_pool(self.db_pool)
             logger.info("workspace_project_routes_registered")
         

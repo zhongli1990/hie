@@ -561,6 +561,81 @@ export async function getItemTypeByClass(className: string): Promise<ItemTypeDef
   return request(`/api/item-types/by-class?class_name=${encodeURIComponent(className)}`);
 }
 
+// Dashboard Types
+export interface DashboardStats {
+  projects_count: number;
+  projects_running: number;
+  items_count: number;
+  items_services: number;
+  items_processes: number;
+  items_operations: number;
+  messages_today: number;
+  messages_total: number;
+  messages_failed: number;
+  error_rate: number;
+  message_trend: number;
+  uptime_percent: number;
+}
+
+export interface DashboardThroughput {
+  period: string;
+  bucket_minutes: number;
+  data: Array<{
+    time: string;
+    total: number;
+    inbound: number;
+    outbound: number;
+  }>;
+  peak: number;
+  average: number;
+}
+
+export interface DashboardActivity {
+  id: string;
+  type: 'message' | 'error' | 'state_change';
+  description: string;
+  project_name: string;
+  item_name: string;
+  timestamp: string;
+}
+
+export interface DashboardProject {
+  id: string;
+  name: string;
+  display_name: string;
+  state: string;
+  enabled: boolean;
+  items_count: number;
+  message_count: number;
+  error_count: number;
+  items: Array<{
+    id: string;
+    name: string;
+    type: string;
+    enabled: boolean;
+    class_name: string;
+    message_count: number;
+    error_count: number;
+  }>;
+}
+
+// Dashboard APIs
+export async function getDashboardStats(): Promise<DashboardStats> {
+  return request('/api/dashboard/stats');
+}
+
+export async function getDashboardThroughput(period: string = '1h'): Promise<DashboardThroughput> {
+  return request(`/api/dashboard/throughput?period=${period}`);
+}
+
+export async function getDashboardActivity(limit: number = 10): Promise<{ activities: DashboardActivity[]; total: number }> {
+  return request(`/api/dashboard/activity?limit=${limit}`);
+}
+
+export async function getDashboardProjects(): Promise<{ projects: DashboardProject[]; total: number }> {
+  return request('/api/dashboard/projects');
+}
+
 // Export all
 export const apiV2 = {
   // Workspaces

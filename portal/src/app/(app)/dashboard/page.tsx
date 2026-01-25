@@ -1,19 +1,27 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
 import {
   Activity,
   AlertTriangle,
-  ArrowRight,
   CheckCircle,
+  ChevronDown,
+  ChevronRight,
   Clock,
   MessageSquare,
   Network,
-  Play,
+  RefreshCw,
   XCircle,
 } from "lucide-react";
-import type { DashboardStats, SystemHealth } from "@/types";
+import {
+  getDashboardStats,
+  getDashboardActivity,
+  getDashboardProjects,
+  DashboardStats,
+  DashboardActivity,
+  DashboardProject,
+} from "@/lib/api-v2";
 import { formatNumber, formatRelativeTime } from "@/lib/utils";
 
 function MetricCard({
@@ -84,56 +92,55 @@ function StatusBadge({ status }: { status: string }) {
 
 export default function DashboardPage() {
   const [stats, setStats] = useState<DashboardStats | null>(null);
-  const [health, setHealth] = useState<SystemHealth | null>(null);
+  const [activities, setActivities] = useState<DashboardActivity[]>([]);
+  const [projects, setProjects] = useState<DashboardProject[]>([]);
+  const [expandedProjects, setExpandedProjects] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [lastRefresh, setLastRefresh] = useState<Date>(new Date());
+
+  const loadDashboardData = useCallback(async (isRefresh = false) => {
+    if (isRefresh) setRefreshing(true);
+    else setLoading(true);
+    
+    try {
+      const [statsData, activityData, projectsData] = await Promise.all([
+        getDashboardStats(),
+        getDashboardActivity(10),
+        getDashboardProjects(),
+      ]);
+      
+      setStats(statsData);
+      setActivities(activityData.activities || []);
+      setProjects(projectsData.projects || []);
+      setLastRefresh(new Date());
+    } catch (error) {
+      console.error('Failed to load dashboard data:', error);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }, []);
 
   useEffect(() => {
-    // Simulated data for now - will be replaced with API calls
-    const mockStats: DashboardStats = {
-      productionsCount: 3,
-      itemsCount: 24,
-      messagesProcessedToday: 45892,
-      messagesProcessedTotal: 1284567,
-      errorRate: 0.02,
-      recentActivity: [
-        {
-          type: "message",
-          description: "ADT^A01 processed successfully",
-          productionName: "NHS-ADT-Integration",
-          itemName: "HTTP_ADT_Receiver",
-          timestamp: new Date(Date.now() - 60000).toISOString(),
-        },
-        {
-          type: "error",
-          description: "Connection timeout to PAS system",
-          productionName: "NHS-ADT-Integration",
-          itemName: "PAS_MLLP_Sender",
-          timestamp: new Date(Date.now() - 300000).toISOString(),
-        },
-        {
-          type: "state_change",
-          description: "Production started",
-          productionName: "Lab-Results-Feed",
-          timestamp: new Date(Date.now() - 600000).toISOString(),
-        },
-      ],
-    };
+    loadDashboardData();
+    
+    // Auto-refresh every 10 seconds
+    const interval = setInterval(() => {
+      loadDashboardData(true);
+    }, 10000);
+    
+    return () => clearInterval(interval);
+  }, [loadDashboardData]);
 
-    const mockHealth: SystemHealth = {
-      services: [
-        { service: "PostgreSQL", status: "healthy", latencyMs: 2 },
-        { service: "Redis", status: "healthy", latencyMs: 1 },
-        { service: "HIE Engine", status: "healthy", latencyMs: 5 },
-        { service: "Management API", status: "healthy", latencyMs: 3 },
-      ],
-    };
-
-    setTimeout(() => {
-      setStats(mockStats);
-      setHealth(mockHealth);
-      setLoading(false);
-    }, 500);
-  }, []);
+  const toggleProject = (projectId: string) => {
+    setExpandedProjects(prev => {
+      const next = new Set(prev);
+      if (next.has(projectId)) next.delete(projectId);
+      else next.add(projectId);
+      return next;
+    });
+  };
 
   return (
     <div className="space-y-6">
@@ -145,41 +152,47 @@ export default function DashboardPage() {
             Healthcare Integration Engine overview
           </p>
         </div>
-        <Link
-          href="/productions/new"
-          className="inline-flex items-center gap-2 rounded-lg bg-nhs-blue px-4 py-2 text-sm font-medium text-white hover:bg-nhs-dark-blue"
-        >
-          <Play className="h-4 w-4" />
-          New Production
-        </Link>
+        <div className="flex items-center gap-3">
+          <span className="text-xs text-gray-400">
+            Last updated: {lastRefresh.toLocaleTimeString()}
+          </span>
+          <button
+            onClick={() => loadDashboardData(true)}
+            disabled={refreshing}
+            className="inline-flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+          >
+            <RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
+            Refresh
+          </button>
+        </div>
       </div>
 
       {/* Metrics */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <MetricCard
-          title="Active Productions"
-          value={stats?.productionsCount ?? 0}
-          subtitle="3 running, 0 stopped"
+          title="Projects"
+          value={stats?.projects_count ?? 0}
+          subtitle={`${stats?.projects_running ?? 0} running`}
           icon={Network}
           loading={loading}
         />
         <MetricCard
           title="Total Items"
-          value={stats?.itemsCount ?? 0}
-          subtitle="8 services, 6 processes, 10 operations"
+          value={stats?.items_count ?? 0}
+          subtitle={`${stats?.items_services ?? 0} services, ${stats?.items_processes ?? 0} processes, ${stats?.items_operations ?? 0} operations`}
           icon={Activity}
           loading={loading}
         />
         <MetricCard
           title="Messages Today"
-          value={stats?.messagesProcessedToday ?? 0}
-          trend={{ value: 12, positive: true }}
+          value={stats?.messages_today ?? 0}
+          trend={stats?.message_trend ? { value: Math.abs(stats.message_trend), positive: stats.message_trend >= 0 } : undefined}
           icon={MessageSquare}
           loading={loading}
         />
         <MetricCard
           title="Error Rate"
-          value={stats ? `${(stats.errorRate * 100).toFixed(2)}%` : "0%"}
+          value={stats ? `${(stats.error_rate * 100).toFixed(2)}%` : "0%"}
           subtitle="Last 24 hours"
           icon={AlertTriangle}
           loading={loading}
@@ -209,9 +222,9 @@ export default function DashboardPage() {
                   </div>
                 ))}
               </div>
-            ) : stats?.recentActivity.length ? (
-              stats.recentActivity.map((activity, idx) => (
-                <div key={idx} className="px-5 py-3 transition-colors hover:bg-gray-50">
+            ) : activities.length > 0 ? (
+              activities.map((activity) => (
+                <div key={activity.id} className="px-5 py-3 transition-colors hover:bg-gray-50">
                   <div className="flex items-start justify-between">
                     <div className="flex items-start gap-3">
                       <div
@@ -228,8 +241,8 @@ export default function DashboardPage() {
                           {activity.description}
                         </p>
                         <p className="mt-0.5 text-xs text-gray-500">
-                          {activity.productionName}
-                          {activity.itemName && ` → ${activity.itemName}`}
+                          {activity.project_name}
+                          {activity.item_name && ` → ${activity.item_name}`}
                         </p>
                       </div>
                     </div>
@@ -247,39 +260,74 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        {/* System Health & Quick Actions */}
+        {/* Projects Tree & Quick Actions */}
         <div className="space-y-6">
-          {/* System Health */}
+          {/* Projects Overview */}
           <div className="rounded-xl border border-gray-200 bg-white shadow-sm">
-            <div className="border-b border-gray-200 px-5 py-4">
-              <h2 className="text-sm font-semibold text-gray-900">System Health</h2>
+            <div className="flex items-center justify-between border-b border-gray-200 px-5 py-4">
+              <h2 className="text-sm font-semibold text-gray-900">Projects Overview</h2>
+              <Link href="/projects" className="text-xs text-nhs-blue hover:underline">
+                View all
+              </Link>
             </div>
-            <div className="p-5">
+            <div className="divide-y divide-gray-100">
               {loading ? (
-                <div className="space-y-3">
-                  {[1, 2, 3, 4].map((i) => (
-                    <div key={i} className="flex items-center justify-between">
-                      <div className="h-4 w-24 animate-pulse rounded bg-gray-200" />
-                      <div className="h-5 w-16 animate-pulse rounded bg-gray-200" />
+                <div className="space-y-3 p-5">
+                  {[1, 2].map((i) => (
+                    <div key={i} className="flex items-center gap-3">
+                      <div className="h-4 w-4 animate-pulse rounded bg-gray-200" />
+                      <div className="h-4 w-32 animate-pulse rounded bg-gray-200" />
                     </div>
                   ))}
                 </div>
-              ) : health?.services ? (
-                <div className="space-y-3">
-                  {health.services.map((service) => (
-                    <div key={service.service} className="flex items-center justify-between">
-                      <span className="text-sm text-gray-700">{service.service}</span>
+              ) : projects.length > 0 ? (
+                projects.map((project) => (
+                  <div key={project.id}>
+                    <div
+                      className="flex cursor-pointer items-center justify-between px-5 py-3 hover:bg-gray-50"
+                      onClick={() => toggleProject(project.id)}
+                    >
                       <div className="flex items-center gap-2">
-                        {service.latencyMs !== null && (
-                          <span className="text-xs text-gray-400">{service.latencyMs}ms</span>
+                        {expandedProjects.has(project.id) ? (
+                          <ChevronDown className="h-4 w-4 text-gray-400" />
+                        ) : (
+                          <ChevronRight className="h-4 w-4 text-gray-400" />
                         )}
-                        <StatusBadge status={service.status} />
+                        <span className={`h-2 w-2 rounded-full ${project.state === 'running' ? 'bg-green-500' : 'bg-gray-400'}`} />
+                        <span className="text-sm font-medium text-gray-900">{project.display_name || project.name}</span>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <span className="text-xs text-gray-500">{project.message_count} msg</span>
+                        {project.error_count > 0 && (
+                          <span className="text-xs text-red-600">{project.error_count} errors</span>
+                        )}
+                        <StatusBadge status={project.state} />
                       </div>
                     </div>
-                  ))}
-                </div>
+                    {expandedProjects.has(project.id) && project.items.length > 0 && (
+                      <div className="border-t border-gray-100 bg-gray-50 py-2">
+                        {project.items.map((item) => (
+                          <Link
+                            key={item.id}
+                            href={`/messages?project=${project.id}&item=${item.name}`}
+                            className="flex items-center justify-between px-5 py-2 pl-12 hover:bg-gray-100"
+                          >
+                            <div className="flex items-center gap-2">
+                              <span className={`h-1.5 w-1.5 rounded-full ${item.enabled ? 'bg-green-400' : 'bg-gray-300'}`} />
+                              <span className="text-xs text-gray-700">{item.name}</span>
+                              <span className="text-xs text-gray-400">({item.type})</span>
+                            </div>
+                            <span className="text-xs text-gray-500">{item.message_count} msg</span>
+                          </Link>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ))
               ) : (
-                <p className="text-sm text-gray-500">Unable to fetch system status</p>
+                <div className="p-5 text-center text-sm text-gray-500">
+                  No projects found
+                </div>
               )}
             </div>
           </div>
