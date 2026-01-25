@@ -1,14 +1,11 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { useSearchParams, useRouter } from "next/navigation";
-import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import {
   Search,
-  Filter,
   RefreshCw,
   ChevronRight,
-  MessageSquare,
   CheckCircle,
   XCircle,
   Clock,
@@ -16,18 +13,23 @@ import {
   RotateCcw,
   Download,
   ChevronLeft,
-  ChevronDown,
   AlertCircle,
   ArrowUpRight,
   ArrowDownLeft,
+  Inbox,
 } from "lucide-react";
 import {
   listMessages,
   getMessage,
   resendMessage,
   listProjects,
+  listWorkspaces,
+  getProject,
   PortalMessage,
   PortalMessageDetail,
+  Workspace,
+  Project,
+  ProjectItem,
 } from "@/lib/api-v2";
 
 const statusStyles: Record<string, { bg: string; text: string; icon: React.ComponentType<{ className?: string }> }> = {
@@ -62,15 +64,9 @@ function formatDate(dateStr: string): string {
   return date.toLocaleString();
 }
 
-interface Project {
-  id: string;
-  name: string;
-  display_name: string;
-}
 
 export default function MessagesPage() {
   const searchParams = useSearchParams();
-  const router = useRouter();
   
   // Get initial filters from URL params
   const initialProjectId = searchParams.get('project') || '';
@@ -86,29 +82,87 @@ export default function MessagesPage() {
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
   const [showFilters, setShowFilters] = useState(false);
+  const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
+  const [selectedWorkspaceId, setSelectedWorkspaceId] = useState<string>('');
   const [projects, setProjects] = useState<Project[]>([]);
   const [selectedProjectId, setSelectedProjectId] = useState(initialProjectId);
+  const [items, setItems] = useState<ProjectItem[]>([]);
   const [selectedItemName, setSelectedItemName] = useState(initialItemName);
   const [directionFilter, setDirectionFilter] = useState<string>("all");
+  const [workspacesLoading, setWorkspacesLoading] = useState(true);
+  const [projectsLoading, setProjectsLoading] = useState(false);
   const pageSize = 50;
 
-  // Load projects on mount
+  // Load workspaces on mount
   useEffect(() => {
-    async function loadProjects() {
+    async function loadWorkspaces() {
+      setWorkspacesLoading(true);
       try {
-        // Get default workspace projects
-        const response = await listProjects('00000000-0000-0000-0000-000000000001');
-        setProjects(response.projects || []);
-        // Auto-select first project if none selected
-        if (!selectedProjectId && response.projects?.length > 0) {
-          setSelectedProjectId(response.projects[0].id);
+        const response = await listWorkspaces();
+        const ws = response.workspaces || [];
+        setWorkspaces(ws);
+        // Auto-select first workspace with projects, or first workspace
+        if (ws.length > 0 && !selectedWorkspaceId) {
+          const wsWithProjects = ws.find(w => w.projects_count > 0);
+          setSelectedWorkspaceId(wsWithProjects?.id || ws[0].id);
+        }
+      } catch (err) {
+        console.error('Failed to load workspaces:', err);
+      } finally {
+        setWorkspacesLoading(false);
+      }
+    }
+    loadWorkspaces();
+  }, []);
+
+  // Load projects when workspace changes
+  useEffect(() => {
+    async function loadProjectsForWorkspace() {
+      if (!selectedWorkspaceId) {
+        setProjects([]);
+        return;
+      }
+      setProjectsLoading(true);
+      try {
+        const response = await listProjects(selectedWorkspaceId);
+        const projs = response.projects || [];
+        setProjects(projs);
+        // Auto-select first project if none selected or previous selection not in list
+        if (projs.length > 0) {
+          const currentExists = projs.some(p => p.id === selectedProjectId);
+          if (!currentExists) {
+            setSelectedProjectId(projs[0].id);
+          }
+        } else {
+          setSelectedProjectId('');
         }
       } catch (err) {
         console.error('Failed to load projects:', err);
+        setProjects([]);
+      } finally {
+        setProjectsLoading(false);
       }
     }
-    loadProjects();
-  }, []);
+    loadProjectsForWorkspace();
+  }, [selectedWorkspaceId]);
+
+  // Load items when project changes
+  useEffect(() => {
+    async function loadItemsForProject() {
+      if (!selectedWorkspaceId || !selectedProjectId) {
+        setItems([]);
+        return;
+      }
+      try {
+        const project = await getProject(selectedWorkspaceId, selectedProjectId);
+        setItems(project.items || []);
+      } catch (err) {
+        console.error('Failed to load items:', err);
+        setItems([]);
+      }
+    }
+    loadItemsForProject();
+  }, [selectedWorkspaceId, selectedProjectId]);
 
   // Load messages when filters change
   const loadMessages = useCallback(async () => {
@@ -202,25 +256,83 @@ export default function MessagesPage() {
         </div>
       )}
 
+      {/* Workspace/Project/Item Selectors */}
+      <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
+        <div className="grid gap-4 sm:grid-cols-3">
+          {/* Workspace Selector */}
+          <div>
+            <label className="block text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">Workspace</label>
+            <select
+              value={selectedWorkspaceId}
+              onChange={(e) => { setSelectedWorkspaceId(e.target.value); setPage(1); }}
+              disabled={workspacesLoading}
+              className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-sm font-medium text-gray-900 focus:border-nhs-blue focus:outline-none focus:ring-1 focus:ring-nhs-blue disabled:bg-gray-100 disabled:text-gray-500"
+            >
+              {workspacesLoading ? (
+                <option>Loading workspaces...</option>
+              ) : workspaces.length === 0 ? (
+                <option value="">No workspaces found</option>
+              ) : (
+                workspaces.map((ws) => (
+                  <option key={ws.id} value={ws.id}>
+                    {ws.display_name || ws.name} {ws.projects_count > 0 ? `(${ws.projects_count} projects)` : ''}
+                  </option>
+                ))
+              )}
+            </select>
+          </div>
+
+          {/* Project Selector */}
+          <div>
+            <label className="block text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">Project</label>
+            <select
+              value={selectedProjectId}
+              onChange={(e) => { setSelectedProjectId(e.target.value); setPage(1); }}
+              disabled={projectsLoading || !selectedWorkspaceId}
+              className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-sm font-medium text-gray-900 focus:border-nhs-blue focus:outline-none focus:ring-1 focus:ring-nhs-blue disabled:bg-gray-100 disabled:text-gray-500"
+            >
+              {projectsLoading ? (
+                <option>Loading projects...</option>
+              ) : projects.length === 0 ? (
+                <option value="">No projects in workspace</option>
+              ) : (
+                projects.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.display_name || p.name} ({p.state})
+                  </option>
+                ))
+              )}
+            </select>
+          </div>
+
+          {/* Item Selector */}
+          <div>
+            <label className="block text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">Item (Optional)</label>
+            <select
+              value={selectedItemName}
+              onChange={(e) => { setSelectedItemName(e.target.value); setPage(1); }}
+              disabled={!selectedProjectId}
+              className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-sm font-medium text-gray-900 focus:border-nhs-blue focus:outline-none focus:ring-1 focus:ring-nhs-blue disabled:bg-gray-100 disabled:text-gray-500"
+            >
+              <option value="">All Items</option>
+              {items.map((item) => (
+                <option key={item.id} value={item.name}>
+                  {item.name} ({item.item_type})
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+      </div>
+
       {/* Search and Filters */}
       <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
-          {/* Project Selector */}
-          <select
-            value={selectedProjectId}
-            onChange={(e) => { setSelectedProjectId(e.target.value); setPage(1); }}
-            className="rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-nhs-blue focus:outline-none focus:ring-1 focus:ring-nhs-blue"
-          >
-            <option value="">Select Project</option>
-            {projects.map((p) => (
-              <option key={p.id} value={p.id}>{p.display_name || p.name}</option>
-            ))}
-          </select>
           <div className="relative flex-1">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
             <input
               type="text"
-              placeholder="Search by message type..."
+              placeholder="Search by message type (e.g., ADT^A01)..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="w-full rounded-lg border border-gray-300 py-2 pl-10 pr-4 text-sm focus:border-nhs-blue focus:outline-none focus:ring-1 focus:ring-nhs-blue"
@@ -250,53 +362,19 @@ export default function MessagesPage() {
               <option value="outbound">Outbound</option>
             </select>
             <button
-              onClick={() => setShowFilters(!showFilters)}
-              className={`inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm ${
-                showFilters
-                  ? "border-nhs-blue bg-nhs-blue/5 text-nhs-blue"
-                  : "border-gray-300 text-gray-700 hover:bg-gray-50"
-              }`}
+              onClick={() => { 
+                setSelectedItemName(''); 
+                setSearchQuery(''); 
+                setStatusFilter('all'); 
+                setDirectionFilter('all'); 
+                setPage(1); 
+              }}
+              className="rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
             >
-              <Filter className="h-4 w-4" />
-              Filters
-              <ChevronDown className={`h-4 w-4 transition-transform ${showFilters ? "rotate-180" : ""}`} />
+              Clear
             </button>
           </div>
         </div>
-
-        {/* Advanced Filters */}
-        {showFilters && (
-          <div className="mt-4 grid gap-4 border-t border-gray-200 pt-4 sm:grid-cols-3">
-            <div>
-              <label className="block text-xs font-medium text-gray-700">Item Name</label>
-              <input
-                type="text"
-                placeholder="e.g., hl7sender1"
-                value={selectedItemName}
-                onChange={(e) => setSelectedItemName(e.target.value)}
-                className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-gray-700">Message Type</label>
-              <input
-                type="text"
-                placeholder="e.g., ADT^A01"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-              />
-            </div>
-            <div className="flex items-end">
-              <button
-                onClick={() => { setSelectedItemName(''); setSearchQuery(''); setStatusFilter('all'); setDirectionFilter('all'); setPage(1); }}
-                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
-              >
-                Clear Filters
-              </button>
-            </div>
-          </div>
-        )}
       </div>
 
       {/* Messages Table */}
@@ -344,7 +422,7 @@ export default function MessagesPage() {
               ) : messages.length === 0 ? (
                 <tr>
                   <td colSpan={7} className="px-4 py-12 text-center">
-                    <MessageSquare className="mx-auto h-12 w-12 text-gray-300" />
+                    <Inbox className="mx-auto h-12 w-12 text-gray-300" />
                     <p className="mt-2 text-sm text-gray-500">No messages found</p>
                     <p className="text-xs text-gray-400">{selectedProjectId ? 'Try adjusting your filters or send a test message' : 'Select a project to view messages'}</p>
                   </td>
