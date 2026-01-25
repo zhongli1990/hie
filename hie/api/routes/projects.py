@@ -60,10 +60,10 @@ class EngineManager:
                 category=item_data.get('category'),
             )
             # Add settings
-            for key, value in item_data.get('adapter_settings', {}).items():
-                item_config.add_setting('Adapter', key, value)
-            for key, value in item_data.get('host_settings', {}).items():
-                item_config.add_setting('Host', key, value)
+            for key, value in (item_data.get('adapter_settings') or {}).items():
+                item_config.set_setting('Adapter', key, value)
+            for key, value in (item_data.get('host_settings') or {}).items():
+                item_config.set_setting('Host', key, value)
             items.append(item_config)
         
         production_config = ProductionConfig(
