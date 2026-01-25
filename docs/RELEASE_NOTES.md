@@ -1,5 +1,43 @@
 # HIE Release Notes
 
+## v1.3.2 - Inbound Message Storage & UI Fixes
+
+**Release Date:** January 25, 2026  
+**Status:** Phase 5.1 Complete with Bug Fixes
+
+---
+
+### Overview
+
+This release fixes critical issues with inbound HL7 message storage and improves the Messages tab UI with proper workspace/project/item cascading selectors.
+
+---
+
+### Bug Fixes
+
+#### Inbound Message Storage
+- **Fixed** - Inbound HL7 messages from `HL7TCPService` are now stored in `portal_messages`
+- **Added** - Project ID tracking passed from `EngineManager` to all hosts
+- **Added** - Message storage integration in `HL7TCPService.on_message_received`
+- **Added** - Error case handling with proper message storage
+
+#### Messages Tab UI
+- **Fixed** - Project dropdown now loads projects from database
+- **Added** - Workspace selector with auto-selection of first workspace with projects
+- **Added** - Cascading project selector based on workspace selection
+- **Added** - Item selector for filtering by specific item
+- **Fixed** - Refresh button now properly reloads messages
+
+---
+
+### Files Changed
+
+- `hie/api/routes/projects.py` - Add project_id tracking to hosts during deploy
+- `hie/li/hosts/hl7.py` - Integrate message storage into HL7TCPService
+- `portal/src/app/(app)/messages/page.tsx` - Add workspace/project/item selectors
+
+---
+
 ## v1.3.1 - Message Storage & Viewer Implementation
 
 **Release Date:** January 25, 2026  

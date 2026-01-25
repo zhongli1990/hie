@@ -1,8 +1,8 @@
 # HIE Implementation Status
 
-**Version:** 1.3.1  
+**Version:** 1.3.2  
 **Last Updated:** January 25, 2026  
-**Status:** Phase 5.1 Message Storage & Viewer Complete
+**Status:** Phase 5.1 Message Storage & Viewer Complete with Bug Fixes
 
 ---
 
@@ -480,6 +480,7 @@ def extract_ack_type(ack_content: bytes) -> Optional[str]
 | `v1.2.2` | HL7 Testing & Runtime Fixes | Jan 25, 2026 |
 | `v1.3.0` | Enterprise UI Design | Jan 25, 2026 |
 | `v1.3.1` | Message Storage & Viewer | Jan 25, 2026 |
+| `v1.3.2` | Inbound Message Storage & UI Fixes | Jan 25, 2026 |
 
 ---
 
