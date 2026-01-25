@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import AppShell from "@/components/AppShell";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
+import { WorkspaceProvider } from "@/contexts/WorkspaceContext";
 
 function AuthGuard({ children }: { children: ReactNode }) {
   const { isAuthenticated, isLoading, user } = useAuth();
@@ -47,7 +48,9 @@ export default function AppLayout({ children }: { children: ReactNode }) {
   return (
     <AuthProvider>
       <AuthGuard>
-        <AppShell>{children}</AppShell>
+        <WorkspaceProvider>
+          <AppShell>{children}</AppShell>
+        </WorkspaceProvider>
       </AuthGuard>
     </AuthProvider>
   );
