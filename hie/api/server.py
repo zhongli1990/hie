@@ -76,6 +76,19 @@ class APIServer:
             from hie.auth.aiohttp_router import setup_auth_routes
             setup_auth_routes(self.app, self.db_pool)
             logger.info("auth_routes_registered")
+            
+            # New workspace/project/item routes
+            from hie.api.routes import (
+                setup_workspace_routes,
+                setup_project_routes,
+                setup_item_routes,
+                setup_item_type_routes,
+            )
+            setup_workspace_routes(self.app, self.db_pool)
+            setup_project_routes(self.app, self.db_pool)
+            setup_item_routes(self.app, self.db_pool)
+            setup_item_type_routes(self.app, self.db_pool)
+            logger.info("workspace_project_routes_registered")
         
         # Add CORS middleware
         self.app.middlewares.append(self._cors_middleware)
