@@ -417,6 +417,20 @@ def extract_ack_type(ack_content: bytes) -> Optional[str]
 | `portal/src/app/(app)/messages/page.tsx` | Complete rewrite for real API (~600 lines) |
 | `portal/src/app/(app)/projects/[id]/page.tsx` | Added clickable metrics navigation |
 
+#### v1.3.2 Bug Fixes
+
+| Fix | Description |
+|-----|-------------|
+| Inbound message storage | Integrated message storage into `HL7TCPService.on_message_received` |
+| Project ID tracking | Pass `project_id` from `EngineManager` to all hosts during deploy |
+| Messages tab selectors | Added workspace/project/item cascading dropdown selectors |
+| Refresh button | Fixed refresh button to properly reload messages |
+
+**Additional Files Changed in v1.3.2:**
+- `hie/api/routes/projects.py` - Add project_id tracking to hosts during deploy
+- `hie/li/hosts/hl7.py` - Integrate message storage into HL7TCPService
+- `portal/src/app/(app)/messages/page.tsx` - Add workspace/project/item selectors
+
 ### Phase 5.2: Dashboard Real Data 🔲 PENDING
 
 | Task | Status | Effort | Notes |
