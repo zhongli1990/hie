@@ -232,6 +232,7 @@ The original HIE engine provides the foundation but needs integration with LI En
 | `v0.2.0-li-phase2` | LI HL7 Stack | Jan 25, 2026 |
 | `v0.3.0-li-phase3` | LI Enterprise Features | Jan 25, 2026 |
 | `v1.0.0-li` | LI Production Ready | Jan 25, 2026 |
+| `v1.2.0` | Full-Stack Integration | Jan 25, 2026 |
 
 ---
 
