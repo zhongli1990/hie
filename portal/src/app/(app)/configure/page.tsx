@@ -1,105 +1,157 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
 import {
-  ArrowRight,
+  Building2,
   ChevronRight,
   Edit,
   FileCode,
+  FolderTree,
   GitBranch,
+  Layers,
   Plus,
-  Save,
+  RefreshCw,
   Server,
   Settings,
   Trash2,
+  X,
+  Check,
+  AlertCircle,
 } from "lucide-react";
+import {
+  listWorkspaces,
+  createWorkspace,
+  updateWorkspace,
+  deleteWorkspace,
+  listItemTypes,
+  Workspace,
+  ItemTypeDefinition,
+} from "@/lib/api-v2";
 
-interface RouteConfig {
-  id: string;
+type SubTab = "workspaces" | "items" | "schemas" | "routes";
+
+interface WorkspaceFormData {
   name: string;
+  display_name: string;
   description: string;
-  source: string;
-  destination: string;
-  transformers: string[];
-  enabled: boolean;
-  productionName: string;
-}
-
-interface ItemConfig {
-  id: string;
-  name: string;
-  type: "receiver" | "sender" | "transformer";
-  className: string;
-  enabled: boolean;
-  config: Record<string, string | number | boolean>;
 }
 
 export default function ConfigurePage() {
-  const [routes, setRoutes] = useState<RouteConfig[]>([]);
-  const [items, setItems] = useState<ItemConfig[]>([]);
+  const [activeTab, setActiveTab] = useState<SubTab>("workspaces");
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<"routes" | "items">("routes");
-  const [selectedRoute, setSelectedRoute] = useState<RouteConfig | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  
+  // Workspaces state
+  const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
+  const [selectedWorkspace, setSelectedWorkspace] = useState<Workspace | null>(null);
+  const [showWorkspaceForm, setShowWorkspaceForm] = useState(false);
+  const [editingWorkspace, setEditingWorkspace] = useState<Workspace | null>(null);
+  const [workspaceForm, setWorkspaceForm] = useState<WorkspaceFormData>({ name: "", display_name: "", description: "" });
+  const [saving, setSaving] = useState(false);
+  
+  // Item Types state
+  const [itemTypes, setItemTypes] = useState<ItemTypeDefinition[]>([]);
+
+  const loadData = useCallback(async (isRefresh = false) => {
+    if (isRefresh) setRefreshing(true);
+    else setLoading(true);
+    setError(null);
+    
+    try {
+      if (activeTab === "workspaces") {
+        const response = await listWorkspaces();
+        setWorkspaces(response.workspaces || []);
+      } else if (activeTab === "items") {
+        const response = await listItemTypes();
+        setItemTypes(response.item_types || []);
+      }
+    } catch (err) {
+      console.error("Failed to load data:", err);
+      setError(err instanceof Error ? err.message : "Failed to load data");
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }, [activeTab]);
 
   useEffect(() => {
-    const mockRoutes: RouteConfig[] = [
-      {
-        id: "http_to_mllp",
-        name: "HTTP to MLLP",
-        description: "Route HL7 messages from HTTP receiver to MLLP sender",
-        source: "HTTP_ADT_Receiver",
-        destination: "PAS_MLLP_Sender",
-        transformers: ["HL7_Validator", "Message_Logger"],
-        enabled: true,
-        productionName: "NHS-ADT-Integration",
-      },
-      {
-        id: "file_to_http",
-        name: "File to HTTP",
-        description: "Process lab results from file system to HTTP endpoint",
-        source: "Lab_File_Receiver",
-        destination: "EMR_HTTP_Sender",
-        transformers: ["HL7_Parser", "Result_Transformer"],
-        enabled: true,
-        productionName: "Lab-Results-Feed",
-      },
-      {
-        id: "mllp_to_fhir",
-        name: "MLLP to FHIR",
-        description: "Convert HL7v2 to FHIR and send to FHIR server",
-        source: "MLLP_Receiver",
-        destination: "FHIR_HTTP_Sender",
-        transformers: ["HL7_to_FHIR_Transformer"],
-        enabled: false,
-        productionName: "FHIR-Integration",
-      },
-    ];
+    loadData();
+  }, [loadData]);
 
-    const mockItems: ItemConfig[] = [
-      { id: "http_adt_receiver", name: "HTTP_ADT_Receiver", type: "receiver", className: "hie.items.receivers.HTTPReceiver", enabled: true, config: { host: "0.0.0.0", port: 8080, path: "/hl7" } },
-      { id: "pas_mllp_sender", name: "PAS_MLLP_Sender", type: "sender", className: "hie.items.senders.MLLPSender", enabled: true, config: { host: "mllp-echo", port: 2575, timeout: 30000 } },
-      { id: "hl7_validator", name: "HL7_Validator", type: "transformer", className: "hie.items.transformers.HL7Validator", enabled: true, config: { strict: true, version: "2.5" } },
-      { id: "message_logger", name: "Message_Logger", type: "transformer", className: "hie.items.transformers.MessageLogger", enabled: true, config: { logLevel: "INFO", includePayload: false } },
-      { id: "lab_file_receiver", name: "Lab_File_Receiver", type: "receiver", className: "hie.items.receivers.FileReceiver", enabled: true, config: { path: "/data/inbound", pattern: "*.hl7" } },
-      { id: "emr_http_sender", name: "EMR_HTTP_Sender", type: "sender", className: "hie.items.senders.HTTPSender", enabled: true, config: { url: "https://emr.nhs.uk/api/results", method: "POST" } },
-    ];
+  const handleCreateWorkspace = async () => {
+    if (!workspaceForm.name || !workspaceForm.display_name) return;
+    setSaving(true);
+    try {
+      await createWorkspace({
+        name: workspaceForm.name,
+        display_name: workspaceForm.display_name,
+        description: workspaceForm.description,
+      });
+      setShowWorkspaceForm(false);
+      setWorkspaceForm({ name: "", display_name: "", description: "" });
+      loadData(true);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to create workspace");
+    } finally {
+      setSaving(false);
+    }
+  };
 
-    setTimeout(() => {
-      setRoutes(mockRoutes);
-      setItems(mockItems);
-      setLoading(false);
-    }, 500);
-  }, []);
+  const handleUpdateWorkspace = async () => {
+    if (!editingWorkspace || !workspaceForm.display_name) return;
+    setSaving(true);
+    try {
+      await updateWorkspace(editingWorkspace.id, {
+        display_name: workspaceForm.display_name,
+        description: workspaceForm.description,
+      });
+      setEditingWorkspace(null);
+      setWorkspaceForm({ name: "", display_name: "", description: "" });
+      loadData(true);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to update workspace");
+    } finally {
+      setSaving(false);
+    }
+  };
 
-  const getTypeColor = (type: string) => {
-    switch (type) {
-      case "receiver": return "bg-green-100 text-green-700";
-      case "sender": return "bg-blue-100 text-blue-700";
-      case "transformer": return "bg-purple-100 text-purple-700";
+  const handleDeleteWorkspace = async (workspace: Workspace) => {
+    if (!confirm(`Delete workspace "${workspace.display_name}"? This cannot be undone.`)) return;
+    try {
+      await deleteWorkspace(workspace.id);
+      setSelectedWorkspace(null);
+      loadData(true);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to delete workspace");
+    }
+  };
+
+  const startEditWorkspace = (workspace: Workspace) => {
+    setEditingWorkspace(workspace);
+    setWorkspaceForm({
+      name: workspace.name,
+      display_name: workspace.display_name,
+      description: workspace.description || "",
+    });
+  };
+
+  const getItemTypeIcon = (category: string) => {
+    switch (category) {
+      case "service": return "bg-green-100 text-green-700";
+      case "operation": return "bg-blue-100 text-blue-700";
+      case "process": return "bg-purple-100 text-purple-700";
       default: return "bg-gray-100 text-gray-700";
     }
   };
+
+  const tabs: { id: SubTab; label: string; icon: React.ReactNode }[] = [
+    { id: "workspaces", label: "Workspaces", icon: <Building2 className="h-4 w-4" /> },
+    { id: "items", label: "Item Types", icon: <Server className="h-4 w-4" /> },
+    { id: "schemas", label: "Schemas", icon: <Layers className="h-4 w-4" /> },
+    { id: "routes", label: "Routing Rules", icon: <GitBranch className="h-4 w-4" /> },
+  ];
 
   return (
     <div className="space-y-6">
@@ -107,213 +159,238 @@ export default function ConfigurePage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-semibold text-gray-900">Configure</h1>
-          <p className="mt-1 text-sm text-gray-500">Manage routes, items, and production configuration</p>
+          <p className="mt-1 text-sm text-gray-500">Manage workspaces, item types, schemas, and routing rules</p>
         </div>
-        <div className="flex items-center gap-2">
-          <button className="inline-flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">
-            <FileCode className="h-4 w-4" />
-            View YAML
-          </button>
-          <button className="inline-flex items-center gap-2 rounded-lg bg-nhs-blue px-4 py-2 text-sm font-medium text-white hover:bg-nhs-dark-blue">
-            <Plus className="h-4 w-4" />
-            New Route
-          </button>
-        </div>
+        <button
+          onClick={() => loadData(true)}
+          disabled={refreshing}
+          className="inline-flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+        >
+          <RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
+          Refresh
+        </button>
       </div>
 
-      {/* Tabs */}
+      {/* Error Banner */}
+      {error && (
+        <div className="rounded-lg bg-red-50 border border-red-200 p-4">
+          <div className="flex items-center gap-3">
+            <AlertCircle className="h-5 w-5 text-red-500" />
+            <p className="text-sm text-red-700">{error}</p>
+            <button onClick={() => setError(null)} className="ml-auto text-red-500 hover:text-red-700">
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Sub-Tab Navigation */}
       <div className="border-b border-gray-200">
         <nav className="-mb-px flex gap-6">
-          <button
-            onClick={() => setActiveTab("routes")}
-            className={`border-b-2 pb-3 text-sm font-medium transition-colors ${
-              activeTab === "routes"
-                ? "border-nhs-blue text-nhs-blue"
-                : "border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700"
-            }`}
-          >
-            <div className="flex items-center gap-2">
-              <GitBranch className="h-4 w-4" />
-              Routes ({routes.length})
-            </div>
-          </button>
-          <button
-            onClick={() => setActiveTab("items")}
-            className={`border-b-2 pb-3 text-sm font-medium transition-colors ${
-              activeTab === "items"
-                ? "border-nhs-blue text-nhs-blue"
-                : "border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700"
-            }`}
-          >
-            <div className="flex items-center gap-2">
-              <Server className="h-4 w-4" />
-              Items ({items.length})
-            </div>
-          </button>
+          {tabs.map((tab) => (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id)}
+              className={`border-b-2 pb-3 text-sm font-medium transition-colors ${
+                activeTab === tab.id
+                  ? "border-nhs-blue text-nhs-blue"
+                  : "border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700"
+              }`}
+            >
+              <div className="flex items-center gap-2">
+                {tab.icon}
+                {tab.label}
+              </div>
+            </button>
+          ))}
         </nav>
       </div>
 
-      {/* Content */}
-      {activeTab === "routes" && (
-        <div className="grid gap-6 lg:grid-cols-2">
-          {/* Routes List */}
-          <div className="space-y-4">
+      {/* Workspaces Sub-Tab */}
+      {activeTab === "workspaces" && (
+        <div className="grid gap-6 lg:grid-cols-3">
+          {/* Workspaces List */}
+          <div className="lg:col-span-2 space-y-4">
+            <div className="flex items-center justify-between">
+              <h2 className="text-lg font-semibold text-gray-900">Workspaces ({workspaces.length})</h2>
+              <button
+                onClick={() => { setShowWorkspaceForm(true); setEditingWorkspace(null); setWorkspaceForm({ name: "", display_name: "", description: "" }); }}
+                className="inline-flex items-center gap-2 rounded-lg bg-nhs-blue px-4 py-2 text-sm font-medium text-white hover:bg-nhs-dark-blue"
+              >
+                <Plus className="h-4 w-4" />
+                New Workspace
+              </button>
+            </div>
+
             {loading ? (
-              Array.from({ length: 3 }).map((_, i) => (
-                <div key={i} className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
-                  <div className="h-5 w-40 animate-pulse rounded bg-gray-200" />
-                  <div className="mt-3 h-4 w-full animate-pulse rounded bg-gray-200" />
-                </div>
-              ))
-            ) : (
-              routes.map((route) => (
-                <div
-                  key={route.id}
-                  onClick={() => setSelectedRoute(route)}
-                  className={`cursor-pointer rounded-xl border bg-white p-5 shadow-sm transition-all hover:shadow-md ${
-                    selectedRoute?.id === route.id ? "border-nhs-blue ring-1 ring-nhs-blue" : "border-gray-200"
-                  }`}
-                >
-                  <div className="flex items-start justify-between">
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <h3 className="text-sm font-semibold text-gray-900">{route.name}</h3>
-                        <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${route.enabled ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-500"}`}>
-                          {route.enabled ? "Enabled" : "Disabled"}
-                        </span>
+              <div className="space-y-3">
+                {[1, 2, 3].map((i) => (
+                  <div key={i} className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
+                    <div className="h-5 w-40 animate-pulse rounded bg-gray-200" />
+                    <div className="mt-2 h-4 w-64 animate-pulse rounded bg-gray-200" />
+                  </div>
+                ))}
+              </div>
+            ) : workspaces.length > 0 ? (
+              <div className="space-y-3">
+                {workspaces.map((ws) => (
+                  <div
+                    key={ws.id}
+                    onClick={() => setSelectedWorkspace(ws)}
+                    className={`cursor-pointer rounded-xl border bg-white p-5 shadow-sm transition-all hover:shadow-md ${
+                      selectedWorkspace?.id === ws.id ? "border-nhs-blue ring-1 ring-nhs-blue" : "border-gray-200"
+                    }`}
+                  >
+                    <div className="flex items-start justify-between">
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <Building2 className="h-4 w-4 text-gray-400" />
+                          <h3 className="text-sm font-semibold text-gray-900">{ws.display_name}</h3>
+                        </div>
+                        <p className="mt-1 text-xs text-gray-500">{ws.description || "No description"}</p>
+                        <p className="mt-2 text-xs text-gray-400">ID: {ws.name}</p>
                       </div>
-                      <p className="mt-1 text-xs text-gray-500">{route.description}</p>
+                      <ChevronRight className="h-5 w-5 text-gray-400" />
                     </div>
-                    <ChevronRight className="h-5 w-5 text-gray-400" />
                   </div>
-                  <div className="mt-4 flex items-center gap-2 text-xs">
-                    <span className="rounded bg-green-50 px-2 py-1 text-green-700">{route.source}</span>
-                    <ArrowRight className="h-3 w-3 text-gray-400" />
-                    {route.transformers.length > 0 && (
-                      <>
-                        <span className="rounded bg-purple-50 px-2 py-1 text-purple-700">
-                          {route.transformers.length} transformer{route.transformers.length > 1 ? "s" : ""}
-                        </span>
-                        <ArrowRight className="h-3 w-3 text-gray-400" />
-                      </>
-                    )}
-                    <span className="rounded bg-blue-50 px-2 py-1 text-blue-700">{route.destination}</span>
-                  </div>
-                </div>
-              ))
+                ))}
+              </div>
+            ) : (
+              <div className="rounded-xl border border-gray-200 bg-white p-8 text-center shadow-sm">
+                <Building2 className="mx-auto h-12 w-12 text-gray-300" />
+                <p className="mt-4 text-sm font-medium text-gray-900">No workspaces found</p>
+                <p className="mt-1 text-xs text-gray-500">Create your first workspace to get started</p>
+              </div>
             )}
           </div>
 
-          {/* Route Details */}
+          {/* Workspace Form / Details */}
           <div className="rounded-xl border border-gray-200 bg-white shadow-sm">
-            {selectedRoute ? (
+            {showWorkspaceForm || editingWorkspace ? (
               <div>
                 <div className="flex items-center justify-between border-b border-gray-200 px-6 py-4">
-                  <h2 className="text-lg font-semibold text-gray-900">{selectedRoute.name}</h2>
+                  <h2 className="text-lg font-semibold text-gray-900">
+                    {editingWorkspace ? "Edit Workspace" : "New Workspace"}
+                  </h2>
+                  <button onClick={() => { setShowWorkspaceForm(false); setEditingWorkspace(null); }} className="text-gray-400 hover:text-gray-600">
+                    <X className="h-5 w-5" />
+                  </button>
+                </div>
+                <div className="space-y-4 p-6">
+                  {!editingWorkspace && (
+                    <div>
+                      <label className="block text-xs font-medium text-gray-700">Name (ID)</label>
+                      <input
+                        type="text"
+                        value={workspaceForm.name}
+                        onChange={(e) => setWorkspaceForm({ ...workspaceForm, name: e.target.value })}
+                        placeholder="my-workspace"
+                        className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-nhs-blue focus:outline-none focus:ring-1 focus:ring-nhs-blue"
+                      />
+                    </div>
+                  )}
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700">Display Name</label>
+                    <input
+                      type="text"
+                      value={workspaceForm.display_name}
+                      onChange={(e) => setWorkspaceForm({ ...workspaceForm, display_name: e.target.value })}
+                      placeholder="My Workspace"
+                      className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-nhs-blue focus:outline-none focus:ring-1 focus:ring-nhs-blue"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700">Description</label>
+                    <textarea
+                      value={workspaceForm.description}
+                      onChange={(e) => setWorkspaceForm({ ...workspaceForm, description: e.target.value })}
+                      placeholder="Optional description..."
+                      rows={3}
+                      className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-nhs-blue focus:outline-none focus:ring-1 focus:ring-nhs-blue"
+                    />
+                  </div>
+                  <button
+                    onClick={editingWorkspace ? handleUpdateWorkspace : handleCreateWorkspace}
+                    disabled={saving || (!editingWorkspace && !workspaceForm.name) || !workspaceForm.display_name}
+                    className="w-full inline-flex items-center justify-center gap-2 rounded-lg bg-nhs-blue px-4 py-2 text-sm font-medium text-white hover:bg-nhs-dark-blue disabled:opacity-50"
+                  >
+                    {saving ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+                    {editingWorkspace ? "Update Workspace" : "Create Workspace"}
+                  </button>
+                </div>
+              </div>
+            ) : selectedWorkspace ? (
+              <div>
+                <div className="flex items-center justify-between border-b border-gray-200 px-6 py-4">
+                  <h2 className="text-lg font-semibold text-gray-900">{selectedWorkspace.display_name}</h2>
                   <div className="flex items-center gap-2">
-                    <button className="rounded-lg p-2 text-gray-400 hover:bg-gray-100 hover:text-gray-600">
+                    <button onClick={() => startEditWorkspace(selectedWorkspace)} className="rounded-lg p-2 text-gray-400 hover:bg-gray-100 hover:text-gray-600">
                       <Edit className="h-4 w-4" />
                     </button>
-                    <button className="rounded-lg p-2 text-gray-400 hover:bg-red-50 hover:text-red-600">
+                    <button onClick={() => handleDeleteWorkspace(selectedWorkspace)} className="rounded-lg p-2 text-gray-400 hover:bg-red-50 hover:text-red-600">
                       <Trash2 className="h-4 w-4" />
                     </button>
                   </div>
                 </div>
-                <div className="space-y-6 p-6">
+                <div className="space-y-4 p-6">
+                  <div>
+                    <h3 className="text-xs font-medium uppercase text-gray-500">ID</h3>
+                    <p className="mt-1 font-mono text-sm text-gray-900">{selectedWorkspace.name}</p>
+                  </div>
                   <div>
                     <h3 className="text-xs font-medium uppercase text-gray-500">Description</h3>
-                    <p className="mt-1 text-sm text-gray-900">{selectedRoute.description}</p>
+                    <p className="mt-1 text-sm text-gray-900">{selectedWorkspace.description || "No description"}</p>
                   </div>
                   <div>
-                    <h3 className="text-xs font-medium uppercase text-gray-500">Production</h3>
-                    <p className="mt-1 text-sm text-gray-900">{selectedRoute.productionName}</p>
+                    <h3 className="text-xs font-medium uppercase text-gray-500">Created</h3>
+                    <p className="mt-1 text-sm text-gray-900">{selectedWorkspace.created_at ? new Date(selectedWorkspace.created_at).toLocaleString() : "-"}</p>
                   </div>
-                  <div>
-                    <h3 className="text-xs font-medium uppercase text-gray-500">Route ID</h3>
-                    <p className="mt-1 font-mono text-sm text-gray-900">{selectedRoute.id}</p>
-                  </div>
-                  <div>
-                    <h3 className="text-xs font-medium uppercase text-gray-500">Flow</h3>
-                    <div className="mt-3 space-y-2">
-                      <div className="flex items-center gap-3">
-                        <div className="flex h-8 w-8 items-center justify-center rounded-full bg-green-100">
-                          <span className="text-xs font-bold text-green-700">1</span>
-                        </div>
-                        <div className="flex-1 rounded-lg border border-gray-200 px-3 py-2">
-                          <p className="text-xs text-gray-500">Source</p>
-                          <p className="text-sm font-medium text-gray-900">{selectedRoute.source}</p>
-                        </div>
-                      </div>
-                      {selectedRoute.transformers.map((t, i) => (
-                        <div key={t} className="flex items-center gap-3">
-                          <div className="flex h-8 w-8 items-center justify-center rounded-full bg-purple-100">
-                            <span className="text-xs font-bold text-purple-700">{i + 2}</span>
-                          </div>
-                          <div className="flex-1 rounded-lg border border-gray-200 px-3 py-2">
-                            <p className="text-xs text-gray-500">Transformer</p>
-                            <p className="text-sm font-medium text-gray-900">{t}</p>
-                          </div>
-                        </div>
-                      ))}
-                      <div className="flex items-center gap-3">
-                        <div className="flex h-8 w-8 items-center justify-center rounded-full bg-blue-100">
-                          <span className="text-xs font-bold text-blue-700">{selectedRoute.transformers.length + 2}</span>
-                        </div>
-                        <div className="flex-1 rounded-lg border border-gray-200 px-3 py-2">
-                          <p className="text-xs text-gray-500">Destination</p>
-                          <p className="text-sm font-medium text-gray-900">{selectedRoute.destination}</p>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-3 pt-4">
-                    <button className="inline-flex flex-1 items-center justify-center gap-2 rounded-lg bg-nhs-blue px-4 py-2 text-sm font-medium text-white hover:bg-nhs-dark-blue">
-                      <Save className="h-4 w-4" />
-                      Save Changes
-                    </button>
-                  </div>
+                  <Link
+                    href={`/projects?workspace=${selectedWorkspace.id}`}
+                    className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                  >
+                    <FolderTree className="h-4 w-4" />
+                    View Projects
+                  </Link>
                 </div>
               </div>
             ) : (
-              <div className="flex h-96 flex-col items-center justify-center text-center">
-                <GitBranch className="h-12 w-12 text-gray-300" />
-                <p className="mt-4 text-sm font-medium text-gray-900">Select a route</p>
-                <p className="mt-1 text-xs text-gray-500">Click on a route to view and edit its configuration</p>
+              <div className="flex h-80 flex-col items-center justify-center text-center p-6">
+                <Building2 className="h-12 w-12 text-gray-300" />
+                <p className="mt-4 text-sm font-medium text-gray-900">Select a workspace</p>
+                <p className="mt-1 text-xs text-gray-500">Click on a workspace to view details</p>
               </div>
             )}
           </div>
         </div>
       )}
 
+      {/* Item Types Sub-Tab */}
       {activeTab === "items" && (
         <div className="space-y-4">
           <div className="flex items-center justify-between">
+            <h2 className="text-lg font-semibold text-gray-900">Registered Item Types ({itemTypes.length})</h2>
             <div className="flex items-center gap-2">
               <span className="rounded-full bg-green-100 px-3 py-1 text-xs font-medium text-green-700">
-                Receivers ({items.filter((i) => i.type === "receiver").length})
+                Services ({itemTypes.filter((t) => t.category === "service").length})
               </span>
               <span className="rounded-full bg-blue-100 px-3 py-1 text-xs font-medium text-blue-700">
-                Senders ({items.filter((i) => i.type === "sender").length})
+                Operations ({itemTypes.filter((t) => t.category === "operation").length})
               </span>
               <span className="rounded-full bg-purple-100 px-3 py-1 text-xs font-medium text-purple-700">
-                Transformers ({items.filter((i) => i.type === "transformer").length})
+                Processes ({itemTypes.filter((t) => t.category === "process").length})
               </span>
             </div>
-            <button className="inline-flex items-center gap-2 rounded-lg bg-nhs-blue px-4 py-2 text-sm font-medium text-white hover:bg-nhs-dark-blue">
-              <Plus className="h-4 w-4" />
-              New Item
-            </button>
           </div>
 
-          <div className="rounded-xl border border-gray-200 bg-white shadow-sm">
+          <div className="rounded-xl border border-gray-200 bg-white shadow-sm overflow-hidden">
             <table className="w-full">
               <thead>
                 <tr className="border-b border-gray-200 bg-gray-50">
                   <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">Name</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">Type</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">Class</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">Status</th>
-                  <th className="px-4 py-3 text-right text-xs font-medium uppercase text-gray-500">Actions</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">Category</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">Class Name</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">Description</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
@@ -323,47 +400,100 @@ export default function ConfigurePage() {
                       <td className="px-4 py-3"><div className="h-4 w-32 animate-pulse rounded bg-gray-200" /></td>
                       <td className="px-4 py-3"><div className="h-5 w-20 animate-pulse rounded bg-gray-200" /></td>
                       <td className="px-4 py-3"><div className="h-4 w-48 animate-pulse rounded bg-gray-200" /></td>
-                      <td className="px-4 py-3"><div className="h-5 w-16 animate-pulse rounded bg-gray-200" /></td>
-                      <td className="px-4 py-3"><div className="h-4 w-16 animate-pulse rounded bg-gray-200" /></td>
+                      <td className="px-4 py-3"><div className="h-4 w-64 animate-pulse rounded bg-gray-200" /></td>
+                    </tr>
+                  ))
+                ) : itemTypes.length > 0 ? (
+                  itemTypes.map((itemType) => (
+                    <tr key={itemType.type} className="hover:bg-gray-50">
+                      <td className="px-4 py-3">
+                        <p className="text-sm font-medium text-gray-900">{itemType.name}</p>
+                      </td>
+                      <td className="px-4 py-3">
+                        <span className={`rounded-full px-2 py-0.5 text-xs font-medium capitalize ${getItemTypeIcon(itemType.category)}`}>
+                          {itemType.category}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3">
+                        <code className="text-xs text-gray-600">{itemType.li_class_name}</code>
+                      </td>
+                      <td className="px-4 py-3">
+                        <p className="text-xs text-gray-500 truncate max-w-xs">{itemType.description || "-"}</p>
+                      </td>
                     </tr>
                   ))
                 ) : (
-                  items.map((item) => (
-                    <tr key={item.id} className="hover:bg-gray-50">
-                      <td className="px-4 py-3">
-                        <p className="text-sm font-medium text-gray-900">{item.name}</p>
-                      </td>
-                      <td className="px-4 py-3">
-                        <span className={`rounded-full px-2 py-0.5 text-xs font-medium capitalize ${getTypeColor(item.type)}`}>
-                          {item.type}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3">
-                        <code className="text-xs text-gray-600">{item.className}</code>
-                      </td>
-                      <td className="px-4 py-3">
-                        <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${item.enabled ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-500"}`}>
-                          {item.enabled ? "Enabled" : "Disabled"}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3 text-right">
-                        <div className="flex items-center justify-end gap-1">
-                          <button className="rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600">
-                            <Settings className="h-4 w-4" />
-                          </button>
-                          <button className="rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600">
-                            <Edit className="h-4 w-4" />
-                          </button>
-                          <button className="rounded p-1 text-gray-400 hover:bg-red-50 hover:text-red-600">
-                            <Trash2 className="h-4 w-4" />
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))
+                  <tr>
+                    <td colSpan={4} className="px-4 py-8 text-center text-sm text-gray-500">
+                      No item types registered
+                    </td>
+                  </tr>
                 )}
               </tbody>
             </table>
+          </div>
+        </div>
+      )}
+
+      {/* Schemas Sub-Tab */}
+      {activeTab === "schemas" && (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <h2 className="text-lg font-semibold text-gray-900">HL7 Schemas</h2>
+          </div>
+
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+            {["2.3", "2.4", "2.5", "2.5.1", "2.6", "2.7"].map((version) => (
+              <div key={version} className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="rounded-lg bg-blue-100 p-2">
+                      <Layers className="h-5 w-5 text-blue-700" />
+                    </div>
+                    <div>
+                      <h3 className="text-sm font-semibold text-gray-900">HL7 v{version}</h3>
+                      <p className="text-xs text-gray-500">Standard schema</p>
+                    </div>
+                  </div>
+                  <span className="rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700">
+                    Active
+                  </span>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
+            <h3 className="text-sm font-semibold text-gray-900">FHIR Schemas</h3>
+            <p className="mt-2 text-sm text-gray-500">FHIR R4 schema support is planned for a future release.</p>
+          </div>
+        </div>
+      )}
+
+      {/* Routes Sub-Tab */}
+      {activeTab === "routes" && (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <h2 className="text-lg font-semibold text-gray-900">Routing Rules</h2>
+            <button className="inline-flex items-center gap-2 rounded-lg bg-nhs-blue px-4 py-2 text-sm font-medium text-white hover:bg-nhs-dark-blue">
+              <Plus className="h-4 w-4" />
+              New Rule
+            </button>
+          </div>
+
+          <div className="rounded-xl border border-gray-200 bg-white p-8 text-center shadow-sm">
+            <GitBranch className="mx-auto h-12 w-12 text-gray-300" />
+            <p className="mt-4 text-sm font-medium text-gray-900">Routing Rules</p>
+            <p className="mt-1 text-xs text-gray-500">
+              Configure routing rules within individual projects. Navigate to a project to manage its routing configuration.
+            </p>
+            <Link
+              href="/projects"
+              className="mt-4 inline-flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+            >
+              <FolderTree className="h-4 w-4" />
+              Go to Projects
+            </Link>
           </div>
         </div>
       )}
