@@ -287,20 +287,34 @@ The original HIE engine provides the foundation but needs integration with LI En
 
 See `docs/UI_DESIGN_SPEC.md` for complete design specification.
 
-### Phase 5.1: Message Storage & Viewer 🔲 PENDING
+### Phase 5.1: Message Storage & Viewer ✅ COMPLETE
 
 | Task | Status | Effort | Notes |
 |------|--------|--------|-------|
-| Create messages table | 🔲 Pending | 1h | PostgreSQL schema with permanent storage |
-| Add message storage to adapters | 🔲 Pending | 2h | Store on receive/send |
-| Create messages API endpoints | 🔲 Pending | 2h | List, detail, resend |
-| Connect Messages tab to API | 🔲 Pending | 3h | Replace mock data |
-| Add clickable metrics | 🔲 Pending | 1h | Navigate to filtered Messages |
+| Create messages table | ✅ Complete | 1h | `portal_messages` table in PostgreSQL |
+| Add message storage service | ✅ Complete | 2h | `hie/api/services/message_store.py` |
+| Create messages API endpoints | ✅ Complete | 2h | List, detail, stats, resend, housekeeping |
+| Connect Messages tab to API | ✅ Complete | 3h | Real-time data with filters |
+| Add clickable metrics | ✅ Complete | 1h | Navigate to Messages tab with project/item filter |
 
-**Design Decisions:**
-- Messages stored permanently in PostgreSQL (manual/automated housekeeping for purging)
-- HL7 syntax highlighting with color-coded segments
+**Implementation Details:**
+- `portal_messages` table stores messages permanently with project/item context
+- Message storage service provides async storage functions
+- API endpoints: `/api/projects/{id}/messages`, `/messages/stats`, `/messages/{id}`, `/messages/{id}/resend`
+- Messages tab shows real data with project selector, status/direction filters
+- HL7 syntax highlighting with color-coded segments (MSH=blue, PID=green, etc.)
 - Click item metrics → navigate to Messages tab with filter
+- Housekeeping endpoint for purging old messages
+
+**Files Changed:**
+- `scripts/init-db.sql` - Added `portal_messages` table schema
+- `hie/api/repositories.py` - Added `PortalMessageRepository`
+- `hie/api/routes/messages.py` - New messages API routes
+- `hie/api/services/message_store.py` - Message storage service
+- `hie/api/routes/items.py` - Integrated message storage in test_item
+- `portal/src/lib/api-v2.ts` - Added message API functions
+- `portal/src/app/(app)/messages/page.tsx` - Connected to real API
+- `portal/src/app/(app)/projects/[id]/page.tsx` - Clickable metrics
 
 ### Phase 5.2: Dashboard Real Data 🔲 PENDING
 

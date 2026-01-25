@@ -1,9 +1,68 @@
 # HIE Release Notes
 
+## v1.3.1 - Message Storage & Viewer Implementation
+
+**Release Date:** January 25, 2026  
+**Status:** Phase 5.1 Complete
+
+---
+
+### Overview
+
+This release implements Phase 5.1 of the Enterprise UI Design - Message Storage & Viewer. Messages are now stored permanently in PostgreSQL and can be viewed, filtered, and resent through the Messages tab.
+
+---
+
+### New Features
+
+#### Message Storage
+- **Permanent Storage** - All messages stored in `portal_messages` PostgreSQL table
+- **Message Tracking** - Track project, item, direction, status, latency, ACK responses
+- **Housekeeping API** - `DELETE /api/messages/housekeeping?days=30` for purging old messages
+
+#### Messages Tab - Real-Time Viewer
+- **Project Selector** - Filter messages by project
+- **Status Filters** - Filter by sent, completed, failed, error, received, processing
+- **Direction Filters** - Filter by inbound/outbound
+- **HL7 Syntax Highlighting** - Color-coded segments in detail view
+- **ACK Display** - View ACK responses with type badges (AA, CA, AR, AE, CR)
+- **Message Resend** - Retry failed messages with one click
+
+#### Clickable Metrics
+- **Item Metrics Navigation** - Click message counts on project items to navigate to filtered Messages view
+
+---
+
+### API Endpoints
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/projects/{id}/messages` | GET | List messages with filters |
+| `/api/projects/{id}/messages/stats` | GET | Get message statistics |
+| `/api/projects/{id}/messages/{msg_id}` | GET | Get message detail with content |
+| `/api/projects/{id}/messages/{msg_id}/resend` | POST | Resend a message |
+| `/api/messages/housekeeping` | DELETE | Purge old messages |
+
+---
+
+### Files Changed
+
+- `scripts/init-db.sql` - Added `portal_messages` table schema
+- `hie/api/repositories.py` - Added `PortalMessageRepository`
+- `hie/api/routes/messages.py` - New messages API routes
+- `hie/api/services/message_store.py` - Message storage service
+- `hie/api/routes/items.py` - Integrated message storage in test_item
+- `hie/api/server.py` - Register message routes and storage service
+- `portal/src/lib/api-v2.ts` - Added message API functions
+- `portal/src/app/(app)/messages/page.tsx` - Connected to real API
+- `portal/src/app/(app)/projects/[id]/page.tsx` - Clickable metrics
+
+---
+
 ## v1.3.0 - Enterprise UI Design Release
 
 **Release Date:** January 25, 2026  
-**Status:** Design Complete - Ready for Implementation
+**Status:** Design Complete
 
 ---
 

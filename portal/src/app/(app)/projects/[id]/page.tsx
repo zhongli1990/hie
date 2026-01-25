@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { useParams } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
 import {
   getProject,
@@ -719,12 +719,25 @@ function ItemDetailPanel({ item, itemTypes, projectId, existingItems, onUpdate, 
         <div>
           <h3 className="text-sm font-medium text-gray-900 mb-3">Runtime Metrics</h3>
           <div className="grid grid-cols-3 gap-4">
-            {Object.entries(item.metrics).map(([key, value]) => (
-              <div key={key} className="bg-blue-50 rounded-lg p-4">
-                <p className="text-xs font-medium text-blue-600 uppercase">{key.replace(/_/g, ' ')}</p>
-                <p className="mt-1 text-lg font-semibold text-blue-900">{String(value)}</p>
-              </div>
-            ))}
+            {Object.entries(item.metrics).map(([key, value]) => {
+              const isMessageMetric = key.includes('messages');
+              const numValue = Number(value);
+              return (
+                <div 
+                  key={key} 
+                  className={`bg-blue-50 rounded-lg p-4 ${isMessageMetric && numValue > 0 ? 'cursor-pointer hover:bg-blue-100 transition-colors' : ''}`}
+                  onClick={() => {
+                    if (isMessageMetric && numValue > 0) {
+                      window.location.href = `/messages?project=${projectId}&item=${item.name}`;
+                    }
+                  }}
+                  title={isMessageMetric && numValue > 0 ? 'Click to view messages' : undefined}
+                >
+                  <p className="text-xs font-medium text-blue-600 uppercase">{key.replace(/_/g, ' ')}</p>
+                  <p className={`mt-1 text-lg font-semibold text-blue-900 ${isMessageMetric && numValue > 0 ? 'underline' : ''}`}>{String(value)}</p>
+                </div>
+              );
+            })}
           </div>
         </div>
       )}

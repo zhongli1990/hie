@@ -574,3 +574,180 @@ class RoutingRuleRepository:
         query = "DELETE FROM project_routing_rules WHERE id = $1"
         result = await self._pool.execute(query, rule_id)
         return result == "DELETE 1"
+
+
+class PortalMessageRepository:
+    """Repository for portal message tracking (Messages tab viewer)."""
+    
+    def __init__(self, pool: asyncpg.Pool):
+        self._pool = pool
+    
+    async def create(
+        self,
+        project_id: UUID,
+        item_name: str,
+        item_type: str,
+        direction: str,
+        raw_content: bytes | None = None,
+        message_type: str | None = None,
+        correlation_id: str | None = None,
+        status: str = "received",
+        source_item: str | None = None,
+        destination_item: str | None = None,
+        remote_host: str | None = None,
+        remote_port: int | None = None,
+        metadata: dict | None = None,
+    ) -> dict:
+        """Create a new portal message record."""
+        content_preview = None
+        content_size = 0
+        if raw_content:
+            content_size = len(raw_content)
+            # Create preview (first 500 chars, replace control chars)
+            try:
+                preview = raw_content.decode('utf-8', errors='replace')[:500]
+                content_preview = preview.replace('\r', '\\r').replace('\n', '\\n')
+            except:
+                content_preview = f"[Binary data: {content_size} bytes]"
+        
+        query = """
+            INSERT INTO portal_messages (
+                project_id, item_name, item_type, direction, message_type,
+                correlation_id, status, raw_content, content_preview, content_size,
+                source_item, destination_item, remote_host, remote_port, metadata
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+            RETURNING *
+        """
+        row = await self._pool.fetchrow(
+            query, project_id, item_name, item_type, direction, message_type,
+            correlation_id, status, raw_content, content_preview, content_size,
+            source_item, destination_item, remote_host, remote_port,
+            json.dumps(metadata or {})
+        )
+        return dict(row) if row else {}
+    
+    async def update_status(
+        self,
+        message_id: UUID,
+        status: str,
+        ack_content: bytes | None = None,
+        ack_type: str | None = None,
+        error_message: str | None = None,
+        latency_ms: int | None = None,
+    ) -> Optional[dict]:
+        """Update message status after processing."""
+        completed_at = None
+        if status in ('sent', 'completed', 'failed', 'error'):
+            completed_at = datetime.now(timezone.utc)
+        
+        query = """
+            UPDATE portal_messages
+            SET status = $2, ack_content = $3, ack_type = $4, 
+                error_message = $5, latency_ms = $6, completed_at = $7
+            WHERE id = $1
+            RETURNING *
+        """
+        row = await self._pool.fetchrow(
+            query, message_id, status, ack_content, ack_type,
+            error_message, latency_ms, completed_at
+        )
+        return dict(row) if row else None
+    
+    async def get_by_id(self, message_id: UUID) -> Optional[dict]:
+        """Get message by ID."""
+        query = "SELECT * FROM portal_messages WHERE id = $1"
+        row = await self._pool.fetchrow(query, message_id)
+        return dict(row) if row else None
+    
+    async def list_by_project(
+        self,
+        project_id: UUID,
+        item_name: str | None = None,
+        status: str | None = None,
+        message_type: str | None = None,
+        direction: str | None = None,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> tuple[list[dict], int]:
+        """List messages for a project with filters."""
+        conditions = ["project_id = $1"]
+        params = [project_id]
+        idx = 2
+        
+        if item_name:
+            conditions.append(f"item_name = ${idx}")
+            params.append(item_name)
+            idx += 1
+        
+        if status:
+            conditions.append(f"status = ${idx}")
+            params.append(status)
+            idx += 1
+        
+        if message_type:
+            conditions.append(f"message_type ILIKE ${idx}")
+            params.append(f"%{message_type}%")
+            idx += 1
+        
+        if direction:
+            conditions.append(f"direction = ${idx}")
+            params.append(direction)
+            idx += 1
+        
+        where_clause = " AND ".join(conditions)
+        
+        # Get total count
+        count_query = f"SELECT COUNT(*) FROM portal_messages WHERE {where_clause}"
+        total = await self._pool.fetchval(count_query, *params)
+        
+        # Get paginated results
+        query = f"""
+            SELECT id, project_id, item_name, item_type, direction, message_type,
+                   correlation_id, status, content_preview, content_size,
+                   source_item, destination_item, remote_host, remote_port,
+                   ack_type, error_message, latency_ms, retry_count,
+                   received_at, completed_at
+            FROM portal_messages
+            WHERE {where_clause}
+            ORDER BY received_at DESC
+            LIMIT ${idx} OFFSET ${idx + 1}
+        """
+        params.extend([limit, offset])
+        rows = await self._pool.fetch(query, *params)
+        
+        return [dict(r) for r in rows], total or 0
+    
+    async def get_content(self, message_id: UUID) -> Optional[dict]:
+        """Get full message content including raw bytes."""
+        query = """
+            SELECT id, raw_content, ack_content, content_size
+            FROM portal_messages WHERE id = $1
+        """
+        row = await self._pool.fetchrow(query, message_id)
+        return dict(row) if row else None
+    
+    async def delete_old_messages(self, days: int = 30) -> int:
+        """Delete messages older than specified days (housekeeping)."""
+        query = """
+            DELETE FROM portal_messages
+            WHERE received_at < NOW() - INTERVAL '%s days'
+        """ % days
+        result = await self._pool.execute(query)
+        return int(result.split()[1]) if result else 0
+    
+    async def get_stats(self, project_id: UUID) -> dict:
+        """Get message statistics for a project."""
+        query = """
+            SELECT 
+                COUNT(*) as total,
+                COUNT(*) FILTER (WHERE status = 'completed' OR status = 'sent') as successful,
+                COUNT(*) FILTER (WHERE status = 'failed' OR status = 'error') as failed,
+                COUNT(*) FILTER (WHERE status = 'processing') as processing,
+                COUNT(*) FILTER (WHERE direction = 'inbound') as inbound,
+                COUNT(*) FILTER (WHERE direction = 'outbound') as outbound,
+                AVG(latency_ms) FILTER (WHERE latency_ms IS NOT NULL) as avg_latency_ms
+            FROM portal_messages
+            WHERE project_id = $1
+        """
+        row = await self._pool.fetchrow(query, project_id)
+        return dict(row) if row else {}

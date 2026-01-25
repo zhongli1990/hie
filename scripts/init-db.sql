@@ -375,3 +375,51 @@ DROP TRIGGER IF EXISTS update_engine_instances_updated_at ON engine_instances;
 CREATE TRIGGER update_engine_instances_updated_at
     BEFORE UPDATE ON engine_instances
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+-- ============================================================================
+-- Portal Message Tracking (for Messages Tab viewer)
+-- ============================================================================
+
+-- Tracks messages flowing through the LI Engine with project/item context
+CREATE TABLE IF NOT EXISTS portal_messages (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    item_name VARCHAR(255) NOT NULL,
+    item_type VARCHAR(50) NOT NULL CHECK (item_type IN ('service', 'process', 'operation')),
+    direction VARCHAR(20) NOT NULL CHECK (direction IN ('inbound', 'outbound', 'internal')),
+    message_type VARCHAR(100),
+    correlation_id VARCHAR(255),
+    status VARCHAR(50) NOT NULL DEFAULT 'received' CHECK (status IN ('received', 'processing', 'sent', 'completed', 'failed', 'error')),
+    raw_content BYTEA,
+    content_preview TEXT,
+    content_size INTEGER DEFAULT 0,
+    source_item VARCHAR(255),
+    destination_item VARCHAR(255),
+    remote_host VARCHAR(255),
+    remote_port INTEGER,
+    ack_content BYTEA,
+    ack_type VARCHAR(20),
+    error_message TEXT,
+    latency_ms INTEGER,
+    retry_count INTEGER DEFAULT 0,
+    received_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    completed_at TIMESTAMPTZ,
+    metadata JSONB DEFAULT '{}'::jsonb,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- Indexes for portal message queries
+CREATE INDEX IF NOT EXISTS idx_portal_messages_project ON portal_messages(project_id);
+CREATE INDEX IF NOT EXISTS idx_portal_messages_item ON portal_messages(item_name);
+CREATE INDEX IF NOT EXISTS idx_portal_messages_status ON portal_messages(status);
+CREATE INDEX IF NOT EXISTS idx_portal_messages_type ON portal_messages(message_type);
+CREATE INDEX IF NOT EXISTS idx_portal_messages_direction ON portal_messages(direction);
+CREATE INDEX IF NOT EXISTS idx_portal_messages_received ON portal_messages(received_at DESC);
+CREATE INDEX IF NOT EXISTS idx_portal_messages_correlation ON portal_messages(correlation_id);
+
+-- Trigger for auto-updating timestamps
+DROP TRIGGER IF EXISTS update_portal_messages_updated_at ON portal_messages;
+CREATE TRIGGER update_portal_messages_updated_at
+    BEFORE UPDATE ON portal_messages
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();

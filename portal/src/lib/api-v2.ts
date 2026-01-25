@@ -408,6 +408,92 @@ export async function testItem(projectId: string, itemName: string, message?: st
   });
 }
 
+// Portal Message APIs
+
+export interface PortalMessage {
+  id: string;
+  project_id: string;
+  item_name: string;
+  item_type: string;
+  direction: string;
+  message_type: string | null;
+  correlation_id: string | null;
+  status: string;
+  content_preview: string | null;
+  content_size: number;
+  source_item: string | null;
+  destination_item: string | null;
+  remote_host: string | null;
+  remote_port: number | null;
+  ack_type: string | null;
+  error_message: string | null;
+  latency_ms: number | null;
+  retry_count: number;
+  received_at: string;
+  completed_at: string | null;
+}
+
+export interface PortalMessageDetail extends PortalMessage {
+  raw_content_base64?: string;
+  raw_content_text?: string;
+  ack_content_base64?: string;
+  ack_content_text?: string;
+}
+
+export interface PortalMessageListResponse {
+  messages: PortalMessage[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+export interface PortalMessageStats {
+  total: number;
+  successful: number;
+  failed: number;
+  processing: number;
+  inbound: number;
+  outbound: number;
+  avg_latency_ms: number | null;
+}
+
+export async function listMessages(
+  projectId: string,
+  options?: {
+    item?: string;
+    status?: string;
+    type?: string;
+    direction?: string;
+    limit?: number;
+    offset?: number;
+  }
+): Promise<PortalMessageListResponse> {
+  const params = new URLSearchParams();
+  if (options?.item) params.set('item', options.item);
+  if (options?.status) params.set('status', options.status);
+  if (options?.type) params.set('type', options.type);
+  if (options?.direction) params.set('direction', options.direction);
+  if (options?.limit) params.set('limit', String(options.limit));
+  if (options?.offset) params.set('offset', String(options.offset));
+  
+  const query = params.toString();
+  return request(`/api/projects/${projectId}/messages${query ? `?${query}` : ''}`);
+}
+
+export async function getMessage(projectId: string, messageId: string): Promise<PortalMessageDetail> {
+  return request(`/api/projects/${projectId}/messages/${messageId}`);
+}
+
+export async function getMessageStats(projectId: string): Promise<PortalMessageStats> {
+  return request(`/api/projects/${projectId}/messages/stats`);
+}
+
+export async function resendMessage(projectId: string, messageId: string): Promise<{ status: string; message_id: string; ack?: string }> {
+  return request(`/api/projects/${projectId}/messages/${messageId}/resend`, {
+    method: 'POST',
+  });
+}
+
 // Connection APIs
 
 export async function listConnections(projectId: string): Promise<{ connections: Connection[]; total: number }> {
@@ -517,6 +603,11 @@ export const apiV2 = {
   listItemTypes,
   getItemType,
   getItemTypeByClass,
+  // Portal Messages
+  listMessages,
+  getMessage,
+  getMessageStats,
+  resendMessage,
 };
 
 export default apiV2;

@@ -353,7 +353,35 @@ def setup_item_routes(app: web.Application, db_pool) -> None:
             adapter = host._adapter
             if adapter and hasattr(adapter, 'send'):
                 msg_bytes = hl7_message.encode() if isinstance(hl7_message, str) else hl7_message
+                
+                # Track timing for latency
+                import time
+                start_time = time.time()
+                
                 ack = await adapter.send(msg_bytes)
+                
+                latency_ms = int((time.time() - start_time) * 1000)
+                
+                # Store message in portal_messages table
+                try:
+                    from hie.api.services.message_store import store_and_complete_message
+                    remote_host = getattr(adapter, '_remote_host', None)
+                    remote_port = getattr(adapter, '_remote_port', None)
+                    await store_and_complete_message(
+                        project_id=proj_uuid,
+                        item_name=item_name,
+                        item_type="operation",
+                        direction="outbound",
+                        raw_content=msg_bytes,
+                        status="sent",
+                        ack_content=ack if isinstance(ack, bytes) else ack.encode() if ack else None,
+                        latency_ms=latency_ms,
+                        remote_host=remote_host,
+                        remote_port=remote_port,
+                    )
+                except Exception as store_err:
+                    logger.warning("message_store_failed", error=str(store_err))
+                
                 return web.json_response({
                     "status": "sent",
                     "item_name": item_name,
@@ -363,6 +391,23 @@ def setup_item_routes(app: web.Application, db_pool) -> None:
                 return web.json_response({"error": "Item does not support sending messages. Only outbound operations can be tested."}, status=400)
         except Exception as e:
             logger.error("test_item_failed", item_name=item_name, error=str(e))
+            
+            # Store failed message
+            try:
+                from hie.api.services.message_store import store_and_complete_message
+                msg_bytes = hl7_message.encode() if isinstance(hl7_message, str) else hl7_message
+                await store_and_complete_message(
+                    project_id=proj_uuid,
+                    item_name=item_name,
+                    item_type="operation",
+                    direction="outbound",
+                    raw_content=msg_bytes,
+                    status="failed",
+                    error_message=str(e),
+                )
+            except Exception as store_err:
+                logger.warning("message_store_failed", error=str(store_err))
+            
             return web.json_response({"error": str(e)}, status=500)
     
     # ==================== Connection Routes ====================
