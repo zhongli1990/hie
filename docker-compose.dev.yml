@@ -1,42 +1,38 @@
 version: '3.8'
 
-# Development docker-compose for LI Engine
+# Development docker-compose for HIE
 # All development and testing runs inside containers
 #
 # Port Mapping (9300-9350 range - consistent with docker-compose.full.yml):
-#   9300 - LI Engine (HTTP receiver)
-#   9301 - LI Engine (MLLP receiver)
-#   9302 - Management API
+#   9300 - HIE Engine (HTTP receiver)
+#   9301 - HIE Engine (MLLP receiver)
+#   9302 - Management API (hie-manager)
+#   9303 - Management Portal
 #   9304 - Prometheus metrics
 #   9310 - PostgreSQL
 #   9311 - Redis
 #   9320 - MLLP Echo Server
 
 services:
-  # LI Engine - Development mode with hot reload
-  li-engine:
+  # HIE Engine - Development mode
+  hie-engine:
     build:
       context: .
       dockerfile: Dockerfile.dev
-    container_name: li-engine-dev
+    container_name: hie-engine-dev
     ports:
       - "9300:8080"      # HTTP receiver
       - "9301:2575"      # MLLP receiver
-      - "9302:8081"      # Management API
-      - "9304:9090"      # Prometheus metrics
     volumes:
-      # Mount source code for hot reload during development
       - ./Engine:/app/Engine:rw
       - ./tests:/app/tests:rw
       - ./config:/app/config:rw
-      - ./schemas:/app/schemas:rw
       - ./data:/data:rw
     environment:
-      - LI_CONFIG=/app/config/production.xml
-      - LI_SCHEMA_DIR=/app/schemas
-      - LI_LOG_LEVEL=DEBUG
-      - LI_LOG_FORMAT=console
-      - DATABASE_URL=postgresql://li:li_password@postgres:5432/li
+      - HIE_CONFIG=/app/config/production.yaml
+      - HIE_LOG_LEVEL=DEBUG
+      - HIE_LOG_FORMAT=console
+      - DATABASE_URL=postgresql://hie:hie_password@postgres:5432/hie
       - REDIS_URL=redis://redis:6379/0
       - PYTHONPATH=/app
       - PYTHONDONTWRITEBYTECODE=1
@@ -48,25 +44,66 @@ services:
         condition: service_healthy
     restart: unless-stopped
     networks:
-      - li-network
-    # Keep container running for interactive use
-    stdin_open: true
-    tty: true
-    command: ["tail", "-f", "/dev/null"]
+      - hie-network
+    command: ["python", "-m", "Engine.cli", "run", "--config", "/app/config/production.yaml", "--log-level", "DEBUG", "--log-format", "console"]
+
+  # HIE Manager API - Development mode
+  hie-manager:
+    build:
+      context: .
+      dockerfile: Dockerfile.manager
+    container_name: hie-manager-dev
+    ports:
+      - "9302:8081"      # Management API
+      - "10001-10020:10001-10020"  # MLLP/TCP ports for HL7 services (20 ports)
+    volumes:
+      - ./Engine:/app/Engine:rw
+      - ./config:/app/config:ro
+    environment:
+      - HIE_API_HOST=0.0.0.0
+      - HIE_API_PORT=8081
+      - DATABASE_URL=postgresql://hie:hie_password@postgres:5432/hie
+      - REDIS_URL=redis://redis:6379/0
+      - PYTHONPATH=/app
+      - PYTHONUNBUFFERED=1
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - hie-network
+
+  # HIE Management Portal (Next.js) - Development mode
+  hie-portal:
+    build:
+      context: ./Portal
+      dockerfile: Dockerfile
+    container_name: hie-portal-dev
+    ports:
+      - "9303:3000"
+    environment:
+      - NODE_ENV=production
+      - NEXT_PUBLIC_API_URL=http://hie-manager:8081
+    depends_on:
+      - hie-manager
+    restart: unless-stopped
+    networks:
+      - hie-network
 
   # Test runner service
   test:
     build:
       context: .
       dockerfile: Dockerfile.dev
-    container_name: li-test
+    container_name: hie-test
     volumes:
       - ./Engine:/app/Engine:rw
       - ./tests:/app/tests:rw
       - ./config:/app/config:ro
-      - ./schemas:/app/schemas:ro
     environment:
-      - DATABASE_URL=postgresql://li:li_password@postgres:5432/li_test
+      - DATABASE_URL=postgresql://hie:hie_password@postgres:5432/hie_test
       - REDIS_URL=redis://redis:6379/1
       - PYTHONPATH=/app
       - PYTHONDONTWRITEBYTECODE=1
@@ -77,7 +114,7 @@ services:
       redis:
         condition: service_healthy
     networks:
-      - li-network
+      - hie-network
     profiles:
       - test
     command: ["pytest", "-v", "--tb=short"]
@@ -85,21 +122,21 @@ services:
   # PostgreSQL Database
   postgres:
     image: postgres:16-alpine
-    container_name: li-postgres
+    container_name: hie-postgres-dev
     ports:
       - "9310:5432"
     environment:
-      - POSTGRES_USER=li
-      - POSTGRES_PASSWORD=li_password
-      - POSTGRES_DB=li
+      - POSTGRES_USER=hie
+      - POSTGRES_PASSWORD=hie_password
+      - POSTGRES_DB=hie
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./scripts/init-db.sql:/docker-entrypoint-initdb.d/init-db.sql:ro
     restart: unless-stopped
     networks:
-      - li-network
+      - hie-network
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U li -d li"]
+      test: ["CMD-SHELL", "pg_isready -U hie -d hie"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -107,7 +144,7 @@ services:
   # Redis Cache/Queue
   redis:
     image: redis:7-alpine
-    container_name: li-redis
+    container_name: hie-redis-dev
     ports:
       - "9311:6379"
     command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
@@ -115,7 +152,7 @@ services:
       - redis_data:/data
     restart: unless-stopped
     networks:
-      - li-network
+      - hie-network
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
@@ -125,7 +162,7 @@ services:
   # MLLP Test Server (mock external systems)
   mllp-echo:
     image: python:3.11-slim
-    container_name: li-mllp-echo
+    container_name: hie-mllp-echo-dev
     command: >
       python -c "
       import socket
@@ -168,12 +205,12 @@ services:
       - "9320:2575"
     restart: unless-stopped
     networks:
-      - li-network
+      - hie-network
 
   # Prometheus for metrics (optional)
   prometheus:
     image: prom/prometheus:latest
-    container_name: li-prometheus
+    container_name: hie-prometheus-dev
     ports:
       - "9305:9090"
     volumes:
@@ -184,7 +221,7 @@ services:
       - '--storage.tsdb.path=/prometheus'
     restart: unless-stopped
     networks:
-      - li-network
+      - hie-network
     profiles:
       - monitoring
 
@@ -194,5 +231,5 @@ volumes:
   prometheus_data:
 
 networks:
-  li-network:
+  hie-network:
     driver: bridge

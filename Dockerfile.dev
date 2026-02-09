@@ -40,4 +40,5 @@ RUN mkdir -p /data/inbound /data/outbound /data/processed /app/schemas
 EXPOSE 8080 8081 9090
 
 # Default command - can be overridden
-CMD ["python", "-m", "Engine.li.service.main"]
+# Runs LI Engine with config from environment variable LI_CONFIG
+CMD ["python", "-m", "Engine.li", "run"]

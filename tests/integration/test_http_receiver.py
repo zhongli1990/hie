@@ -4,6 +4,7 @@ Integration tests for HTTP Receiver.
 
 import pytest
 import asyncio
+import pytest_asyncio
 
 from Engine.items.receivers.http_receiver import HTTPReceiver
 from Engine.core.config import HTTPReceiverConfig
@@ -24,7 +25,7 @@ class TestHTTPReceiverIntegration:
             content_types=["text/plain", "application/hl7-v2"],
         )
     
-    @pytest.fixture
+    @pytest_asyncio.fixture
     async def receiver(self, receiver_config):
         receiver = HTTPReceiver(receiver_config)
         yield receiver

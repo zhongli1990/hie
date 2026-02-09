@@ -21,7 +21,7 @@ COPY . .
 # Build the application
 ENV NEXT_TELEMETRY_DISABLED 1
 # Set API URL for build-time rewrites configuration
-ARG NEXT_PUBLIC_API_URL=http://hie-api:8081
+ARG NEXT_PUBLIC_API_URL=http://hie-manager:8081
 ENV NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
 RUN npm run build
 

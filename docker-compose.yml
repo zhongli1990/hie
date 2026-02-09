@@ -29,6 +29,7 @@ services:
       - "9301:2575"  # MLLP receiver (when implemented)
     volumes:
       - ./config:/app/config:ro
+      - ./tests:/app/tests:ro
       - ./data/inbound:/data/inbound
       - ./data/outbound:/data/outbound
       - ./data/processed:/data/processed

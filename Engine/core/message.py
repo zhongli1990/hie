@@ -263,7 +263,7 @@ class Payload:
             raw=raw,
             content_type=self.content_type,
             encoding=self.encoding,
-            properties=self._properties.copy(),
+            _properties=self._properties.copy(),
         )
     
     def with_property(self, key: str, prop: Property) -> Payload:
@@ -274,7 +274,7 @@ class Payload:
             raw=self.raw,
             content_type=self.content_type,
             encoding=self.encoding,
-            properties=new_props,
+            _properties=new_props,
         )
     
     def with_properties(self, properties: dict[str, Property]) -> Payload:
@@ -285,7 +285,7 @@ class Payload:
             raw=self.raw,
             content_type=self.content_type,
             encoding=self.encoding,
-            properties=new_props,
+            _properties=new_props,
         )
     
     def get_property(self, key: str) -> Property | None:
@@ -457,7 +457,7 @@ class Message:
             raw=bytes.fromhex(payload_data["raw"]),
             content_type=payload_data["content_type"],
             encoding=payload_data["encoding"],
-            properties=properties,
+            _properties=properties,
         )
         return cls(envelope=envelope, payload=payload)
     

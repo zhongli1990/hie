@@ -215,7 +215,7 @@ async function request<T>(
   
   // Add auth token if available
   if (typeof window !== 'undefined') {
-    const token = localStorage.getItem('hie_token');
+    const token = localStorage.getItem('hie-token');
     if (token) {
       headers['Authorization'] = `Bearer ${token}`;
     }
@@ -332,7 +332,7 @@ export async function importIRISConfig(workspaceId: string, file: File, options?
   
   const headers: Record<string, string> = {};
   if (typeof window !== 'undefined') {
-    const token = localStorage.getItem('hie_token');
+    const token = localStorage.getItem('hie-token');
     if (token) {
       headers['Authorization'] = `Bearer ${token}`;
     }

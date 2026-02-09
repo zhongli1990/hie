@@ -2,9 +2,9 @@
 
 A next-generation, enterprise-grade healthcare integration engine designed for mission-critical NHS acute trust environments.
 
-**Version:** 0.2.0  
+**Version:** 0.3.1  
 **Status:** User Management & Authentication Release  
-**Last Updated:** January 21, 2026
+**Last Updated:** February 9, 2026
 
 ## Overview
 
@@ -89,7 +89,8 @@ HIE/
 ├── tests/              # Test Suite
 │   ├── unit/          # Unit tests
 │   ├── integration/   # Integration tests
-│   └── li/            # LI Engine-specific tests
+│   ├── li/            # LI Engine-specific tests
+│   └── e2e/           # Docker-network E2E API smoke tests
 ├── docs/               # Documentation
 ├── config/             # Configuration Files
 ├── scripts/            # Utility Scripts
@@ -146,6 +147,32 @@ npm install
 npm run dev
 # Access at http://localhost:3000
 ```
+
+## Running Tests (Docker-only)
+
+All tests are intended to run inside the Docker stack. Do not install Python/Node dependencies on the host for verification.
+
+```bash
+# Ensure the stack is up (or start it)
+docker compose -f docker-compose.yml up -d
+
+# Run the full pytest suite inside the hie-engine container
+docker compose -f docker-compose.yml exec -T hie-engine pytest -q
+
+# Run only unit tests
+docker compose -f docker-compose.yml exec -T hie-engine pytest -q tests/unit
+
+# Run integration tests (in-process component integration)
+docker compose -f docker-compose.yml exec -T hie-engine pytest -q tests/integration
+
+# Run LI engine tests
+docker compose -f docker-compose.yml exec -T hie-engine pytest -q tests/li
+
+# Run Docker-network API E2E smoke tests (hits hie-manager/hie-portal/hie-engine)
+docker compose -f docker-compose.yml exec -T hie-engine pytest -q tests/e2e
+```
+
+See [`docs/TESTING.md`](docs/TESTING.md) for details on what each suite covers.
 
 ## Configuration
 
@@ -279,6 +306,7 @@ open http://localhost:9303/messages
 - [Feature Specification](docs/FEATURE_SPEC.md)
 - [Requirements Specification](docs/REQUIREMENTS_SPEC.md)
 - [Development Roadmap](docs/ROADMAP.md)
+- [Testing Guide](docs/TESTING.md)
 
 ## License
 
