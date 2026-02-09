@@ -7,7 +7,7 @@ Tests loading of IRIS production XML files and .cls files.
 import pytest
 from pathlib import Path
 
-from hie.li.config import IRISXMLLoader, ProductionConfig, ItemConfig, SettingTarget
+from Engine.li.config import IRISXMLLoader, ProductionConfig, ItemConfig, SettingTarget
 
 
 # Sample IRIS XML for testing
@@ -213,7 +213,7 @@ class TestIRISXMLLoader:
         assert len(errors) == 0  # All targets exist
         
         # Add an item with invalid target
-        from hie.li.config.item_config import ItemConfig, ItemSetting
+        from Engine.li.config.item_config import ItemConfig, ItemSetting
         bad_item = ItemConfig(
             name="BadService",
             class_name="li.hosts.hl7.HL7TCPService",

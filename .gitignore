@@ -76,6 +76,23 @@ output/
 logs/
 *.log
 
+# Node / Next.js
+portal/node_modules/
+portal/.next/
+portal/.turbo/
+portal/out/
+portal/dist/
+portal/.env.local
+portal/.env.*.local
+
+# Node (generic)
+**/node_modules/
+**/.next/
+**/.turbo/
+
+# TypeScript / bundlers
+**/*.tsbuildinfo
+
 # Docker
 .docker/
 

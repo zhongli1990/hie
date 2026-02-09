@@ -5,6 +5,41 @@ All notable changes to HIE (Healthcare Integration Engine) will be documented in
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] - 2026-02-09
+
+### Changed - Project Restructure for Production Readiness
+
+**Folder Structure:**
+- Renamed `hie/` → `Engine/` - Backend microservice cluster
+- Renamed `portal/` → `Portal/` - Frontend service
+- Removed 16+ empty placeholder directories
+- Established clear Frontend/Backend separation
+
+**Service Naming:**
+- Renamed service: `hie-api` → `hie-manager` (Management orchestrator)
+- Container: `hie-api` → `hie-manager`
+
+**Docker Configuration:**
+- Promoted `docker-compose.full.yml` → `docker-compose.yml` (primary)
+- Archived original → `docker-compose.minimal.yml`
+- Renamed `Dockerfile.api` → `Dockerfile.manager`
+- Updated all build contexts and volume paths
+
+**Python Package:**
+- Updated import paths: `from hie.` → `from Engine.`
+- Updated package configuration in `pyproject.toml`
+- Updated CLI entry points
+- Package install name remains `pip install hie` for compatibility
+
+**Benefits:**
+- Production-ready folder structure
+- Clear separation of concerns
+- Enterprise-grade naming conventions
+- Eliminated technical debt (empty directories)
+- Improved developer experience
+
+---
+
 ## [0.2.0] - 2026-01-21
 
 ### 🔐 User Management & Authentication

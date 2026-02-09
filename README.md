@@ -59,24 +59,46 @@ HIE is a high-performance messaging and orchestration bus that supports:
 
 ```
 HIE/
-├── core/                 # Core abstractions
-│   ├── message.py        # Envelope + Payload model
-│   ├── item.py           # Base Item abstraction
-│   ├── route.py          # Route definition
-│   ├── production.py     # Orchestrator/runtime
-│   └── config.py         # Configuration loader
-├── items/
-│   ├── receivers/        # Inbound items (HTTP, file, MLLP)
-│   ├── processors/       # Business logic, transforms
-│   └── senders/          # Outbound items (MLLP, file, HTTP)
-├── protocols/
-│   ├── hl7v2/            # HL7v2 parsing (on-demand)
-│   └── fhir/             # FHIR support
-├── persistence/          # Message store (PostgreSQL, Redis)
-├── management/           # REST API for portal
-├── tests/
-├── config/               # Example production configs
-└── docs/                 # Documentation
+├── Portal/               # Frontend Management UI (Next.js)
+│   ├── src/
+│   │   ├── app/         # Next.js 14 app directory
+│   │   ├── components/  # React components
+│   │   └── lib/         # Utilities and API client
+│   ├── public/          # Static assets
+│   ├── Dockerfile
+│   └── package.json
+├── Engine/              # Backend Microservice Cluster
+│   ├── core/           # Vendor-neutral core abstractions
+│   │   ├── message.py  # Envelope + Payload model
+│   │   ├── item.py     # Base Item abstraction
+│   │   ├── route.py    # Route definition
+│   │   ├── production.py  # Orchestrator/runtime
+│   │   └── config.py   # Configuration loader
+│   ├── api/            # Management API (hie-manager)
+│   │   ├── server.py   # aiohttp server
+│   │   ├── routes/     # API endpoints
+│   │   └── services/   # Business logic
+│   ├── auth/           # Authentication & RBAC
+│   ├── items/          # Integration components
+│   │   ├── receivers/  # Inbound (HTTP, file, MLLP)
+│   │   ├── processors/ # Business logic, transforms
+│   │   └── senders/    # Outbound (MLLP, file, HTTP)
+│   ├── li/             # IRIS-compatible LI Engine
+│   ├── parsers/        # Protocol parsers (HL7v2, FHIR)
+│   └── persistence/    # Data layer (PostgreSQL, Redis)
+├── tests/              # Test Suite
+│   ├── unit/          # Unit tests
+│   ├── integration/   # Integration tests
+│   └── li/            # LI Engine-specific tests
+├── docs/               # Documentation
+├── config/             # Configuration Files
+├── scripts/            # Utility Scripts
+├── data/               # Runtime Data (gitignored)
+├── docker-compose.yml        # Primary production stack
+├── Dockerfile                # HIE Engine image
+├── Dockerfile.manager        # Manager API image
+├── pyproject.toml            # Python package config
+└── README.md
 ```
 
 ## Quick Start
@@ -92,11 +114,11 @@ cd HIE
 mkdir -p data/{inbound,outbound,processed,archive}
 
 # Start the full stack (backend + portal + databases)
-docker-compose -f docker-compose.full.yml up --build
+docker-compose up --build
 
 # Access the services:
 # - Portal:           http://localhost:9303
-# - Management API:   http://localhost:9302/api/health
+# - Manager API:      http://localhost:9302/api/health
 # - HIE Engine:       http://localhost:9300/health
 # - PostgreSQL:       localhost:9310
 # - Redis:            localhost:9311
@@ -119,7 +141,7 @@ pip install -e ".[dev]"
 hie run --config config/example.yaml
 
 # Portal (separate terminal)
-cd portal
+cd Portal
 npm install
 npm run dev
 # Access at http://localhost:3000

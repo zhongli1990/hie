@@ -38,7 +38,7 @@ COPY --from=builder /opt/venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
 # Copy application code
-COPY hie/ /app/hie/
+COPY Engine/ /app/Engine/
 COPY config/ /app/config/
 
 # Set Python path
@@ -66,5 +66,5 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
     CMD curl -f http://localhost:8080/health || exit 1
 
 # Run HIE
-ENTRYPOINT ["python", "-m", "hie.cli"]
+ENTRYPOINT ["python", "-m", "Engine.cli"]
 CMD ["run", "--config", "/app/config/production.yaml"]

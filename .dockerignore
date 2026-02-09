@@ -1,0 +1,36 @@
+.git
+.gitignore
+**/.DS_Store
+
+# Python
+**/__pycache__
+**/*.py[cod]
+**/*.pyo
+**/*.pyd
+**/.pytest_cache
+**/.mypy_cache
+**/.ruff_cache
+**/.venv
+venv
+
+# Node / Next.js
+**/node_modules
+**/.next
+**/.turbo
+
+# Build outputs
+**/dist
+**/build
+**/out
+
+# Local env
+**/.env.local
+**/.env.*.local
+
+# Logs
+**/*.log
+
+# Data dirs (runtime)
+data
+logs
+output

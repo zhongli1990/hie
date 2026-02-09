@@ -6,8 +6,8 @@ Tests the schema-driven lazy parsing for HL7v2 messages.
 
 import pytest
 
-from hie.li.schemas import Schema, ParsedView, ValidationError
-from hie.li.schemas.hl7 import HL7Schema, HL7ParsedView
+from Engine.li.schemas import Schema, ParsedView, ValidationError
+from Engine.li.schemas.hl7 import HL7Schema, HL7ParsedView
 
 
 # Sample HL7 messages for testing
@@ -322,7 +322,7 @@ class TestSchemaRegistry:
     
     def test_registry_register_and_get(self):
         """Test registering and retrieving schemas."""
-        from hie.li.registry import SchemaRegistry
+        from Engine.li.registry import SchemaRegistry
         
         # Clear registry
         SchemaRegistry.clear()
@@ -337,7 +337,7 @@ class TestSchemaRegistry:
     
     def test_registry_list_schemas(self):
         """Test listing schemas."""
-        from hie.li.registry import SchemaRegistry
+        from Engine.li.registry import SchemaRegistry
         
         SchemaRegistry.clear()
         
@@ -350,7 +350,7 @@ class TestSchemaRegistry:
     
     def test_registry_get_nonexistent(self):
         """Test getting non-existent schema."""
-        from hie.li.registry import SchemaRegistry
+        from Engine.li.registry import SchemaRegistry
         
         SchemaRegistry.clear()
         

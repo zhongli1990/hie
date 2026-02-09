@@ -8,7 +8,7 @@ These tests use a mock MLLP echo server to simulate external systems.
 import asyncio
 import pytest
 
-from hie.li.hosts import (
+from Engine.li.hosts import (
     HL7TCPService,
     HL7TCPOperation,
     HL7RoutingEngine,
@@ -17,15 +17,15 @@ from hie.li.hosts import (
     RuleAction,
     create_message_type_rule,
 )
-from hie.li.adapters import (
+from Engine.li.adapters import (
     mllp_wrap,
     mllp_unwrap,
     MLLP_START_BLOCK,
     MLLP_END_BLOCK,
     MLLP_CARRIAGE_RETURN,
 )
-from hie.li.schemas.hl7 import HL7Schema
-from hie.li.config import IRISXMLLoader, ProductionConfig
+from Engine.li.schemas.hl7 import HL7Schema
+from Engine.li.config import IRISXMLLoader, ProductionConfig
 
 
 # Sample HL7 messages

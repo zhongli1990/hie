@@ -26,7 +26,7 @@ services:
       - "9304:9090"      # Prometheus metrics
     volumes:
       # Mount source code for hot reload during development
-      - ./hie:/app/hie:rw
+      - ./Engine:/app/Engine:rw
       - ./tests:/app/tests:rw
       - ./config:/app/config:rw
       - ./schemas:/app/schemas:rw
@@ -61,7 +61,7 @@ services:
       dockerfile: Dockerfile.dev
     container_name: li-test
     volumes:
-      - ./hie:/app/hie:rw
+      - ./Engine:/app/Engine:rw
       - ./tests:/app/tests:rw
       - ./config:/app/config:ro
       - ./schemas:/app/schemas:ro

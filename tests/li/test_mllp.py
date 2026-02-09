@@ -7,7 +7,7 @@ Tests MLLP framing, connection handling, and message transport.
 import asyncio
 import pytest
 
-from hie.li.adapters import (
+from Engine.li.adapters import (
     MLLPInboundAdapter,
     MLLPOutboundAdapter,
     MLLPFrameError,
@@ -19,7 +19,7 @@ from hie.li.adapters import (
     MLLP_END_BLOCK,
     MLLP_CARRIAGE_RETURN,
 )
-from hie.li.hosts import BusinessService, BusinessOperation
+from Engine.li.hosts import BusinessService, BusinessOperation
 
 
 # Sample HL7 message for testing
@@ -257,7 +257,7 @@ class TestMLLPStreamReading:
     @pytest.mark.asyncio
     async def test_read_mllp_message(self):
         """Test reading MLLP message from stream."""
-        from hie.li.adapters.mllp import read_mllp_message
+        from Engine.li.adapters.mllp import read_mllp_message
         
         # Create a mock reader with MLLP data
         wrapped = mllp_wrap(SAMPLE_HL7)
@@ -272,7 +272,7 @@ class TestMLLPStreamReading:
     @pytest.mark.asyncio
     async def test_read_mllp_message_with_garbage(self):
         """Test reading MLLP message with leading garbage."""
-        from hie.li.adapters.mllp import read_mllp_message
+        from Engine.li.adapters.mllp import read_mllp_message
         
         # Add garbage before the message
         garbage = b"some garbage data"

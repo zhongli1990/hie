@@ -6,7 +6,7 @@ import pytest
 import tempfile
 from pathlib import Path
 
-from hie.core.config import (
+from Engine.core.config import (
     load_config,
     load_config_from_string,
     save_config,
@@ -18,8 +18,8 @@ from hie.core.config import (
     MLLPSenderConfig,
     FileSenderConfig,
 )
-from hie.core.production import ProductionConfig
-from hie.core.route import RouteConfig
+from Engine.core.production import ProductionConfig
+from Engine.core.route import RouteConfig
 
 
 class TestLoadConfig:

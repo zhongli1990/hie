@@ -5,9 +5,9 @@ Integration tests for HTTP Receiver.
 import pytest
 import asyncio
 
-from hie.items.receivers.http_receiver import HTTPReceiver
-from hie.core.config import HTTPReceiverConfig
-from hie.core.message import Message
+from Engine.items.receivers.http_receiver import HTTPReceiver
+from Engine.core.config import HTTPReceiverConfig
+from Engine.core.message import Message
 
 
 class TestHTTPReceiverIntegration:

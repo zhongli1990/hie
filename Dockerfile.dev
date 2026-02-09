@@ -19,7 +19,7 @@ RUN pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir -r requirements.txt
 
 # Copy application code (will be overridden by volume mount in dev)
-COPY hie/ /app/hie/
+COPY Engine/ /app/Engine/
 COPY tests/ /app/tests/
 COPY config/ /app/config/
 
@@ -40,4 +40,4 @@ RUN mkdir -p /data/inbound /data/outbound /data/processed /app/schemas
 EXPOSE 8080 8081 9090
 
 # Default command - can be overridden
-CMD ["python", "-m", "hie.li.service.main"]
+CMD ["python", "-m", "Engine.li.service.main"]

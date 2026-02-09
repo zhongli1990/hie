@@ -7,9 +7,9 @@ import asyncio
 from datetime import datetime, timezone, timedelta
 from uuid import uuid4
 
-from hie.core.message import Message, MessageState, Priority
-from hie.persistence.memory import InMemoryMessageStore, InMemoryStateStore
-from hie.persistence.base import MessageQuery
+from Engine.core.message import Message, MessageState, Priority
+from Engine.persistence.memory import InMemoryMessageStore, InMemoryStateStore
+from Engine.persistence.base import MessageQuery
 
 
 class TestInMemoryMessageStore:
