@@ -33,7 +33,7 @@ dev:
 	pre-commit install
 
 test:
-	pytest tests/ -v --cov=hie --cov-report=term-missing
+	pytest tests/ -v --cov=Engine --cov-report=term-missing
 
 test-unit:
 	pytest tests/unit/ -v
@@ -42,12 +42,12 @@ test-integration:
 	pytest tests/integration/ -v
 
 lint:
-	ruff check hie/ tests/
-	mypy hie/
+	ruff check Engine/ tests/
+	mypy Engine/
 
 format:
-	ruff format hie/ tests/
-	ruff check --fix hie/ tests/
+	ruff format Engine/ tests/
+	ruff check --fix Engine/ tests/
 
 clean:
 	rm -rf build/
@@ -74,13 +74,13 @@ docker-logs:
 	docker-compose logs -f hie
 
 run:
-	python -m hie.cli run --config config/example.yaml --log-level DEBUG --log-format console
+	python -m Engine.cli run --config config/example.yaml --log-level DEBUG --log-format console
 
 init-config:
-	python -m hie.cli init --output config/my-config.yaml
+	python -m Engine.cli init --output config/my-config.yaml
 
 validate-config:
-	python -m hie.cli validate --config config/production.yaml
+	python -m Engine.cli validate --config config/production.yaml
 
 # =============================================================================
 # LI Engine Docker Commands (all development runs in Docker)

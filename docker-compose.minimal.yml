@@ -1,0 +1,134 @@
+version: '3.8'
+
+services:
+  # HIE Application
+  hie:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: hie
+    ports:
+      - "8080:8080"  # HTTP receiver
+      - "8081:8081"  # Management API (future)
+    volumes:
+      - ./config:/app/config:ro
+      - ./data/inbound:/data/inbound
+      - ./data/outbound:/data/outbound
+      - ./data/processed:/data/processed
+    environment:
+      - HIE_CONFIG=/app/config/production.yaml
+      - HIE_LOG_LEVEL=INFO
+      - HIE_LOG_FORMAT=json
+      - DATABASE_URL=postgresql://hie:hie_password@postgres:5432/hie
+      - REDIS_URL=redis://redis:6379/0
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - hie-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  # PostgreSQL Database
+  postgres:
+    image: postgres:16-alpine
+    container_name: hie-postgres
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_USER=hie
+      - POSTGRES_PASSWORD=hie_password
+      - POSTGRES_DB=hie
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./scripts/init-db.sql:/docker-entrypoint-initdb.d/init-db.sql:ro
+    restart: unless-stopped
+    networks:
+      - hie-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U hie -d hie"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Redis Cache/Queue
+  redis:
+    image: redis:7-alpine
+    container_name: hie-redis
+    ports:
+      - "6379:6379"
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+    networks:
+      - hie-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # MLLP Test Server (for development/testing)
+  mllp-echo:
+    image: python:3.11-slim
+    container_name: hie-mllp-echo
+    command: >
+      python -c "
+      import socket
+      import sys
+      
+      VT = b'\\x0b'
+      FS = b'\\x1c'
+      CR = b'\\x0d'
+      
+      def create_ack(msg):
+          # Simple ACK generator
+          return VT + b'MSH|^~\\\\&|ACK|HIE|TEST|TEST|20240101120000||ACK|1|P|2.5\\rMSA|AA|1|Message Accepted\\r' + FS + CR
+      
+      server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+      server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+      server.bind(('0.0.0.0', 2575))
+      server.listen(5)
+      print('MLLP Echo Server listening on port 2575', flush=True)
+      
+      while True:
+          conn, addr = server.accept()
+          print(f'Connection from {addr}', flush=True)
+          try:
+              data = b''
+              while True:
+                  chunk = conn.recv(4096)
+                  if not chunk:
+                      break
+                  data += chunk
+                  if FS in data:
+                      break
+              if data:
+                  print(f'Received {len(data)} bytes', flush=True)
+                  conn.sendall(create_ack(data))
+          except Exception as e:
+              print(f'Error: {e}', flush=True)
+          finally:
+              conn.close()
+      "
+    ports:
+      - "2575:2575"
+    restart: unless-stopped
+    networks:
+      - hie-network
+
+volumes:
+  postgres_data:
+  redis_data:
+
+networks:
+  hie-network:
+    driver: bridge

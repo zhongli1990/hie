@@ -32,7 +32,7 @@ setup(
     },
     entry_points={
         "console_scripts": [
-            "hie=hie.cli:main",
+            "hie=Engine.cli:main",
         ],
     },
 )

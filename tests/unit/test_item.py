@@ -6,7 +6,7 @@ import pytest
 import asyncio
 from unittest.mock import AsyncMock, MagicMock
 
-from hie.core.item import (
+from Engine.core.item import (
     Item,
     ItemConfig,
     ItemState,
@@ -17,7 +17,7 @@ from hie.core.item import (
     Sender,
     ItemMetrics,
 )
-from hie.core.message import Message
+from Engine.core.message import Message
 
 
 class ConcreteItem(Item):

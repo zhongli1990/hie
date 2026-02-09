@@ -65,7 +65,7 @@ all = [
 ]
 
 [project.scripts]
-hie = "hie.cli:main"
+hie = "Engine.cli:main"
 
 [project.urls]
 Homepage = "https://github.com/hie/hie"
@@ -73,7 +73,7 @@ Documentation = "https://hie.readthedocs.io"
 Repository = "https://github.com/hie/hie"
 
 [tool.hatch.build.targets.wheel]
-packages = ["hie"]
+packages = ["Engine"]
 
 [tool.ruff]
 target-version = "py311"
@@ -97,7 +97,7 @@ ignore = [
 ]
 
 [tool.ruff.lint.isort]
-known-first-party = ["hie"]
+known-first-party = ["Engine"]
 
 [tool.mypy]
 python_version = "3.11"
@@ -109,10 +109,10 @@ disallow_untyped_defs = true
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
-addopts = "-ra -q --cov=hie --cov-report=term-missing"
+addopts = "-ra -q --cov=Engine --cov-report=term-missing"
 
 [tool.coverage.run]
-source = ["hie"]
+source = ["Engine"]
 branch = true
 
 [tool.coverage.report]

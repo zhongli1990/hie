@@ -7,7 +7,7 @@ Tests HL7TCPService, HL7TCPOperation, and HL7RoutingEngine.
 import asyncio
 import pytest
 
-from hie.li.hosts import (
+from Engine.li.hosts import (
     HL7TCPService,
     HL7TCPOperation,
     HL7Message,
@@ -21,8 +21,8 @@ from hie.li.hosts import (
     create_message_type_rule,
     create_facility_rule,
 )
-from hie.li.schemas.hl7 import HL7Schema
-from hie.li.config import ItemConfig, SettingTarget
+from Engine.li.schemas.hl7 import HL7Schema
+from Engine.li.config import ItemConfig, SettingTarget
 
 
 # Sample HL7 messages for testing

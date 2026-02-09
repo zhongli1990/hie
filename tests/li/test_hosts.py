@@ -7,20 +7,20 @@ Tests the base Host classes and their lifecycle management.
 import asyncio
 import pytest
 
-from hie.li.hosts import (
+from Engine.li.hosts import (
     Host,
     HostState,
     BusinessService,
     BusinessProcess,
     BusinessOperation,
 )
-from hie.li.adapters import (
+from Engine.li.adapters import (
     Adapter,
     AdapterState,
     InboundAdapter,
     OutboundAdapter,
 )
-from hie.li.config import ItemConfig, SettingTarget
+from Engine.li.config import ItemConfig, SettingTarget
 
 
 # =============================================================================

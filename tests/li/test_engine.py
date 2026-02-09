@@ -8,9 +8,9 @@ import asyncio
 import tempfile
 import pytest
 
-from hie.li.engine import ProductionEngine, ProductionState, EngineConfig
-from hie.li.config import IRISXMLLoader, ProductionConfig, ItemConfig, SettingTarget
-from hie.li.hosts import HostState
+from Engine.li.engine import ProductionEngine, ProductionState, EngineConfig
+from Engine.li.config import IRISXMLLoader, ProductionConfig, ItemConfig, SettingTarget
+from Engine.li.hosts import HostState
 
 
 # Sample production XML for testing

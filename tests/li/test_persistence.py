@@ -10,7 +10,7 @@ import tempfile
 import pytest
 import time
 
-from hie.li.persistence import (
+from Engine.li.persistence import (
     WAL,
     WALEntry,
     WALState,
@@ -314,7 +314,7 @@ class TestMetrics:
     
     def test_counter(self):
         """Test Counter metric."""
-        from hie.li.metrics import Counter
+        from Engine.li.metrics import Counter
         
         counter = Counter("test_counter", "Test counter", ["host"])
         
@@ -327,7 +327,7 @@ class TestMetrics:
     
     def test_gauge(self):
         """Test Gauge metric."""
-        from hie.li.metrics import Gauge
+        from Engine.li.metrics import Gauge
         
         gauge = Gauge("test_gauge", "Test gauge", ["host"])
         
@@ -342,7 +342,7 @@ class TestMetrics:
     
     def test_histogram(self):
         """Test Histogram metric."""
-        from hie.li.metrics import Histogram
+        from Engine.li.metrics import Histogram
         
         histogram = Histogram(
             "test_histogram",
@@ -361,7 +361,7 @@ class TestMetrics:
     
     def test_metrics_registry(self):
         """Test MetricsRegistry."""
-        from hie.li.metrics import MetricsRegistry
+        from Engine.li.metrics import MetricsRegistry
         
         registry = MetricsRegistry()
         
@@ -372,7 +372,7 @@ class TestMetrics:
     
     def test_metrics_export(self):
         """Test metrics export in Prometheus format."""
-        from hie.li.metrics import MetricsRegistry
+        from Engine.li.metrics import MetricsRegistry
         
         registry = MetricsRegistry()
         
