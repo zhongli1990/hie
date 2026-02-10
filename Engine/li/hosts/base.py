@@ -20,6 +20,14 @@ from uuid import UUID, uuid4
 
 import structlog
 
+from Engine.core.messaging import (
+    MessageBroker,
+    MessagingPattern,
+    MessageEnvelope,
+    MessagePriority,
+    ServiceRegistry
+)
+
 if TYPE_CHECKING:
     from Engine.li.config import ItemConfig
     from Engine.li.adapters.base import InboundAdapter, OutboundAdapter
@@ -60,17 +68,22 @@ class HostMetrics:
         return self.total_processing_time_ms / self.messages_processed
 
 
-class Host(ABC):
+class Host(MessageBroker, ABC):
     """
     Base class for all business hosts.
-    
+
     A Host is a configurable runtime component that processes messages.
     It has a lifecycle (start/stop/pause/resume) and can be configured
     via adapter_settings and host_settings.
-    
-    This matches IRIS Ens.Host architecture.
+
+    Inherits from MessageBroker to support inter-service messaging:
+    - send_request_async(): Non-blocking fire-and-forget
+    - send_request_sync(): Blocking request/reply
+    - send_response(): Reply to sync requests
+
+    This matches IRIS Ens.Host architecture with SendRequestSync/Async.
     """
-    
+
     # Class-level adapter class (set by subclasses)
     adapter_class: type | None = None
     
@@ -95,11 +108,14 @@ class Host(ABC):
             adapter_settings: Settings for the adapter (Target="Adapter")
             host_settings: Settings for the host (Target="Host")
         """
+        # Initialize MessageBroker parent
+        MessageBroker.__init__(self)
+
         self._id = uuid4()
         self._name = name
         self._state = HostState.CREATED
         self._metrics = HostMetrics()
-        
+
         # Configuration
         if config:
             self._pool_size = config.pool_size
@@ -401,20 +417,23 @@ class Host(ABC):
     
     async def _worker_loop(self, worker_id: int) -> None:
         """
-        Main worker loop for processing messages.
-        
+        Main worker loop for processing messages with pattern support.
+
+        Handles both MessageEnvelope (from inter-service calls) and
+        raw messages (from external adapters).
+
         Args:
             worker_id: Worker instance ID
         """
         self._log.debug("worker_started", worker_id=worker_id)
-        
+
         while not self._shutdown_event.is_set():
             # Wait if paused
             await self._pause_event.wait()
-            
+
             try:
                 # Get message from queue with timeout
-                message = await asyncio.wait_for(
+                item = await asyncio.wait_for(
                     self._queue.get(),
                     timeout=1.0
                 )
@@ -422,41 +441,64 @@ class Host(ABC):
                 continue
             except asyncio.CancelledError:
                 break
-            
-            # Process message
+
+            # Process message with pattern awareness
             start_time = datetime.now(timezone.utc)
             try:
+                # Extract envelope if present
+                if isinstance(item, MessageEnvelope):
+                    envelope = item
+                    message = envelope.message
+                    correlation_id = envelope.correlation_id
+                    is_sync = envelope.pattern in (
+                        MessagingPattern.SYNC_RELIABLE,
+                        MessagingPattern.CONCURRENT_SYNC
+                    )
+                else:
+                    # Raw message (from adapter)
+                    envelope = None
+                    message = item
+                    correlation_id = None
+                    is_sync = False
+
+                # Process message
                 timeout = self.get_setting("Host", "Timeout", 30.0)
                 result = await asyncio.wait_for(
                     self._process_message(message),
                     timeout=timeout
                 )
-                
+
                 # Update metrics
                 elapsed_ms = (datetime.now(timezone.utc) - start_time).total_seconds() * 1000
                 self._metrics.messages_processed += 1
                 self._metrics.total_processing_time_ms += elapsed_ms
                 self._metrics.last_message_at = datetime.now(timezone.utc)
-                
-                # Callback
-                if self._on_message and result is not None:
-                    await self._on_message(result)
-                    
+
+                # Handle response based on pattern
+                if envelope and is_sync:
+                    # Sync pattern: send response back to caller
+                    if correlation_id:
+                        await self.send_response(correlation_id, result)
+                elif result is not None:
+                    # Async pattern or no envelope: use callback
+                    if self._on_message:
+                        await self._on_message(result)
+
             except asyncio.TimeoutError:
                 self._metrics.messages_failed += 1
                 self._log.error("message_timeout", worker_id=worker_id)
                 if self._on_error:
                     await self._on_error(TimeoutError("Message processing timeout"), message)
-                    
+
             except Exception as e:
                 self._metrics.messages_failed += 1
                 self._log.error("message_processing_failed", worker_id=worker_id, error=str(e))
                 if self._on_error:
                     await self._on_error(e, message)
-                    
+
             finally:
                 self._queue.task_done()
-        
+
         self._log.debug("worker_stopped", worker_id=worker_id)
     
     async def submit(self, message: Any) -> bool:

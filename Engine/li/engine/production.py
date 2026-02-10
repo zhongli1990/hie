@@ -39,6 +39,7 @@ from Engine.li.health import (
     ShutdownConfig,
     create_host_health_check,
 )
+from Engine.core.messaging import ServiceRegistry, MessagingPattern
 
 logger = structlog.get_logger(__name__)
 
@@ -133,10 +134,13 @@ class ProductionEngine:
         self._wal: WAL | None = None
         self._store: MessageStore | None = None
         self._shutdown: GracefulShutdown | None = None
-        
+
+        # Service messaging
+        self._service_registry = ServiceRegistry()
+
         # Metrics
         self._metrics = ProductionMetrics()
-        
+
         self._log = logger.bind(component="ProductionEngine")
     
     @property
@@ -270,21 +274,36 @@ class ProductionEngine:
         return host_class(name=config.name, config=config)
     
     def _register_host(self, host: Host, config: ItemConfig) -> None:
-        """Register a host in the appropriate category."""
+        """Register a host in the appropriate category and service registry."""
         self._all_hosts[host.name] = host
-        
+
         if isinstance(host, BusinessService):
             self._services[host.name] = host
         elif isinstance(host, BusinessOperation):
             self._operations[host.name] = host
         elif isinstance(host, BusinessProcess):
             self._processes[host.name] = host
-        
+
+        # Register with service registry for inter-service messaging
+        self._service_registry.register(host.name, host)
+
+        # Set up messaging for this host
+        messaging_pattern = MessagingPattern.ASYNC_RELIABLE  # Default
+        if hasattr(config, 'messaging_pattern'):
+            messaging_pattern = config.messaging_pattern
+
+        host.set_service_registry(
+            self._service_registry,
+            host.name,
+            messaging_pattern
+        )
+
         self._log.debug(
             "host_registered",
             name=host.name,
             type=type(host).__name__,
             enabled=config.enabled,
+            messaging_pattern=messaging_pattern.value
         )
     
     async def start(self) -> None:
