@@ -5,6 +5,54 @@ All notable changes to HIE (Healthcare Integration Engine) will be documented in
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.5.1] - 2026-02-10
+
+### Added - Portal UI Uplift (About, Theme Mode, Collapsible Sidebar)
+
+**About Modal with Version History** (borrowed from saas-codex):
+- New AboutModal component with HIE information and 7 releases documented
+- Info button added to top toolbar for easy access
+- Two tabs: About (features, tech stack, capabilities) and Version History (v1.5.1 → v1.0.0)
+- Responsive design with dark mode support
+
+**Theme Mode Switcher** (borrowed from saas-codex):
+- Three-mode switcher: Light, Dark, and System (auto-detect)
+- ThemeProvider with localStorage persistence and system preference detection
+- Theme switcher component added to top toolbar
+- Full Tailwind dark mode integration throughout Portal
+
+**Collapsible Sidebar** (borrowed from saas-codex):
+- Toggle button to collapse/expand sidebar (16px ↔ 64px)
+- Icon-only mode when collapsed with tooltips
+- Smooth transitions (300ms)
+- Mobile responsive overlay with slide-in animation
+
+**Files Added** (560 lines):
+- Portal/src/components/AboutModal.tsx (430 lines)
+- Portal/src/components/ThemeProvider.tsx (67 lines)
+- Portal/src/components/ThemeSwitcher.tsx (63 lines)
+
+**Files Modified** (~200 lines):
+- Portal/src/components/TopNav.tsx - About button + theme switcher
+- Portal/src/components/AppShell.tsx - ThemeProvider wrapper + collapsible sidebar state
+- Portal/src/components/Sidebar.tsx - Collapse functionality + dark mode
+- Portal/tailwind.config.ts - Dark mode: "class" configuration
+
+### Design Attribution
+
+UI patterns borrowed from saas-codex/frontend/src/components/:
+- AboutModal structure and styling
+- ThemeProvider context pattern
+- ThemeSwitcher three-button toggle
+- Collapsible sidebar pattern
+- Dark mode Tailwind classes
+
+### Breaking Changes
+
+None - 100% backward compatible.
+
+---
+
 ## [1.5.0] - 2026-02-10
 
 ### Added - Phase 4 Meta-Instantiation & Message Envelope System
