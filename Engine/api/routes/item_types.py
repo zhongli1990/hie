@@ -19,6 +19,133 @@ from Engine.api.models import (
 logger = structlog.get_logger(__name__)
 
 
+# Common Host Settings - apply to ALL item types
+# These are the Phase 2 enterprise concurrency and reliability settings
+COMMON_HOST_SETTINGS: list[SettingDefinition] = [
+    # === Execution Configuration ===
+    SettingDefinition(
+        key="ExecutionMode",
+        label="Execution Mode",
+        type="select",
+        required=False,
+        default="async",
+        options=[
+            {"value": "async", "label": "Async (Event Loop) - Best for I/O-bound"},
+            {"value": "multiprocess", "label": "Multiprocess (GIL Bypass) - Best for CPU-bound"},
+            {"value": "thread_pool", "label": "Thread Pool - Best for blocking I/O"},
+            {"value": "single_process", "label": "Single Process - Debug mode"},
+        ],
+        description="How to execute message processing workers. Multiprocess bypasses Python GIL for true parallelism.",
+    ),
+    SettingDefinition(
+        key="WorkerCount",
+        label="Worker Count",
+        type="number",
+        required=False,
+        default=1,
+        validation={"min": 1, "max": 32},
+        description="Number of worker processes/threads. Overrides PoolSize if set. Match CPU cores for multiprocess.",
+    ),
+
+    # === Queue Configuration ===
+    SettingDefinition(
+        key="QueueType",
+        label="Queue Type",
+        type="select",
+        required=False,
+        default="fifo",
+        options=[
+            {"value": "fifo", "label": "FIFO - First-In-First-Out (strict ordering)"},
+            {"value": "priority", "label": "Priority - Priority-based routing"},
+            {"value": "lifo", "label": "LIFO - Last-In-First-Out (stack)"},
+            {"value": "unordered", "label": "Unordered - Maximum throughput"},
+        ],
+        description="Message queue ordering strategy. FIFO for ordered processing, Unordered for maximum speed.",
+    ),
+    SettingDefinition(
+        key="QueueSize",
+        label="Queue Size",
+        type="number",
+        required=False,
+        default=1000,
+        validation={"min": 1, "max": 100000},
+        description="Maximum queue size. 0 = unlimited. Large queues consume more memory but handle bursts better.",
+    ),
+    SettingDefinition(
+        key="OverflowStrategy",
+        label="Overflow Strategy",
+        type="select",
+        required=False,
+        default="block",
+        options=[
+            {"value": "block", "label": "Block - Wait for space (provides backpressure)"},
+            {"value": "drop_oldest", "label": "Drop Oldest - Remove oldest message"},
+            {"value": "drop_newest", "label": "Drop Newest - Reject incoming message"},
+            {"value": "reject", "label": "Reject - Raise exception"},
+        ],
+        description="What to do when queue is full. Block provides backpressure, Drop strategies prevent blocking.",
+    ),
+
+    # === Auto-Restart Configuration ===
+    SettingDefinition(
+        key="RestartPolicy",
+        label="Restart Policy",
+        type="select",
+        required=False,
+        default="never",
+        options=[
+            {"value": "never", "label": "Never - Manual intervention required"},
+            {"value": "on_failure", "label": "On Failure - Only restart on ERROR state"},
+            {"value": "always", "label": "Always - Restart regardless of reason"},
+        ],
+        description="Auto-restart behavior when host fails. Use 'always' for mission-critical services.",
+    ),
+    SettingDefinition(
+        key="MaxRestarts",
+        label="Max Restarts",
+        type="number",
+        required=False,
+        default=3,
+        validation={"min": 0, "max": 1000},
+        description="Maximum restart attempts before giving up. Prevents infinite restart loops.",
+    ),
+    SettingDefinition(
+        key="RestartDelay",
+        label="Restart Delay (seconds)",
+        type="number",
+        required=False,
+        default=5.0,
+        validation={"min": 0, "max": 300},
+        description="Delay between restart attempts. Allows time for transient issues to resolve.",
+    ),
+
+    # === Messaging Configuration ===
+    SettingDefinition(
+        key="MessagingPattern",
+        label="Messaging Pattern",
+        type="select",
+        required=False,
+        default="async_reliable",
+        options=[
+            {"value": "async_reliable", "label": "Async Reliable - Non-blocking, persisted"},
+            {"value": "sync_reliable", "label": "Sync Reliable - Blocking request/reply"},
+            {"value": "concurrent_async", "label": "Concurrent Async - Parallel non-blocking"},
+            {"value": "concurrent_sync", "label": "Concurrent Sync - Parallel blocking workers"},
+        ],
+        description="Default messaging pattern for inter-service communication. Async for throughput, Sync for reliability.",
+    ),
+    SettingDefinition(
+        key="MessageTimeout",
+        label="Message Timeout (seconds)",
+        type="number",
+        required=False,
+        default=30.0,
+        validation={"min": 1, "max": 300},
+        description="Timeout for synchronous message requests. Only applies to sync patterns.",
+    ),
+]
+
+
 # Item Type Registry - defines all available item types
 ITEM_TYPE_REGISTRY: list[ItemTypeDefinition] = [
     # HL7 Services (Inbound)
@@ -499,40 +626,67 @@ ITEM_TYPE_REGISTRY: list[ItemTypeDefinition] = [
 ]
 
 
+def _enrich_item_type_with_common_settings(item_type: ItemTypeDefinition) -> ItemTypeDefinition:
+    """
+    Enrich item type with common host settings.
+
+    Merges COMMON_HOST_SETTINGS with item-specific host_settings.
+    Item-specific settings take precedence (appear first in UI).
+    """
+    # Create a copy to avoid modifying the original
+    enriched = ItemTypeDefinition(
+        type=item_type.type,
+        name=item_type.name,
+        description=item_type.description,
+        category=item_type.category,
+        iris_class_name=item_type.iris_class_name,
+        li_class_name=item_type.li_class_name,
+        adapter_settings=item_type.adapter_settings.copy(),
+        # Item-specific settings first, then common settings
+        host_settings=item_type.host_settings.copy() + COMMON_HOST_SETTINGS.copy(),
+    )
+    return enriched
+
+
 def setup_item_type_routes(app: web.Application, db_pool=None) -> None:
     """Set up item type registry routes."""
-    
+
     async def list_item_types(request: web.Request) -> web.Response:
-        """List all available item types."""
+        """List all available item types with common settings."""
         category = request.query.get("category")
-        
+
         types = ITEM_TYPE_REGISTRY
         if category:
             types = [t for t in types if t.category.value == category]
-        
-        response = ItemTypeRegistryResponse(item_types=types)
+
+        # Enrich each item type with common settings
+        enriched_types = [_enrich_item_type_with_common_settings(t) for t in types]
+
+        response = ItemTypeRegistryResponse(item_types=enriched_types)
         return web.json_response(response.model_dump(mode='json'))
-    
+
     async def get_item_type(request: web.Request) -> web.Response:
-        """Get item type by type identifier."""
+        """Get item type by type identifier with common settings."""
         type_id = request.match_info["type_id"]
-        
+
         for item_type in ITEM_TYPE_REGISTRY:
             if item_type.type == type_id:
-                return web.json_response(item_type.model_dump(mode='json'))
-        
+                enriched = _enrich_item_type_with_common_settings(item_type)
+                return web.json_response(enriched.model_dump(mode='json'))
+
         return web.json_response({"error": f"Item type '{type_id}' not found"}, status=404)
-    
+
     async def get_item_type_by_class(request: web.Request) -> web.Response:
-        """Get item type by IRIS or LI class name."""
+        """Get item type by IRIS or LI class name with common settings."""
         class_name = request.query.get("class_name")
         if not class_name:
             return web.json_response({"error": "class_name query parameter required"}, status=400)
-        
+
         for item_type in ITEM_TYPE_REGISTRY:
             if item_type.iris_class_name == class_name or item_type.li_class_name == class_name:
-                return web.json_response(item_type.model_dump(mode='json'))
-        
+                enriched = _enrich_item_type_with_common_settings(item_type)
+                return web.json_response(enriched.model_dump(mode='json'))
+
         return web.json_response({"error": f"Item type for class '{class_name}' not found"}, status=404)
     
     # Register routes
