@@ -1,9 +1,83 @@
 # Changelog
 
-All notable changes to HIE (Healthcare Integration Engine) will be documented in this file.
+All notable changes to OpenLI HIE (Healthcare Integration Engine) will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [1.6.0] - 2026-02-11
+
+### Added - OpenLI Rebrand, GenAI Agent Tabs, License & Skills/Hooks
+
+**Rebranding to OpenLI HIE** (borrowed from saas-codex):
+- Rebranded entire Portal UI from "HIE" to "OpenLI HIE - OpenLI Healthcare Integration Engine"
+- New favicon.svg with NHS blue gradient and "LI" text (borrowed from saas-codex)
+- Updated layout.tsx metadata with icons, applicationName, keywords, and description
+- Sidebar logo updated: "LI" icon with NHS blue gradient, "OpenLI HIE" title
+- AboutModal updated: v1.6.0, new product name, GenAI features listed
+- TopNav About button tooltip updated
+- Copyright updated to "Lightweight Integration Ltd"
+
+**Dual License Strategy** (borrowed from saas-codex):
+- New LICENSE file with AGPL-3.0 (community) + Commercial dual license
+- Community license for organizations below £250K GBP annual revenue
+- Commercial license tiers: SME (£500/yr), Enterprise (custom), NHS Trust (custom)
+- Trademark notice for "OpenLI" and "OpenLI HIE" marks
+- Contributor License Agreement included
+- Healthcare disclaimer for regulatory compliance
+- Contact: zhong@li-ai.co.uk
+
+**GenAI Agent Console** (`/agents`) (borrowed & customized from saas-codex codex page):
+- Full agent console for natural language HIE route configuration
+- Workspace → Project selector with HIE hierarchy context
+- Agent runner selector (Claude, Codex, Gemini, Custom)
+- Transcript and Raw Events view modes
+- Quick prompts for common HIE operations (HL7 receivers, MLLP senders, routing)
+- Real-time streaming architecture (ready for backend connection)
+- HIE context panel showing workspace, project, status, and item count
+
+**Chat Interface** (`/chat`) (borrowed & customized from saas-codex chat page):
+- Conversational interface for HIE integration building
+- Session management with workspace/project scoping
+- Message bubbles with user/assistant/tool/system roles
+- Tool call display with expandable input/output details
+- Simulated responses for route configuration, system status, and general help
+- Markdown-formatted responses with code blocks and tables
+
+**Integration Skills Management** (`/admin/skills`) (borrowed & customized from saas-codex skills page):
+- 7 pre-built HIE integration skills: HL7 Route Builder, FHIR Integration, MLLP Connectivity, Content-Based Routing, NHS Trust Deployment, Message Transform, Production Monitoring
+- Skills categorized by: protocol, routing, transform, monitoring, deployment, general
+- Scope filtering: platform, tenant, project
+- Full CRUD: create, view, edit, delete skills
+- Skill content editor with markdown support
+- Detailed skill content with example configurations and workflow steps
+
+**Hooks Configuration** (`/admin/hooks`) (borrowed & customized from saas-codex hooks page):
+- Platform hooks: Security (blocked patterns, HL7 validation, TLS enforcement), Audit (agent actions, message access, config changes)
+- Tenant hooks: NHS Compliance (NHS number detection, PII detection, data retention), Clinical Safety (message integrity, ACK confirmation, message loss alerts)
+- Configurable blocked command patterns with add/remove
+- NHS-specific compliance references (DTAC, DSPT, DCB0129/DCB0160)
+- Info box explaining hooks architecture and restart requirements
+
+**Sidebar Navigation Updates**:
+- New "GenAI" section with Agents (Bot icon) and Chat (MessagesSquare icon)
+- Admin section expanded with Skills (BookOpen icon) and Hooks (Webhook icon)
+- Footer updated to "OpenLI HIE v1.6.0 - Healthcare Integration Engine"
+
+**Files Added** (~3000 lines):
+- `Portal/public/favicon.svg` - OpenLI favicon with NHS blue gradient
+- `Portal/src/app/(app)/agents/page.tsx` - GenAI Agent Console
+- `Portal/src/app/(app)/chat/page.tsx` - Chat Interface
+- `Portal/src/app/(app)/admin/skills/page.tsx` - Skills Management
+- `Portal/src/app/(app)/admin/hooks/page.tsx` - Hooks Configuration
+- `LICENSE` - Dual license (AGPL-3.0 + Commercial)
+
+**Files Modified** (~200 lines):
+- `Portal/src/app/layout.tsx` - Favicon, metadata, OpenLI branding
+- `Portal/src/components/Sidebar.tsx` - GenAI/Admin sections, OpenLI branding
+- `Portal/src/components/AboutModal.tsx` - v1.6.0, OpenLI branding, GenAI features
+- `Portal/src/components/TopNav.tsx` - About tooltip update
+- `CHANGELOG.md` - This entry
 
 ## [1.5.1] - 2026-02-10
 

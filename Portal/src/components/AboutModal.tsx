@@ -8,12 +8,26 @@ interface VersionHistory {
   features: string[];
 }
 
-const VERSION = "1.5.1";
-const BUILD_DATE = "Feb 10, 2026";
-const PLATFORM_NAME = "HIE";
-const PRODUCT_NAME = "Healthcare Integration Engine";
+const VERSION = "1.6.0";
+const BUILD_DATE = "Feb 11, 2026";
+const PLATFORM_NAME = "OpenLI HIE";
+const PRODUCT_NAME = "OpenLI Healthcare Integration Engine";
 
 const versionHistory: VersionHistory[] = [
+  {
+    version: "1.6.0",
+    date: "Feb 11, 2026",
+    features: [
+      "Rebranded to OpenLI HIE - OpenLI Healthcare Integration Engine",
+      "GenAI Agent Console for natural language route configuration",
+      "Chat interface for conversational HIE integration building",
+      "Integration Skills management (HL7, FHIR, routing, transforms)",
+      "Hooks configuration (security, audit, NHS compliance, clinical safety)",
+      "Dual license (AGPL-3.0 community + Commercial) by Lightweight Integration Ltd",
+      "Favicon and metadata with OpenLI branding",
+      "Sidebar with GenAI and Admin sections",
+    ],
+  },
   {
     version: "1.5.1",
     date: "Feb 10, 2026",
@@ -127,7 +141,7 @@ export default function AboutModal({ isOpen, onClose }: AboutModalProps) {
             </div>
             <div>
               <h2 className="text-lg font-bold text-white">{PRODUCT_NAME}</h2>
-              <p className="text-sm text-white/80">NHS Healthcare Integration Platform</p>
+              <p className="text-sm text-white/80">GenAI-Powered NHS Healthcare Integration Platform</p>
             </div>
           </div>
           <button
@@ -186,10 +200,10 @@ export default function AboutModal({ isOpen, onClose }: AboutModalProps) {
               <div>
                 <h3 className="mb-2 font-semibold text-zinc-900 dark:text-white">Description</h3>
                 <p className="text-sm text-zinc-600 dark:text-zinc-400">
-                  HIE (Healthcare Integration Engine) is a production-ready NHS healthcare integration platform
+                  OpenLI HIE (Healthcare Integration Engine) is a production-ready NHS healthcare integration platform
                   designed to replace InterSystems IRIS, Orion Rhapsody, and Mirth Connect. Built with enterprise-grade
-                  architecture, it provides universal meta-instantiation, protocol-agnostic messaging, and
-                  mission-critical reliability for NHS acute trusts.
+                  architecture, it provides universal meta-instantiation, protocol-agnostic messaging, GenAI-powered
+                  route configuration, and mission-critical reliability for NHS acute trusts.
                 </p>
               </div>
 
@@ -198,15 +212,15 @@ export default function AboutModal({ isOpen, onClose }: AboutModalProps) {
                 <h3 className="mb-2 font-semibold text-zinc-900 dark:text-white">Key Features</h3>
                 <div className="grid grid-cols-2 gap-2">
                   {[
+                    "GenAI Agent Console",
+                    "Natural Language Routes",
                     "Universal Meta-Instantiation",
                     "Protocol-Agnostic Messaging",
                     "HL7 v2.x Processing",
                     "FHIR R4 Support",
                     "Multiprocess Execution",
-                    "Priority Queues",
-                    "Auto-Restart Policies",
-                    "Hot Reload Config",
-                    "NHS Validation",
+                    "Integration Skills",
+                    "NHS Compliance Hooks",
                     "10K-50K msg/sec",
                   ].map((feature) => (
                     <div
@@ -296,7 +310,7 @@ export default function AboutModal({ isOpen, onClose }: AboutModalProps) {
         {/* Footer */}
         <div className="border-t border-zinc-200 bg-zinc-50 px-6 py-3 dark:border-zinc-700 dark:bg-zinc-800/50">
           <p className="text-center text-xs text-zinc-500 dark:text-zinc-400">
-            © 2026 HIE Core Team. Healthcare Integration Engine - Enterprise NHS Integration Platform.
+            © 2026 Lightweight Integration Ltd. OpenLI HIE - Enterprise NHS Integration Platform. Licensed under AGPL-3.0 or Commercial.
           </p>
         </div>
       </div>

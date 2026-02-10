@@ -65,7 +65,7 @@ export default function TopNav() {
         <button
           onClick={() => setShowAbout(true)}
           className="flex h-9 w-9 items-center justify-center rounded-lg text-gray-500 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-zinc-700"
-          title="About HIE"
+          title="About OpenLI HIE"
         >
           <Info className="h-5 w-5" />
         </button>

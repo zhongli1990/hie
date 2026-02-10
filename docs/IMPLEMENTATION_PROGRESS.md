@@ -650,3 +650,392 @@ message → on_before_process → process → on_after_process → response
 **Reviewed By:** Development Team
 **Last Updated:** February 10, 2026
 **Next Review:** After Phase 2 completion
+
+---
+---
+
+# v1.6.0 - OpenLI HIE Rebrand & GenAI Agent Tabs
+
+**Branch:** `main`
+**Date:** February 11, 2026
+**Sprint:** Portal v1.6.0 - Rebrand, GenAI Tabs, License, Skills/Hooks
+**Status:** 🟢 **COMPLETE** (All tasks delivered)
+**Previous HEAD:** `cd864a3` (v1.5.1 - docs: Add v1.5.1 to CHANGELOG)
+
+---
+
+## Executive Summary
+
+Rebranded the entire HIE Portal UI to **"OpenLI HIE - OpenLI Healthcare Integration Engine"**, integrated a dual license strategy (AGPL-3.0 + Commercial) from saas-codex, and created four new GenAI-focused tabs (Agents, Chat, Skills, Hooks) customized for the HIE workspace → project → route → items hierarchy. This release establishes the foundation for a GenAI agentic HIE where users can instruct route implementations in natural language via AI agents.
+
+**Key Deliverables:**
+- ✅ Full UI rebrand to OpenLI HIE
+- ✅ Favicon with NHS blue gradient
+- ✅ Dual license (AGPL-3.0 community + Commercial)
+- ✅ GenAI Agent Console (`/agents`)
+- ✅ Chat Interface (`/chat`)
+- ✅ Integration Skills Management (`/admin/skills`)
+- ✅ Hooks Configuration (`/admin/hooks`)
+- ✅ Sidebar navigation with GenAI + Admin sections
+- ✅ AboutModal v1.6.0 with GenAI features
+- ✅ CHANGELOG.md v1.6.0 entry
+
+---
+
+## Git State
+
+```
+Branch:       main (local)
+Remote:       origin/main (https://github.com/zhongli1990/hie.git)
+HEAD before:  cd864a3 - docs: Add v1.5.1 to CHANGELOG
+Tag:          v1.5.1 (commit a8ca03b)
+
+Local branches:
+  * main
+    feature/multiprocess-concurrency-implementation
+    feature/user-management
+    restructure/production-ready
+
+Remote branches:
+    remotes/origin/main
+    remotes/origin/feature/multiprocess-concurrency-implementation
+```
+
+### Staged Changes (v1.6.0)
+
+**Modified files (5):**
+| File | Lines Changed | Description |
+|------|--------------|-------------|
+| `CHANGELOG.md` | +80 | v1.6.0 entry with all changes documented |
+| `Portal/src/app/layout.tsx` | ~20 | Favicon, metadata, OpenLI branding |
+| `Portal/src/components/Sidebar.tsx` | ~50 | GenAI/Admin sections, OpenLI logo |
+| `Portal/src/components/AboutModal.tsx` | ~30 | v1.6.0, OpenLI branding, GenAI features |
+| `Portal/src/components/TopNav.tsx` | 1 | About tooltip → "About OpenLI HIE" |
+
+**New files (6):**
+| File | Lines | Description |
+|------|-------|-------------|
+| `LICENSE` | 167 | Dual license (AGPL-3.0 + Commercial) |
+| `Portal/public/favicon.svg` | 12 | NHS blue gradient favicon with "LI" |
+| `Portal/src/app/(app)/agents/page.tsx` | 493 | GenAI Agent Console |
+| `Portal/src/app/(app)/chat/page.tsx` | 561 | Chat Interface |
+| `Portal/src/app/(app)/admin/skills/page.tsx` | 535 | Integration Skills Management |
+| `Portal/src/app/(app)/admin/hooks/page.tsx` | 476 | Hooks Configuration |
+| `docs/IMPLEMENTATION_PROGRESS.md` | +300 | This section |
+
+**Total:** ~3,200 new/modified lines across 12 files
+
+---
+
+## Task 1: Fix App Icon ✅
+
+**Problem:** Browser showed no favicon for the HIE Portal.
+
+**Solution:** Borrowed favicon pattern from saas-codex and customized for HIE.
+
+**Files:**
+- **`Portal/public/favicon.svg`** (NEW, 12 lines) — SVG with NHS blue linear gradient (`#005EB8` → `#0072CE`), rounded rect, white "LI" text
+- **`Portal/src/app/layout.tsx`** (MODIFIED) — Added `icons` to metadata:
+  ```tsx
+  icons: {
+    icon: [{ url: "/favicon.svg", type: "image/svg+xml" }],
+  }
+  ```
+
+**Source:** `saas-codex/frontend/public/favicon.svg` and `saas-codex/frontend/src/app/layout.tsx`
+
+---
+
+## Task 2: Rebrand UI to OpenLI HIE ✅
+
+**Scope:** All user-visible branding updated from "HIE" / "HIE Portal" to "OpenLI HIE".
+
+### Files Modified
+
+#### `Portal/src/app/layout.tsx`
+- Title: `"OpenLI HIE | Healthcare Integration Engine"`
+- Description: includes "OpenLI HIE - Enterprise-grade healthcare integration platform"
+- `applicationName`: `"OpenLI HIE"`
+- Keywords: `["Healthcare", "Integration", "HL7", "FHIR", "NHS", "HIE", "Enterprise", "OpenLI"]`
+- Added `suppressHydrationWarning` for dark mode compatibility
+
+#### `Portal/src/components/Sidebar.tsx`
+- Logo: "H" → "LI" with NHS blue gradient SVG background
+- Title: "HIE Portal" → "OpenLI HIE"
+- Subtitle: "Management Portal" → "Healthcare Integration Engine"
+- Footer: "HIE v1.5.1" → "OpenLI HIE v1.6.0 - Healthcare Integration Engine"
+- Copyright: "HIE Team" → "Lightweight Integration Ltd"
+- Added new nav sections:
+  - **GenAI**: Agents (Bot icon), Chat (MessagesSquare icon)
+  - **Admin** expanded: Users, Skills (BookOpen icon), Hooks (Webhook icon)
+
+#### `Portal/src/components/AboutModal.tsx`
+- `VERSION`: `"1.5.1"` → `"1.6.0"`
+- `BUILD_DATE`: `"Feb 10, 2026"` → `"Feb 11, 2026"`
+- `PLATFORM_NAME`: `"HIE"` → `"OpenLI HIE"`
+- `PRODUCT_NAME`: `"Healthcare Integration Engine"` → `"OpenLI Healthcare Integration Engine"`
+- Subtitle: "NHS Healthcare Integration Platform" → "GenAI-Powered NHS Healthcare Integration Platform"
+- Description: Added "GenAI-powered route configuration"
+- Key Features: Added "GenAI Agent Console", "Natural Language Routes", "Integration Skills", "NHS Compliance Hooks"
+- Footer: "© 2026 HIE Core Team" → "© 2026 Lightweight Integration Ltd. Licensed under AGPL-3.0 or Commercial."
+- Added v1.6.0 version history entry with 8 feature items
+
+#### `Portal/src/components/TopNav.tsx`
+- About button tooltip: `"About HIE"` → `"About OpenLI HIE"`
+
+---
+
+## Task 3: Dual License Strategy ✅
+
+**File:** `LICENSE` (NEW, 167 lines)
+
+**Source:** Borrowed from `saas-codex/LICENSE` and customized for HIE.
+
+**Structure:**
+1. **Header** — "OpenLI HIE - Healthcare Integration Engine", Copyright 2026 Lightweight Integration Ltd
+2. **AGPL-3.0 Community License** — For organizations below £250,000 GBP annual revenue
+   - Full source code access
+   - Must share modifications under AGPL-3.0
+   - No warranty
+3. **Commercial License** — For organizations above threshold
+   - Tiers: SME (£500/year), Enterprise (custom), NHS Trust (custom)
+   - Private modifications allowed
+   - Priority support, SLA guarantees
+   - Contact: zhong@li-ai.co.uk
+4. **Trademark Notice** — "OpenLI" and "OpenLI HIE" are trademarks of Lightweight Integration Ltd
+5. **Contributor License Agreement** — Contributors grant perpetual, irrevocable license
+6. **Third-Party Components** — React (MIT), Next.js (MIT), Tailwind CSS (MIT), Python (PSF), aiohttp (Apache 2.0)
+7. **Healthcare Disclaimer** — Not a medical device, not FDA/MHRA cleared, users responsible for regulatory compliance
+
+---
+
+## Task 4a: GenAI Agent Console (`/agents`) ✅
+
+**File:** `Portal/src/app/(app)/agents/page.tsx` (NEW, 493 lines)
+
+**Source:** Borrowed from `saas-codex/frontend/src/app/(app)/codex/page.tsx` and customized for HIE.
+
+**Features:**
+- **Workspace → Project selector** with HIE hierarchy context
+- **Agent runner selector**: Claude Code, OpenAI Codex, Gemini, Custom
+- **Prompt input** with textarea and keyboard shortcuts (Ctrl+Enter to send)
+- **Quick prompts** for common HIE operations:
+  - "Create an HL7 ADT receiver on port 10001"
+  - "Set up MLLP sender to PAS system"
+  - "Configure content-based routing for ADT messages"
+  - "Deploy NHS Trust demo configuration"
+- **View modes**: Transcript (formatted) and Raw Events (JSON)
+- **Event streaming** architecture with `AgentEvent` interface (tool_call, agent_message, reasoning, error types)
+- **HIE Context panel** showing workspace, project, status, items count
+- **Simulated agent response** demonstrating HL7 route configuration output
+- **Session management** with run history tracking
+
+**Customizations from saas-codex:**
+- Replaced generic workspace concept with HIE workspace/project hierarchy
+- Quick prompts tailored to HL7, MLLP, FHIR, and NHS-specific operations
+- Context panel shows HIE-specific metadata (items count, production status)
+- Simulated response demonstrates HIE route configuration JSON
+
+---
+
+## Task 4b: Chat Interface (`/chat`) ✅
+
+**File:** `Portal/src/app/(app)/chat/page.tsx` (NEW, 561 lines)
+
+**Source:** Borrowed from `saas-codex/frontend/src/app/(app)/chat/page.tsx` and customized for HIE.
+
+**Features:**
+- **Session management** with workspace/project scoping
+- **Message types**: user, assistant, tool, system — each with distinct styling
+- **Message bubbles** with role icons, timestamps, and content formatting
+- **Tool call display** with expandable input/output JSON details
+- **Streaming content** indicator with animated dots
+- **Auto-scroll** to latest message
+- **Keyboard shortcuts**: Enter to send, Shift+Enter for newline
+- **Simulated responses** for three categories:
+  1. **Route configuration** — Returns HL7 route JSON with items array
+  2. **System status** — Returns production health metrics table
+  3. **General help** — Returns HIE capabilities overview
+
+**Customizations from saas-codex:**
+- Sessions scoped to HIE workspace/project
+- Simulated responses demonstrate HIE-specific outputs (HL7 routes, production metrics)
+- Message content includes markdown-formatted code blocks and tables
+- Tool calls show HIE API endpoints (`/api/v1/productions/`, `/api/v1/items/`)
+
+---
+
+## Task 4c: Integration Skills Management (`/admin/skills`) ✅
+
+**File:** `Portal/src/app/(app)/admin/skills/page.tsx` (NEW, 535 lines)
+
+**Source:** Borrowed from `saas-codex/frontend/src/app/(app)/admin/skills/page.tsx` and customized for HIE.
+
+**Features:**
+- **7 pre-built HIE integration skills:**
+  | Skill | Category | Description |
+  |-------|----------|-------------|
+  | `hl7-route-builder` | protocol | Build HL7v2 routes with receivers, routers, senders |
+  | `fhir-integration` | protocol | FHIR R4 resources, REST endpoints, HL7-to-FHIR transforms |
+  | `mllp-connectivity` | protocol | MLLP TCP connections, ACK handling, connection pooling |
+  | `content-based-routing` | routing | Field-based routing rules (MSH.9, PID.3, etc.) |
+  | `nhs-trust-deployment` | deployment | NHS trust deployment with security and compliance |
+  | `message-transform` | transform | Protocol transforms (HL7↔FHIR, HL7↔JSON, CSV→HL7) |
+  | `production-monitoring` | monitoring | Health metrics, error rates, queue depths, alerts |
+
+- **Skill categories** with color coding: protocol (blue), routing (green), transform (purple), monitoring (amber), deployment (red), general (gray)
+- **Scope filtering**: platform, tenant, project
+- **Search** by name or description
+- **Full CRUD**: create, view, edit, delete
+- **Skill content editor** with markdown textarea
+- **Detailed skill content** with workflow steps, example configurations, and JSON code blocks
+- **New Skill modal** with name validation (lowercase, hyphens only), description, scope, category, initial content
+
+**Customizations from saas-codex:**
+- Replaced generic "skills" with HIE-specific integration skills
+- Categories: protocol, routing, transform, monitoring, deployment (vs. generic)
+- Skill content includes HL7 field references, FHIR resources, NHS-specific configurations
+- Example configurations use HIE class names (`Engine.li.hosts.hl7.HL7TCPService`, etc.)
+
+---
+
+## Task 4d: Hooks Configuration (`/admin/hooks`) ✅
+
+**File:** `Portal/src/app/(app)/admin/hooks/page.tsx` (NEW, 476 lines)
+
+**Source:** Borrowed from `saas-codex/frontend/src/app/(app)/admin/hooks/page.tsx` and customized for HIE.
+
+**Features:**
+
+### Platform Hooks (always active)
+| Hook | Settings | Default |
+|------|----------|---------|
+| **Security** | Block dangerous commands | ✅ ON |
+| | Block path traversal | ✅ ON |
+| | Validate HL7 message structure | ✅ ON |
+| | Enforce TLS for external connections | ❌ OFF |
+| | Blocked patterns (6 default) | `rm -rf /`, `sudo rm`, `DROP TABLE`, `DELETE FROM hie_`, `curl \| bash`, `wget \| sh` |
+| **Audit** | Log all agent actions | ✅ ON |
+| | Log message access (HL7/FHIR) | ✅ ON |
+| | Log configuration changes | ✅ ON |
+
+### Tenant Hooks (per NHS Trust)
+| Hook | Settings | Default |
+|------|----------|---------|
+| **NHS Compliance** | Detect NHS numbers in agent output | ✅ ON |
+| | Detect PII (names, addresses, DOB) | ✅ ON |
+| | Block external data transfer | ❌ OFF |
+| | Enforce data retention policy | ✅ ON (365 days) |
+| **Clinical Safety** | Validate message integrity (checksum) | ✅ ON |
+| | Require ACK confirmation | ✅ ON |
+| | Alert on potential message loss | ✅ ON |
+| | Max retry attempts | 3 |
+
+- **Configurable blocked patterns** with add/remove UI
+- **Expandable configuration panels** per hook section
+- **Info box** explaining hooks architecture, NHS compliance references (DTAC, DSPT, DCB0129/DCB0160), and restart requirements
+
+**Customizations from saas-codex:**
+- Replaced generic security/compliance with NHS-specific hooks
+- Added Clinical Safety hooks (unique to healthcare)
+- Added NHS number and PII detection
+- Added HL7 message structure validation
+- Added data retention policy with configurable days
+- Added ACK confirmation and message loss alerting
+- Referenced NHS compliance standards (DTAC, DSPT, DCB0129/DCB0160)
+
+---
+
+## Sidebar Navigation Structure (v1.6.0)
+
+```
+OpenLI HIE
+├── Main
+│   ├── Dashboard          /dashboard
+│   ├── Workspaces         /workspaces
+│   ├── Productions        /productions
+│   ├── Configure          /configure
+│   └── Monitoring         /monitoring
+├── GenAI                  (NEW)
+│   ├── Agents             /agents          (Bot icon)
+│   └── Chat               /chat            (MessagesSquare icon)
+├── Admin
+│   ├── Users              /admin/users
+│   ├── Skills             /admin/skills    (NEW, BookOpen icon)
+│   └── Hooks              /admin/hooks     (NEW, Webhook icon)
+└── Settings               /settings
+```
+
+---
+
+## Architecture Notes
+
+### Frontend Stack
+- **Framework:** Next.js 14 (App Router with `(app)` route group)
+- **UI:** React 18 + TypeScript + Tailwind CSS
+- **Icons:** lucide-react
+- **Color palette:** NHS blue (`#005EB8`), custom `nhs-blue` / `nhs-dark-blue` Tailwind tokens
+- **Dark mode:** Tailwind `dark:` classes with ThemeProvider
+- **Auth:** AuthGuard wrapper in `(app)/layout.tsx`
+- **Layout:** AppShell with collapsible Sidebar + TopNav
+
+### New Pages Architecture
+All four new pages follow the same pattern:
+1. `"use client"` directive (client-side rendering)
+2. React functional component with `useState` hooks
+3. Simulated data and responses (ready for backend API connection)
+4. Consistent styling with existing Portal design system
+5. Dark mode support throughout
+6. Responsive layout
+
+### Backend Integration Points (Future)
+The new pages are architecturally ready for backend connection:
+- **Agents:** `POST /api/v1/agent/run` with SSE streaming
+- **Chat:** `POST /api/v1/chat/message` with SSE streaming, `GET /api/v1/chat/sessions`
+- **Skills:** `GET/POST/PUT/DELETE /api/v1/skills/`
+- **Hooks:** `GET/PUT /api/v1/hooks/platform`, `GET/PUT /api/v1/hooks/tenant`
+
+---
+
+## Known Issues
+
+### TypeScript Lint Errors
+All new `.tsx` files show IDE lint errors for:
+- `Cannot find module 'react'` — node_modules not installed locally (Docker-only build)
+- `JSX.IntrinsicElements` — Same root cause (missing @types/react)
+- `Parameter implicitly has 'any' type` — Strict mode type inference
+
+**Resolution:** These resolve when `npm install` is run in `Portal/`. The project uses Docker for builds, so local node_modules are not required. To fix locally:
+```bash
+cd Portal && npm install
+```
+
+### Simulated Data
+All four new pages use simulated/mock data. Backend API endpoints need to be implemented in the Engine to provide real data:
+- Agent runner integration (Claude, Codex, Gemini APIs)
+- Chat session persistence (PostgreSQL)
+- Skills CRUD API
+- Hooks configuration API
+
+---
+
+## Version Summary
+
+| Version | Date | Key Changes |
+|---------|------|-------------|
+| v1.0.0 | Feb 7, 2026 | Initial release, IRIS-compatible LI Engine |
+| v1.1.0 | Feb 8, 2026 | Core message model, adapter framework |
+| v1.2.0 | Feb 9, 2026 | HL7 v2.x, TCP/HTTP/File protocols |
+| v1.3.0 | Feb 9, 2026 | Production config management, Manager API |
+| v1.4.0 | Feb 9, 2026 | Multiprocess, thread pools, priority queues |
+| v1.5.0 | Feb 10, 2026 | Phase 4 Meta-Instantiation, Message Envelope |
+| v1.5.1 | Feb 10, 2026 | Portal UI uplift (About, Theme, Sidebar) |
+| **v1.6.0** | **Feb 11, 2026** | **OpenLI rebrand, GenAI tabs, License, Skills/Hooks** |
+
+---
+
+**Status:** ✅ All v1.6.0 tasks complete. Ready for commit and push to `origin/main`.
+
+**Reviewed By:** Development Team
+**Last Updated:** February 11, 2026
+**Next Steps:** Commit to local main, push to remote, implement backend API endpoints for GenAI tabs
