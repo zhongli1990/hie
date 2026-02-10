@@ -364,7 +364,7 @@ export default function ChatPage() {
             const errorMsg: ChatMessage = {
               id: `msg-${Date.now()}-error`,
               role: "system",
-              content: `Error: ${parsed.payload?.message || "Unknown error"}`,
+              content: `Error: ${parsed.message || parsed.payload?.message || "Unknown error"}`,
               created_at: new Date().toISOString(),
             };
             setMessages((prev: ChatMessage[]) => [...prev, errorMsg]);
