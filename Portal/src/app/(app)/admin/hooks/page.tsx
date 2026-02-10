@@ -11,7 +11,7 @@
 
 "use client";
 
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Webhook, Shield, FileText, Heart, CheckSquare, X, Save, Info } from "lucide-react";
 
 interface PlatformHooks {
@@ -125,8 +125,16 @@ export default function HooksManagementPage() {
     setError(null);
     setSuccess(null);
     try {
-      await new Promise(resolve => setTimeout(resolve, 500));
-      setSuccess("Hooks configuration saved. Changes take effect on next engine restart.");
+      const res = await fetch("/api/agent-runner/hooks/config", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          platform: platformHooks,
+          tenant: tenantHooks,
+        }),
+      });
+      if (!res.ok) throw new Error(`Failed to save: ${res.statusText}`);
+      setSuccess("Hooks configuration saved. Changes take effect on next agent run.");
       setEditingSection(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to save hooks");
@@ -134,6 +142,22 @@ export default function HooksManagementPage() {
       setSaving(false);
     }
   };
+
+  // Load hooks config from backend on mount
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await fetch("/api/agent-runner/hooks/config");
+        if (res.ok) {
+          const data = await res.json();
+          if (data.platform) setPlatformHooks(data.platform);
+          if (data.tenant) setTenantHooks(data.tenant);
+        }
+      } catch {
+        // Silently fall back to defaults if backend unavailable
+      }
+    })();
+  }, []);
 
   return (
     <div className="space-y-6">

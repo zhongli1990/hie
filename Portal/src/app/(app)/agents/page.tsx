@@ -53,6 +53,17 @@ export default function AgentsPage() {
   const [streamingText, setStreamingText] = useState("");
   const [activeToolCall, setActiveToolCall] = useState<{ name: string; input?: any } | null>(null);
   const transcriptEndRef = useRef<HTMLDivElement>(null);
+  const [threadId, setThreadId] = useState<string | null>(null);
+  const eventSourceRef = useRef<EventSource | null>(null);
+
+  // Pick up prefilled prompt from Prompts page
+  useEffect(() => {
+    const prefill = sessionStorage.getItem("prefill-prompt");
+    if (prefill) {
+      setPrompt(prefill);
+      sessionStorage.removeItem("prefill-prompt");
+    }
+  }, []);
 
   // Auto-select current workspace from context
   useEffect(() => {
@@ -147,7 +158,7 @@ export default function AgentsPage() {
     transcriptEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [transcript, streamingText]);
 
-  // Placeholder for running prompts - will connect to backend agent runners
+  // Connect to agent-runner backend with SSE streaming
   async function onRunPrompt() {
     if (!prompt.trim()) return;
     setStatus("running");
@@ -155,50 +166,113 @@ export default function AgentsPage() {
     setStreamingText("");
     setActiveToolCall(null);
 
-    // Add user message to events
-    setEvents([{ at: Date.now(), data: { type: "ui.message.user", payload: { text: prompt } } }]);
+    const userPrompt = prompt;
+    setPrompt("");
 
-    // Build HIE context for the agent
-    const ws = workspaces.find((w) => w.id === selectedWorkspaceId);
-    const proj = projects.find((p) => p.id === selectedProjectId);
+    // Add user message to events immediately
+    setEvents([{ at: Date.now(), data: { type: "ui.message.user", payload: { text: userPrompt } } }]);
 
     try {
-      // TODO: Connect to actual agent runner backend
-      // For now, simulate a response showing the architecture is ready
-      await new Promise(resolve => setTimeout(resolve, 1500));
+      // Step 1: Create or reuse a thread
+      let currentThreadId = threadId;
+      if (!currentThreadId) {
+        const ws = workspaces.find((w) => w.id === selectedWorkspaceId);
+        const workingDir = `/workspaces/${ws?.name || "default"}`;
+        const threadRes = await fetch("/api/agent-runner/threads", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ workingDirectory: workingDir }),
+        });
+        if (!threadRes.ok) {
+          throw new Error(`Failed to create thread: ${threadRes.statusText}`);
+        }
+        const threadData = await threadRes.json();
+        currentThreadId = threadData.threadId;
+        setThreadId(currentThreadId);
+      }
 
-      const assistantResponse = selectedProjectId
-        ? `I understand you want to work on project "${proj?.name || selectedProjectId}" in workspace "${ws?.display_name || selectedWorkspaceId}".
+      // Step 2: Create a run
+      const runRes = await fetch("/api/agent-runner/runs", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ threadId: currentThreadId, prompt: userPrompt }),
+      });
+      if (!runRes.ok) {
+        throw new Error(`Failed to create run: ${runRes.statusText}`);
+      }
+      const runData = await runRes.json();
+      const runId = runData.runId;
 
-**Your request:** ${prompt}
+      // Step 3: Subscribe to SSE events
+      const evtSource = new EventSource(`/api/agent-runner/runs/${runId}/events`);
+      eventSourceRef.current = evtSource;
 
-I'm ready to help you configure HIE routes, items, and integrations. Here's what I can do:
+      evtSource.onmessage = (event) => {
+        if (!event.data || event.data.trim() === "") return;
+        try {
+          const parsed = JSON.parse(event.data);
+          const eventType = parsed.type || "";
 
-- **Create/modify routes** - Define message flows between services, processes, and operations
-- **Configure items** - Set up HL7 receivers, MLLP senders, HTTP endpoints, file watchers
-- **Build routing rules** - Content-based routing with HL7 field conditions
-- **Deploy & test** - Deploy configurations and send test messages
-- **Troubleshoot** - Analyze message flows, check connectivity, debug errors
+          setEvents((prev) => [...prev, { at: Date.now(), data: parsed }]);
 
-The agent runner backend is being connected. Once live, I'll be able to directly modify your HIE configuration through natural language instructions.`
-        : `Please select a workspace and project first, then I can help you configure HIE integrations through natural language.
+          // Handle streaming text deltas
+          if (eventType === "ui.message.assistant.delta") {
+            setStreamingText((prev) => prev + (parsed.payload?.textDelta || ""));
+          } else if (eventType === "ui.message.assistant.final") {
+            setStreamingText("");
+          }
 
-**Available actions:**
-- Select a workspace from the dropdown above
-- Choose a project to work on
-- Then describe what integration you need in plain English
+          // Handle tool call indicators
+          if (eventType === "ui.tool.call.start") {
+            setActiveToolCall({ name: parsed.payload?.toolName || "tool", input: parsed.payload?.input });
+          } else if (eventType === "ui.tool.result" || eventType === "ui.tool.blocked") {
+            setActiveToolCall(null);
+          }
 
-For example: *"Create an HL7 ADT receiver on port 10001 that routes A01 messages to the PAS MLLP sender"*`;
+          // Handle completion
+          if (eventType === "run.completed" || eventType === "stream.closed") {
+            setStatus("completed");
+            setStreamingText("");
+            setActiveToolCall(null);
+            evtSource.close();
+            eventSourceRef.current = null;
+          }
 
-      setEvents(prev => [
-        ...prev,
-        { at: Date.now(), data: { type: "ui.message.assistant.final", payload: { text: assistantResponse } } },
-      ]);
-      setStatus("completed");
+          // Handle errors
+          if (eventType === "error") {
+            setStatus(`error: ${parsed.payload?.message || "Unknown error"}`);
+            setStreamingText("");
+            setActiveToolCall(null);
+            evtSource.close();
+            eventSourceRef.current = null;
+          }
+        } catch {
+          // Ignore unparseable events (e.g. SSE comments)
+        }
+      };
+
+      evtSource.onerror = () => {
+        if (evtSource.readyState === EventSource.CLOSED) {
+          if (status === "running") setStatus("completed");
+        } else {
+          setStatus("error: Connection lost");
+        }
+        evtSource.close();
+        eventSourceRef.current = null;
+        setStreamingText("");
+        setActiveToolCall(null);
+      };
     } catch (e) {
       setStatus(`error: ${e instanceof Error ? e.message : "Unknown error"}`);
     }
   }
+
+  // Cleanup EventSource on unmount
+  useEffect(() => {
+    return () => {
+      eventSourceRef.current?.close();
+    };
+  }, []);
 
   const selectedWorkspace = workspaces.find((w) => w.id === selectedWorkspaceId) || null;
   const selectedProject = projects.find((p) => p.id === selectedProjectId) || null;

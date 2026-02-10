@@ -8,12 +8,26 @@ interface VersionHistory {
   features: string[];
 }
 
-const VERSION = "1.6.0";
+const VERSION = "1.7.0";
 const BUILD_DATE = "Feb 11, 2026";
 const PLATFORM_NAME = "OpenLI HIE";
 const PRODUCT_NAME = "OpenLI Healthcare Integration Engine";
 
 const versionHistory: VersionHistory[] = [
+  {
+    version: "1.7.0",
+    date: "Feb 11, 2026",
+    features: [
+      "Agent Runner microservice (Claude/Anthropic SSE streaming)",
+      "Prompt Manager microservice (templates, skills, usage analytics)",
+      "Prompts page with template CRUD, variable filling, and Send to Agent",
+      "Agents/Chat pages rewired to agent-runner SSE backend",
+      "Skills page rewired to prompt-manager DB-backed API",
+      "Hooks page rewired to agent-runner hooks config API",
+      "HIE-specific skills: HL7 route builder, FHIR mapper, clinical safety",
+      "Database schema: agent sessions/runs/events, prompt templates, skills",
+    ],
+  },
   {
     version: "1.6.0",
     date: "Feb 11, 2026",

@@ -93,30 +93,57 @@ export default function ChatPage() {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, streamingContent]);
 
-  // Create new session (simulated for now)
+  // Create new session via agent-runner backend
   async function onCreateSession() {
     if (!selectedWorkspaceId) return;
-    const newSession: ChatSession = {
-      id: `session-${Date.now()}`,
-      workspace_id: selectedWorkspaceId,
-      project_id: selectedProjectId,
-      runner_type: runnerType,
-      created_at: new Date().toISOString(),
-      message_count: 0,
-      title: `New Chat ${sessions.length + 1}`,
-    };
-    setSessions(prev => [newSession, ...prev]);
-    setSelectedSessionId(newSession.id);
-    setMessages([]);
+    try {
+      const ws = workspaces.find(w => w.id === selectedWorkspaceId);
+      const workingDir = `/workspaces/${ws?.name || "default"}`;
+      const res = await fetch("/api/agent-runner/threads", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ workingDirectory: workingDir }),
+      });
+      if (!res.ok) throw new Error(`Failed to create session: ${res.statusText}`);
+      const data = await res.json();
+      const newSession: ChatSession = {
+        id: data.threadId || `session-${Date.now()}`,
+        workspace_id: selectedWorkspaceId,
+        project_id: selectedProjectId,
+        runner_type: runnerType,
+        created_at: new Date().toISOString(),
+        message_count: 0,
+        title: `Chat ${sessions.length + 1}`,
+      };
+      setSessions(prev => [newSession, ...prev]);
+      setSelectedSessionId(newSession.id);
+      setMessages([]);
+    } catch (e) {
+      console.error("Failed to create session:", e);
+      // Fallback to local session
+      const newSession: ChatSession = {
+        id: `session-${Date.now()}`,
+        workspace_id: selectedWorkspaceId,
+        project_id: selectedProjectId,
+        runner_type: runnerType,
+        created_at: new Date().toISOString(),
+        message_count: 0,
+        title: `Chat ${sessions.length + 1}`,
+      };
+      setSessions(prev => [newSession, ...prev]);
+      setSelectedSessionId(newSession.id);
+      setMessages([]);
+    }
   }
 
-  // Send message
+  // Send message via agent-runner SSE streaming
   async function onSendMessage() {
     if (!selectedSessionId || !inputValue.trim() || status === "running") return;
 
     const userMessage = inputValue.trim();
     setInputValue("");
     setStatus("running");
+    setStreamingContent("");
 
     // Add user message
     const userMsg: ChatMessage = {
@@ -128,92 +155,86 @@ export default function ChatPage() {
     setMessages(prev => [...prev, userMsg]);
 
     try {
-      // TODO: Connect to actual agent runner backend
-      // Simulate agent response with HIE context
-      await new Promise(resolve => setTimeout(resolve, 1200));
+      // Create a run on the thread
+      const runRes = await fetch("/api/agent-runner/runs", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ threadId: selectedSessionId, prompt: userMessage }),
+      });
+      if (!runRes.ok) throw new Error(`Failed to create run: ${runRes.statusText}`);
+      const runData = await runRes.json();
+      const runId = runData.runId;
 
-      const workspace = workspaces.find(w => w.id === selectedWorkspaceId);
-      const project = projects.find(p => p.id === selectedProjectId);
+      // Subscribe to SSE events
+      const evtSource = new EventSource(`/api/agent-runner/runs/${runId}/events`);
+      let accumulatedText = "";
 
-      let assistantContent: string;
+      evtSource.onmessage = (event) => {
+        if (!event.data || event.data.trim() === "") return;
+        try {
+          const parsed = JSON.parse(event.data);
+          const eventType = parsed.type || "";
 
-      if (userMessage.toLowerCase().includes("route") || userMessage.toLowerCase().includes("hl7")) {
-        assistantContent = `I'll help you with that HIE route configuration.
-
-**Understanding your request:** ${userMessage}
-
-Here's what I recommend for your ${project ? `"${project.name}" project` : "integration"}:
-
-### Proposed Route Configuration
-
-\`\`\`json
-{
-  "route": {
-    "name": "ADT-Inbound-Route",
-    "items": [
-      {
-        "type": "service",
-        "class": "Engine.li.hosts.hl7.HL7TCPService",
-        "settings": { "port": 10001, "ackMode": "auto" }
-      },
-      {
-        "type": "process",
-        "class": "Engine.li.hosts.routing.RoutingEngine",
-        "rules": [
-          { "field": "MSH.9.2", "operator": "equals", "value": "A01", "target": "PAS_Sender" }
-        ]
-      },
-      {
-        "type": "operation",
-        "class": "Engine.li.hosts.hl7.HL7TCPOperation",
-        "settings": { "host": "pas.nhs.local", "port": 2575 }
-      }
-    ]
-  }
-}
-\`\`\`
-
-Would you like me to:
-1. **Deploy** this configuration to the engine?
-2. **Modify** any of the settings?
-3. **Add** additional routing rules?`;
-      } else if (userMessage.toLowerCase().includes("status") || userMessage.toLowerCase().includes("health")) {
-        assistantContent = `### System Status
-
-| Component | Status | Details |
-|-----------|--------|---------|
-| HIE Engine | 🟢 Running | Port 9300 |
-| Manager API | 🟢 Running | Port 9302 |
-| Portal | 🟢 Running | Port 9303 |
-| PostgreSQL | 🟢 Connected | Port 9310 |
-| Redis | 🟢 Connected | Port 9311 |
-
-${project ? `**Project "${project.name}":** ${project.status || "configured"}` : "No project selected."}
-
-All services are operational. Message throughput: ~10,000 msg/sec capacity.`;
-      } else {
-        assistantContent = `I'm your HIE integration assistant. I can help you with:
-
-- **Route Configuration** - Create and modify message routes
-- **Item Setup** - Configure HL7 receivers, MLLP senders, HTTP endpoints
-- **Routing Rules** - Define content-based routing conditions
-- **Deployment** - Deploy and start/stop integrations
-- **Monitoring** - Check system health and message flows
-- **Troubleshooting** - Debug connectivity and message issues
-
-${workspace ? `You're working in the **${workspace.display_name}** workspace.` : "Select a workspace to get started."}
-${project ? `Active project: **${project.name}**` : ""}
-
-What would you like to do?`;
-      }
-
-      const assistantMsg: ChatMessage = {
-        id: `msg-${Date.now()}-assistant`,
-        role: "assistant",
-        content: assistantContent,
-        created_at: new Date().toISOString(),
+          if (eventType === "ui.message.assistant.delta") {
+            accumulatedText += parsed.payload?.textDelta || "";
+            setStreamingContent(accumulatedText);
+          } else if (eventType === "ui.message.assistant.final") {
+            const finalText = parsed.payload?.text || accumulatedText;
+            setStreamingContent("");
+            accumulatedText = "";
+            const assistantMsg: ChatMessage = {
+              id: `msg-${Date.now()}-assistant`,
+              role: "assistant",
+              content: finalText,
+              created_at: new Date().toISOString(),
+            };
+            setMessages(prev => [...prev, assistantMsg]);
+          } else if (eventType === "ui.tool.call.start" || eventType === "ui.tool.call") {
+            const toolMsg: ChatMessage = {
+              id: `msg-${Date.now()}-tool`,
+              role: "tool",
+              content: `Calling ${parsed.payload?.toolName || "tool"}`,
+              metadata: { tool_name: parsed.payload?.toolName, tool_input: parsed.payload?.input },
+              created_at: new Date().toISOString(),
+            };
+            setMessages(prev => [...prev, toolMsg]);
+          } else if (eventType === "ui.tool.result") {
+            const toolResultMsg: ChatMessage = {
+              id: `msg-${Date.now()}-tool-result`,
+              role: "tool",
+              content: `Result from ${parsed.payload?.toolName || "tool"}`,
+              metadata: { tool_name: parsed.payload?.toolName, tool_output: parsed.payload?.output },
+              created_at: new Date().toISOString(),
+            };
+            setMessages(prev => [...prev, toolResultMsg]);
+          } else if (eventType === "run.completed" || eventType === "stream.closed") {
+            setStatus("idle");
+            setStreamingContent("");
+            evtSource.close();
+            inputRef.current?.focus();
+          } else if (eventType === "error") {
+            const errorMsg: ChatMessage = {
+              id: `msg-${Date.now()}-error`,
+              role: "system",
+              content: `Error: ${parsed.payload?.message || "Unknown error"}`,
+              created_at: new Date().toISOString(),
+            };
+            setMessages(prev => [...prev, errorMsg]);
+            setStatus("idle");
+            setStreamingContent("");
+            evtSource.close();
+          }
+        } catch {
+          // Ignore unparseable SSE events
+        }
       };
-      setMessages(prev => [...prev, assistantMsg]);
+
+      evtSource.onerror = () => {
+        setStatus("idle");
+        setStreamingContent("");
+        evtSource.close();
+        inputRef.current?.focus();
+      };
     } catch (e) {
       const errorMsg: ChatMessage = {
         id: `msg-${Date.now()}-error`,
@@ -222,10 +243,9 @@ What would you like to do?`;
         created_at: new Date().toISOString(),
       };
       setMessages(prev => [...prev, errorMsg]);
+      setStatus("idle");
+      inputRef.current?.focus();
     }
-
-    setStatus("idle");
-    inputRef.current?.focus();
   }
 
   function onKeyDown(e: KeyboardEvent<HTMLTextAreaElement>) {

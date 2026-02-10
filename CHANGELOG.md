@@ -5,6 +5,49 @@ All notable changes to OpenLI HIE (Healthcare Integration Engine) will be docume
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.7.0] - 2026-02-11
+
+### Added - Full-Stack GenAI Backend Services (ported from saas-codex)
+
+**Agent Runner Service** (`agent-runner/`, port 9340):
+- FastAPI microservice for Claude/Anthropic agent execution with SSE streaming
+- Thread/run lifecycle management with PostgreSQL persistence
+- HIE-specific skills: hl7-route-builder, fhir-mapper, clinical-safety-review, nhs-compliance-check, integration-test
+- Pre/post execution hooks for security, audit, compliance, and clinical safety
+- Configurable tools, events system, and workspace context
+- Dockerfile, requirements.txt, full app structure
+
+**Prompt Manager Service** (`prompt-manager/`, port 9341):
+- FastAPI microservice for prompt template and skill management
+- Full CRUD with versioning, publishing, and category filtering
+- Healthcare-specific categories: hl7, fhir, clinical, compliance, integration
+- Skill sync-from-files for importing agent-runner SKILL.md files
+- Usage logging and analytics endpoints
+- Alembic migrations, async SQLAlchemy ORM, JWT auth forwarding
+- Auto-seeding of HIE-specific prompt templates on startup
+
+**Database Schema Additions** (`scripts/init-db.sql`):
+- agent_sessions, agent_runs, agent_run_events, agent_messages tables
+- hooks_config table with seed data for default security/audit/compliance hooks
+- prompt_templates, skills, template_usage_log tables
+- Indexes, triggers, and updated_at auto-update functions
+
+**Portal Frontend Rewiring**:
+- `/api/prompt-manager/[...path]` proxy route to prompt-manager service
+- `/api/agent-runner/[...path]` proxy route with SSE streaming support
+- New Prompts page (`/prompts`) with template CRUD, variable filling, preview, and "Send to Agent" flow
+- Agents page rewired to agent-runner SSE streaming (thread → run → events)
+- Chat page rewired to agent-runner SSE streaming with session persistence
+- Skills page rewired to prompt-manager /skills API (DB-backed CRUD, sync-from-files)
+- Hooks page rewired to agent-runner /hooks/config API (DB-backed load/save)
+- Sidebar navigation updated with Prompts tab under GenAI section
+
+**Docker Compose** (`docker-compose.yml`):
+- Added hie-agent-runner service (9340:8082)
+- Added hie-prompt-manager service (9341:8083)
+- Portal environment updated with PROMPT_MANAGER_URL and AGENT_RUNNER_URL
+- Skills volume mount: agent-runner/skills → prompt-manager /app/skills:ro
+
 ## [1.6.0] - 2026-02-11
 
 ### Added - OpenLI Rebrand, GenAI Agent Tabs, License & Skills/Hooks

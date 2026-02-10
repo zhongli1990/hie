@@ -423,3 +423,200 @@ DROP TRIGGER IF EXISTS update_portal_messages_updated_at ON portal_messages;
 CREATE TRIGGER update_portal_messages_updated_at
     BEFORE UPDATE ON portal_messages
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+-- ============================================================================
+-- GenAI Agent Tables (v1.6.0)
+-- ============================================================================
+
+-- Agent chat sessions
+CREATE TABLE IF NOT EXISTS agent_sessions (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    workspace_id UUID NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+    project_id UUID REFERENCES projects(id) ON DELETE SET NULL,
+    tenant_id UUID REFERENCES hie_tenants(id) ON DELETE SET NULL,
+    runner_type VARCHAR(50) NOT NULL DEFAULT 'claude',
+    runner_thread_id VARCHAR(255),
+    title VARCHAR(512),
+    working_directory TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_agent_sessions_workspace ON agent_sessions(workspace_id);
+CREATE INDEX IF NOT EXISTS idx_agent_sessions_project ON agent_sessions(project_id);
+CREATE INDEX IF NOT EXISTS idx_agent_sessions_created ON agent_sessions(created_at DESC);
+
+-- Agent runs (each prompt submission within a session)
+CREATE TABLE IF NOT EXISTS agent_runs (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    session_id UUID NOT NULL REFERENCES agent_sessions(id) ON DELETE CASCADE,
+    runner_run_id VARCHAR(255),
+    prompt TEXT NOT NULL,
+    status VARCHAR(50) NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'running', 'completed', 'error', 'cancelled')),
+    error_message TEXT,
+    started_at TIMESTAMPTZ,
+    completed_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_agent_runs_session ON agent_runs(session_id);
+CREATE INDEX IF NOT EXISTS idx_agent_runs_status ON agent_runs(status);
+
+-- Agent run events (SSE events stored for replay)
+CREATE TABLE IF NOT EXISTS agent_run_events (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    run_id UUID NOT NULL REFERENCES agent_runs(id) ON DELETE CASCADE,
+    seq INTEGER NOT NULL DEFAULT 0,
+    event_type VARCHAR(100) NOT NULL,
+    raw_json JSONB NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_agent_run_events_run ON agent_run_events(run_id);
+CREATE INDEX IF NOT EXISTS idx_agent_run_events_seq ON agent_run_events(run_id, seq);
+
+-- Agent messages (user/assistant message pairs for chat persistence)
+CREATE TABLE IF NOT EXISTS agent_messages (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    session_id UUID NOT NULL REFERENCES agent_sessions(id) ON DELETE CASCADE,
+    run_id UUID REFERENCES agent_runs(id) ON DELETE SET NULL,
+    role VARCHAR(20) NOT NULL CHECK (role IN ('user', 'assistant', 'system', 'tool')),
+    content TEXT NOT NULL,
+    metadata_json JSONB,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_agent_messages_session ON agent_messages(session_id);
+CREATE INDEX IF NOT EXISTS idx_agent_messages_created ON agent_messages(session_id, created_at ASC);
+
+-- Hooks configuration (admin-managed hook rules)
+CREATE TABLE IF NOT EXISTS hooks_config (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    scope VARCHAR(50) NOT NULL DEFAULT 'global' CHECK (scope IN ('global', 'workspace', 'project')),
+    scope_id UUID,
+    hook_type VARCHAR(50) NOT NULL CHECK (hook_type IN ('pre_tool_use', 'post_tool_use', 'pre_message', 'post_message')),
+    name VARCHAR(255) NOT NULL,
+    description TEXT,
+    config_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+    enabled BOOLEAN NOT NULL DEFAULT true,
+    priority INTEGER NOT NULL DEFAULT 0,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_hooks_config_scope ON hooks_config(scope, scope_id);
+CREATE INDEX IF NOT EXISTS idx_hooks_config_type ON hooks_config(hook_type);
+CREATE INDEX IF NOT EXISTS idx_hooks_config_enabled ON hooks_config(enabled);
+
+-- Triggers for GenAI tables
+DROP TRIGGER IF EXISTS update_agent_sessions_updated_at ON agent_sessions;
+CREATE TRIGGER update_agent_sessions_updated_at
+    BEFORE UPDATE ON agent_sessions
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+DROP TRIGGER IF EXISTS update_hooks_config_updated_at ON hooks_config;
+CREATE TRIGGER update_hooks_config_updated_at
+    BEFORE UPDATE ON hooks_config
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+-- Seed default hooks
+INSERT INTO hooks_config (id, scope, hook_type, name, description, config_json, enabled, priority) VALUES
+    ('00000000-0000-0000-0000-000000000101', 'global', 'pre_tool_use', 'Security: Block Dangerous Commands',
+     'Blocks rm -rf, sudo, fork bombs, and other dangerous bash patterns',
+     '{"patterns": ["rm -rf /", "sudo rm", "chmod 777 /", ":(){:|:&};:", "curl | bash", "wget | bash"]}'::jsonb,
+     true, 100),
+    ('00000000-0000-0000-0000-000000000102', 'global', 'pre_tool_use', 'Security: Path Escape Prevention',
+     'Blocks path traversal attempts (../) and absolute paths outside /workspaces',
+     '{"blocked_patterns": ["../", "..\\\\"], "allowed_roots": ["/workspaces"]}'::jsonb,
+     true, 99),
+    ('00000000-0000-0000-0000-000000000103', 'global', 'pre_tool_use', 'Clinical: Protect Patient Data',
+     'Blocks direct SQL manipulation of patient/clinical tables',
+     '{"blocked_sql": ["DROP TABLE", "TRUNCATE", "DELETE FROM patient", "UPDATE patient SET"]}'::jsonb,
+     true, 98),
+    ('00000000-0000-0000-0000-000000000104', 'global', 'post_tool_use', 'Audit: Tool Usage Logging',
+     'Logs all tool executions for compliance audit trail',
+     '{"log_level": "info", "include_input": false, "include_output_summary": true}'::jsonb,
+     true, 50),
+    ('00000000-0000-0000-0000-000000000105', 'global', 'pre_tool_use', 'Compliance: NHS Data Handling',
+     'Ensures NHS Number and PID data are not exposed in logs or error messages',
+     '{"sensitive_patterns": ["\\\\d{3}\\\\s?\\\\d{3}\\\\s?\\\\d{4}"], "action": "redact"}'::jsonb,
+     true, 97)
+ON CONFLICT (id) DO NOTHING;
+
+-- ============================================================================
+-- Prompt Manager Tables (v1.6.0)
+-- Note: These are also created by prompt-manager alembic migration,
+-- but included here for single-script DB init convenience.
+-- ============================================================================
+
+CREATE TABLE IF NOT EXISTS prompt_templates (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    tenant_id UUID,
+    owner_id UUID,
+    name VARCHAR(256) NOT NULL,
+    slug VARCHAR(256) NOT NULL,
+    category VARCHAR(64) NOT NULL DEFAULT 'general',
+    description TEXT,
+    template_body TEXT NOT NULL,
+    variables JSONB,
+    tags JSONB,
+    version INTEGER NOT NULL DEFAULT 1,
+    is_latest BOOLEAN NOT NULL DEFAULT true,
+    is_published BOOLEAN NOT NULL DEFAULT false,
+    parent_id UUID,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_prompt_templates_slug ON prompt_templates(slug);
+CREATE INDEX IF NOT EXISTS idx_prompt_templates_category ON prompt_templates(category);
+CREATE INDEX IF NOT EXISTS idx_prompt_templates_latest ON prompt_templates(is_latest);
+CREATE INDEX IF NOT EXISTS idx_prompt_templates_slug_version ON prompt_templates(slug, version);
+CREATE INDEX IF NOT EXISTS idx_prompt_templates_tenant_latest ON prompt_templates(tenant_id, is_latest);
+
+CREATE TABLE IF NOT EXISTS skills (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    tenant_id UUID,
+    owner_id UUID,
+    name VARCHAR(256) NOT NULL,
+    slug VARCHAR(256) NOT NULL,
+    category VARCHAR(64) NOT NULL DEFAULT 'general',
+    description TEXT,
+    scope VARCHAR(32) NOT NULL DEFAULT 'platform',
+    skill_content TEXT NOT NULL,
+    allowed_tools TEXT,
+    is_user_invocable BOOLEAN NOT NULL DEFAULT true,
+    version INTEGER NOT NULL DEFAULT 1,
+    is_latest BOOLEAN NOT NULL DEFAULT true,
+    is_published BOOLEAN NOT NULL DEFAULT false,
+    is_enabled BOOLEAN NOT NULL DEFAULT true,
+    parent_id UUID,
+    source VARCHAR(32) NOT NULL DEFAULT 'db',
+    file_path TEXT,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_skills_slug ON skills(slug);
+CREATE INDEX IF NOT EXISTS idx_skills_category ON skills(category);
+CREATE INDEX IF NOT EXISTS idx_skills_latest ON skills(is_latest);
+CREATE INDEX IF NOT EXISTS idx_skills_slug_version ON skills(slug, version);
+CREATE INDEX IF NOT EXISTS idx_skills_tenant_latest ON skills(tenant_id, is_latest);
+
+CREATE TABLE IF NOT EXISTS template_usage_log (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL,
+    tenant_id UUID,
+    template_id UUID,
+    skill_id UUID,
+    session_id UUID,
+    rendered_prompt TEXT,
+    variables_used JSONB,
+    model_used VARCHAR(128),
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_template_usage_user ON template_usage_log(user_id);
+CREATE INDEX IF NOT EXISTS idx_template_usage_tenant ON template_usage_log(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_template_usage_template ON template_usage_log(template_id);
+CREATE INDEX IF NOT EXISTS idx_template_usage_skill ON template_usage_log(skill_id);

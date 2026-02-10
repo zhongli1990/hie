@@ -29,6 +29,7 @@ import {
   MessagesSquare,
   BookOpen,
   Webhook,
+  Sparkles,
 } from "lucide-react";
 import { VERSION } from "./AboutModal";
 
@@ -46,6 +47,7 @@ const navItems = [
 const agentItems = [
   { href: "/agents", label: "Agents", icon: Bot },
   { href: "/chat", label: "Chat", icon: MessagesSquare },
+  { href: "/prompts", label: "Prompts", icon: Sparkles },
 ];
 
 const adminItems = [
