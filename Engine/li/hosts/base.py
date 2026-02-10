@@ -693,6 +693,96 @@ class Host(MessageBroker, ABC):
         )
         return None
 
+    # =========================================================================
+    # Phase 4: MessageEnvelope Support (Optional)
+    # =========================================================================
+
+    async def on_message_envelope(self, envelope: Any) -> Any:
+        """
+        Process Phase 4 message envelope (OPTIONAL).
+
+        This is the Phase 4 preferred method for protocol-agnostic messaging.
+        Override this in subclasses to use the new envelope pattern with
+        schema metadata and dynamic parsing.
+
+        Default implementation parses the envelope and delegates to
+        on_process_message_content.
+
+        Args:
+            envelope: Phase 4 MessageEnvelope with header and body
+
+        Returns:
+            Processing result (or new envelope to forward)
+
+        Example:
+            async def on_message_envelope(self, envelope: MessageEnvelope):
+                # Automatic parsing based on content_type
+                parsed = envelope.parse()
+
+                # Process with full envelope context
+                result = await self.on_process_message_content(parsed, envelope)
+
+                return result
+        """
+        from Engine.core.message_envelope import MessageEnvelope
+
+        if not hasattr(envelope, 'parse'):
+            # Not a Phase 4 envelope, fall back to legacy
+            return await self._process_message(envelope)
+
+        logger.debug(
+            "processing_envelope",
+            message_id=envelope.header.message_id,
+            source=envelope.header.source,
+            content_type=envelope.header.content_type
+        )
+
+        # Parse if needed
+        parse_messages = self.get_setting("Host", "ParseMessages", False)
+        if parse_messages or parse_messages == "True":
+            parsed = envelope.parse()
+        else:
+            parsed = envelope.body.raw_payload
+
+        # Process
+        result = await self.on_process_message_content(parsed, envelope)
+
+        return result
+
+    async def on_process_message_content(
+        self,
+        content: Any,
+        envelope: Any
+    ) -> Any:
+        """
+        Process parsed message content with envelope context (Phase 4).
+
+        Override this to process Phase 4 messages. Default implementation
+        delegates to _process_message for backward compatibility.
+
+        Args:
+            content: Parsed message object (or raw bytes if parsing disabled)
+            envelope: Full Phase 4 message envelope (access to header/body/metadata)
+
+        Returns:
+            Processing result (or new envelope to forward)
+
+        Example:
+            async def on_process_message_content(self, content, envelope):
+                # Access envelope metadata
+                priority = envelope.header.priority
+                schema_version = envelope.header.schema_version
+
+                # Process content
+                if isinstance(content, HL7Message):
+                    # Process HL7 message
+                    return await self.process_hl7(content)
+
+                return content
+        """
+        # Default: delegate to legacy _process_message
+        return await self._process_message(content)
+
     @abstractmethod
     async def _process_message(self, message: Any) -> Any:
         """
