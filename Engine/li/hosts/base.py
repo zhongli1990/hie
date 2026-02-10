@@ -461,12 +461,18 @@ class Host(MessageBroker, ABC):
                     correlation_id = None
                     is_sync = False
 
+                # PRE-PROCESSING HOOK
+                message = await self.on_before_process(message)
+
                 # Process message
                 timeout = self.get_setting("Host", "Timeout", 30.0)
                 result = await asyncio.wait_for(
                     self._process_message(message),
                     timeout=timeout
                 )
+
+                # POST-PROCESSING HOOK
+                result = await self.on_after_process(message, result)
 
                 # Update metrics
                 elapsed_ms = (datetime.now(timezone.utc) - start_time).total_seconds() * 1000
@@ -484,15 +490,23 @@ class Host(MessageBroker, ABC):
                     if self._on_message:
                         await self._on_message(result)
 
-            except asyncio.TimeoutError:
+            except asyncio.TimeoutError as timeout_error:
+                # ERROR HOOK for timeout
+                recovery_result = await self.on_process_error(message, timeout_error)
+
                 self._metrics.messages_failed += 1
                 self._log.error("message_timeout", worker_id=worker_id)
+
                 if self._on_error:
-                    await self._on_error(TimeoutError("Message processing timeout"), message)
+                    await self._on_error(timeout_error, message)
 
             except Exception as e:
+                # ERROR HOOK for general exceptions
+                recovery_result = await self.on_process_error(message, e)
+
                 self._metrics.messages_failed += 1
                 self._log.error("message_processing_failed", worker_id=worker_id, error=str(e))
+
                 if self._on_error:
                     await self._on_error(e, message)
 
@@ -554,21 +568,101 @@ class Host(MessageBroker, ABC):
     async def on_teardown(self) -> None:
         """
         Called during host teardown.
-        
+
         Override to release resources.
         """
         pass
-    
+
+    # Message-Level Hooks (NEW)
+
+    async def on_before_process(self, message: Any) -> Any:
+        """
+        Called BEFORE processing each message.
+
+        Override to add:
+        - Message validation
+        - Pre-processing transformation
+        - Audit logging (message received)
+        - Metric collection (start timer)
+        - Authentication/authorization checks
+
+        Args:
+            message: Incoming message
+
+        Returns:
+            Modified message (or original if no changes)
+
+        Raises:
+            Exception: To reject message and trigger error handling
+        """
+        return message
+
+    async def on_after_process(
+        self,
+        message: Any,
+        result: Any
+    ) -> Any:
+        """
+        Called AFTER processing each message successfully.
+
+        Override to add:
+        - Post-processing transformation
+        - Audit logging (message processed)
+        - Metric collection (end timer)
+        - Response enrichment
+        - Cleanup actions
+
+        Args:
+            message: Original incoming message
+            result: Processing result
+
+        Returns:
+            Modified result (or original if no changes)
+        """
+        return result
+
+    async def on_process_error(
+        self,
+        message: Any,
+        exception: Exception
+    ) -> Any:
+        """
+        Called when message processing fails.
+
+        Override to add:
+        - Error logging
+        - Dead letter queue routing
+        - Retry logic
+        - Alert generation
+        - Recovery actions
+
+        Args:
+            message: Message that caused error
+            exception: The exception raised
+
+        Returns:
+            Recovery result (if recovery successful) or None
+
+        Raises:
+            Exception: To propagate error up (if no recovery)
+        """
+        self._log.error(
+            "message_processing_error",
+            error=str(exception),
+            error_type=type(exception).__name__
+        )
+        return None
+
     @abstractmethod
     async def _process_message(self, message: Any) -> Any:
         """
         Process a single message.
-        
+
         Must be implemented by subclasses.
-        
+
         Args:
             message: Message to process
-            
+
         Returns:
             Processed message or None
         """
