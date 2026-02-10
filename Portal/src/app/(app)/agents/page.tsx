@@ -13,6 +13,8 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Bot, Play, Square, RotateCcw, ChevronDown, ChevronRight, Terminal, FileCode, Loader2, Send, Sparkles } from "lucide-react";
+import { useWorkspace } from "@/contexts/WorkspaceContext";
+import { listProjects, type Project } from "@/lib/api-v2";
 
 type RunnerType = "claude" | "codex" | "gemini" | "custom";
 
@@ -37,25 +39,11 @@ type EventLine = {
   data: any;
 };
 
-// HIE-specific context types
-type HIEWorkspace = {
-  id: string;
-  name: string;
-  display_name: string;
-};
-
-type HIEProject = {
-  id: string;
-  name: string;
-  workspace_id: string;
-  status: string;
-  items_count: number;
-};
-
 export default function AgentsPage() {
-  const [workspaces, setWorkspaces] = useState<HIEWorkspace[]>([]);
+  // Use the existing WorkspaceContext (provided by (app)/layout.tsx)
+  const { workspaces, currentWorkspace } = useWorkspace();
   const [selectedWorkspaceId, setSelectedWorkspaceId] = useState<string | null>(null);
-  const [projects, setProjects] = useState<HIEProject[]>([]);
+  const [projects, setProjects] = useState<Project[]>([]);
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
   const [runnerType, setRunnerType] = useState<RunnerType>("claude");
   const [prompt, setPrompt] = useState("");
@@ -66,42 +54,33 @@ export default function AgentsPage() {
   const [activeToolCall, setActiveToolCall] = useState<{ name: string; input?: any } | null>(null);
   const transcriptEndRef = useRef<HTMLDivElement>(null);
 
-  // Fetch workspaces from HIE Manager API
-  const fetchWorkspaces = useCallback(async () => {
-    try {
-      const r = await fetch("/api/workspaces");
-      if (r.ok) {
-        const data = await r.json();
-        setWorkspaces(data.items || data || []);
-      }
-    } catch (e) {
-      console.error("Failed to fetch workspaces:", e);
-    }
-  }, []);
-
-  // Fetch projects for selected workspace
-  const fetchProjects = useCallback(async (wsId: string) => {
-    try {
-      const r = await fetch(`/api/workspaces/${wsId}/projects`);
-      if (r.ok) {
-        const data = await r.json();
-        setProjects(data.items || data || []);
-      }
-    } catch (e) {
-      console.error("Failed to fetch projects:", e);
-    }
-  }, []);
-
+  // Auto-select current workspace from context
   useEffect(() => {
-    fetchWorkspaces();
-  }, [fetchWorkspaces]);
-
-  useEffect(() => {
-    if (selectedWorkspaceId) {
-      fetchProjects(selectedWorkspaceId);
-      setSelectedProjectId(null);
+    if (currentWorkspace && !selectedWorkspaceId) {
+      setSelectedWorkspaceId(currentWorkspace.id);
     }
-  }, [selectedWorkspaceId, fetchProjects]);
+  }, [currentWorkspace, selectedWorkspaceId]);
+
+  // Fetch projects for selected workspace using api-v2
+  useEffect(() => {
+    if (!selectedWorkspaceId) {
+      setProjects([]);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const data = await listProjects(selectedWorkspaceId);
+        if (!cancelled) {
+          setProjects(data.projects || []);
+        }
+      } catch (e) {
+        console.error("Failed to fetch projects:", e);
+        if (!cancelled) setProjects([]);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [selectedWorkspaceId]);
 
   // Build transcript from events
   const transcript = useMemo(() => {
@@ -180,12 +159,8 @@ export default function AgentsPage() {
     setEvents([{ at: Date.now(), data: { type: "ui.message.user", payload: { text: prompt } } }]);
 
     // Build HIE context for the agent
-    const hieContext = {
-      workspace_id: selectedWorkspaceId,
-      project_id: selectedProjectId,
-      workspace: workspaces.find(w => w.id === selectedWorkspaceId),
-      project: projects.find(p => p.id === selectedProjectId),
-    };
+    const ws = workspaces.find((w) => w.id === selectedWorkspaceId);
+    const proj = projects.find((p) => p.id === selectedProjectId);
 
     try {
       // TODO: Connect to actual agent runner backend
@@ -193,7 +168,7 @@ export default function AgentsPage() {
       await new Promise(resolve => setTimeout(resolve, 1500));
 
       const assistantResponse = selectedProjectId
-        ? `I understand you want to work on project "${projects.find(p => p.id === selectedProjectId)?.name || selectedProjectId}" in workspace "${workspaces.find(w => w.id === selectedWorkspaceId)?.display_name || selectedWorkspaceId}".
+        ? `I understand you want to work on project "${proj?.name || selectedProjectId}" in workspace "${ws?.display_name || selectedWorkspaceId}".
 
 **Your request:** ${prompt}
 
@@ -225,8 +200,8 @@ For example: *"Create an HL7 ADT receiver on port 10001 that routes A01 messages
     }
   }
 
-  const selectedWorkspace = workspaces.find(w => w.id === selectedWorkspaceId);
-  const selectedProject = projects.find(p => p.id === selectedProjectId);
+  const selectedWorkspace = workspaces.find((w) => w.id === selectedWorkspaceId) || null;
+  const selectedProject = projects.find((p) => p.id === selectedProjectId) || null;
 
   return (
     <div className="space-y-6">
@@ -254,7 +229,7 @@ For example: *"Create an HL7 ADT receiver on port 10001 that routes A01 messages
               className="w-full rounded-md border border-gray-300 dark:border-zinc-600 bg-white dark:bg-zinc-700 px-3 py-2 text-sm text-gray-900 dark:text-white"
             >
               <option value="">Select workspace...</option>
-              {workspaces.map((w) => (
+              {Array.isArray(workspaces) && workspaces.map((w) => (
                 <option key={w.id} value={w.id}>{w.display_name || w.name}</option>
               ))}
             </select>
@@ -270,7 +245,7 @@ For example: *"Create an HL7 ADT receiver on port 10001 that routes A01 messages
                 className="w-full rounded-md border border-gray-300 dark:border-zinc-600 bg-white dark:bg-zinc-700 px-3 py-2 text-sm text-gray-900 dark:text-white"
               >
                 <option value="">Select project...</option>
-                {projects.map((p) => (
+                {Array.isArray(projects) && projects.map((p) => (
                   <option key={p.id} value={p.id}>{p.name} ({p.items_count || 0} items)</option>
                 ))}
               </select>
@@ -299,9 +274,9 @@ For example: *"Create an HL7 ADT receiver on port 10001 that routes A01 messages
               <h3 className="text-sm font-medium text-nhs-blue dark:text-nhs-light-blue mb-2">HIE Context</h3>
               <div className="space-y-1 text-xs text-gray-600 dark:text-gray-400">
                 <div><span className="font-medium">Workspace:</span> {selectedWorkspace?.display_name}</div>
-                <div><span className="font-medium">Project:</span> {selectedProject.name}</div>
-                <div><span className="font-medium">Status:</span> {selectedProject.status || "configured"}</div>
-                <div><span className="font-medium">Items:</span> {selectedProject.items_count || 0}</div>
+                <div><span className="font-medium">Project:</span> {selectedProject?.name}</div>
+                <div><span className="font-medium">Status:</span> {selectedProject?.state || "configured"}</div>
+                <div><span className="font-medium">Items:</span> {selectedProject?.items_count || 0}</div>
               </div>
             </div>
           )}

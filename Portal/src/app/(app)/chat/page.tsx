@@ -13,6 +13,8 @@
 
 import { useCallback, useEffect, useRef, useState, type ChangeEvent, type KeyboardEvent } from "react";
 import { MessagesSquare, Send, Loader2, Plus, Bot, User as UserIcon, Terminal, AlertCircle } from "lucide-react";
+import { useWorkspace } from "@/contexts/WorkspaceContext";
+import { listProjects, type Project } from "@/lib/api-v2";
 
 type RunnerType = "claude" | "codex";
 
@@ -29,19 +31,6 @@ type ChatMessage = {
   isStreaming?: boolean;
 };
 
-type HIEWorkspace = {
-  id: string;
-  name: string;
-  display_name: string;
-};
-
-type HIEProject = {
-  id: string;
-  name: string;
-  workspace_id: string;
-  status: string;
-};
-
 type ChatSession = {
   id: string;
   workspace_id: string;
@@ -53,9 +42,10 @@ type ChatSession = {
 };
 
 export default function ChatPage() {
-  const [workspaces, setWorkspaces] = useState<HIEWorkspace[]>([]);
+  // Use the existing WorkspaceContext (provided by (app)/layout.tsx)
+  const { workspaces, currentWorkspace } = useWorkspace();
   const [selectedWorkspaceId, setSelectedWorkspaceId] = useState<string | null>(null);
-  const [projects, setProjects] = useState<HIEProject[]>([]);
+  const [projects, setProjects] = useState<Project[]>([]);
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
   const [sessions, setSessions] = useState<ChatSession[]>([]);
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
@@ -67,44 +57,36 @@ export default function ChatPage() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
-  // Fetch workspaces
-  const fetchWorkspaces = useCallback(async () => {
-    try {
-      const r = await fetch("/api/workspaces");
-      if (r.ok) {
-        const data = await r.json();
-        setWorkspaces(data.items || data || []);
-      }
-    } catch (e) {
-      console.error("Failed to fetch workspaces:", e);
-    }
-  }, []);
-
-  // Fetch projects
-  const fetchProjects = useCallback(async (wsId: string) => {
-    try {
-      const r = await fetch(`/api/workspaces/${wsId}/projects`);
-      if (r.ok) {
-        const data = await r.json();
-        setProjects(data.items || data || []);
-      }
-    } catch (e) {
-      console.error("Failed to fetch projects:", e);
-    }
-  }, []);
-
+  // Auto-select current workspace from context
   useEffect(() => {
-    fetchWorkspaces();
-  }, [fetchWorkspaces]);
-
-  useEffect(() => {
-    if (selectedWorkspaceId) {
-      fetchProjects(selectedWorkspaceId);
-      setSelectedProjectId(null);
-      setSelectedSessionId(null);
-      setMessages([]);
+    if (currentWorkspace && !selectedWorkspaceId) {
+      setSelectedWorkspaceId(currentWorkspace.id);
     }
-  }, [selectedWorkspaceId, fetchProjects]);
+  }, [currentWorkspace, selectedWorkspaceId]);
+
+  // Fetch projects for selected workspace using api-v2
+  useEffect(() => {
+    if (!selectedWorkspaceId) {
+      setProjects([]);
+      return;
+    }
+    setSelectedProjectId(null);
+    setSelectedSessionId(null);
+    setMessages([]);
+    let cancelled = false;
+    (async () => {
+      try {
+        const data = await listProjects(selectedWorkspaceId);
+        if (!cancelled) {
+          setProjects(data.projects || []);
+        }
+      } catch (e) {
+        console.error("Failed to fetch projects:", e);
+        if (!cancelled) setProjects([]);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [selectedWorkspaceId]);
 
   // Auto-scroll to bottom
   useEffect(() => {
@@ -266,7 +248,7 @@ What would you like to do?`;
             className="w-full rounded-md border border-gray-300 dark:border-zinc-600 bg-white dark:bg-zinc-700 px-3 py-2 text-sm text-gray-900 dark:text-white"
           >
             <option value="">Select workspace...</option>
-            {workspaces.map((w) => (
+            {Array.isArray(workspaces) && workspaces.map((w) => (
               <option key={w.id} value={w.id}>{w.display_name || w.name}</option>
             ))}
           </select>
@@ -277,7 +259,7 @@ What would you like to do?`;
               className="w-full mt-2 rounded-md border border-gray-300 dark:border-zinc-600 bg-white dark:bg-zinc-700 px-3 py-2 text-sm text-gray-900 dark:text-white"
             >
               <option value="">All projects</option>
-              {projects.map((p) => (
+              {Array.isArray(projects) && projects.map((p) => (
                 <option key={p.id} value={p.id}>{p.name}</option>
               ))}
             </select>
@@ -357,7 +339,7 @@ What would you like to do?`;
             <h1 className="text-lg font-semibold text-gray-900 dark:text-white">Chat</h1>
             {selectedWorkspaceId && (
               <span className="text-sm text-gray-500 dark:text-gray-400">
-                {workspaces.find(w => w.id === selectedWorkspaceId)?.display_name}
+                {Array.isArray(workspaces) && workspaces.find((w) => w.id === selectedWorkspaceId)?.display_name}
               </span>
             )}
           </div>
