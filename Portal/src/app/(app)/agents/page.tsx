@@ -16,14 +16,23 @@ import { Bot, Play, Square, RotateCcw, ChevronDown, ChevronRight, Terminal, File
 import { useWorkspace } from "@/contexts/WorkspaceContext";
 import { listProjects, type Project } from "@/lib/api-v2";
 
-type RunnerType = "claude" | "codex" | "gemini" | "custom";
+type RunnerType = "claude" | "codex" | "gemini" | "azure" | "bedrock" | "openli" | "custom";
 
 const RUNNERS = [
   { value: "claude", label: "Claude Agent (Anthropic)", available: true },
-  { value: "codex", label: "OpenAI Codex Agent", available: true },
+  { value: "codex", label: "OpenAI Agent (Codex)", available: true },
   { value: "gemini", label: "Gemini Agent (Google)", available: false },
+  { value: "azure", label: "Azure OpenAI", available: false },
+  { value: "bedrock", label: "AWS Bedrock", available: false },
+  { value: "openli", label: "OpenLI Agent", available: false },
   { value: "custom", label: "Custom Agent", available: false },
 ] as const;
+
+/** Map runner type to the correct proxy API base path */
+function getRunnerApiBase(runner: RunnerType): string {
+  if (runner === "codex") return "/api/codex-runner";
+  return "/api/agent-runner";
+}
 
 type TranscriptMessage = {
   role: "user" | "assistant" | "tool" | "system";
@@ -173,12 +182,14 @@ export default function AgentsPage() {
     setEvents([{ at: Date.now(), data: { type: "ui.message.user", payload: { text: userPrompt } } }]);
 
     try {
+      const apiBase = getRunnerApiBase(runnerType);
+
       // Step 1: Create or reuse a thread
       let currentThreadId = threadId;
       if (!currentThreadId) {
         const ws = workspaces.find((w) => w.id === selectedWorkspaceId);
         const workingDir = `/workspaces/${ws?.name || "default"}`;
-        const threadRes = await fetch("/api/agent-runner/threads", {
+        const threadRes = await fetch(`${apiBase}/threads`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ workingDirectory: workingDir }),
@@ -192,7 +203,7 @@ export default function AgentsPage() {
       }
 
       // Step 2: Create a run
-      const runRes = await fetch("/api/agent-runner/runs", {
+      const runRes = await fetch(`${apiBase}/runs`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ threadId: currentThreadId, prompt: userPrompt }),
@@ -204,7 +215,7 @@ export default function AgentsPage() {
       const runId = runData.runId;
 
       // Step 3: Subscribe to SSE events
-      const evtSource = new EventSource(`/api/agent-runner/runs/${runId}/events`);
+      const evtSource = new EventSource(`${apiBase}/runs/${runId}/events`);
       eventSourceRef.current = evtSource;
 
       evtSource.onmessage = (event) => {
@@ -331,7 +342,23 @@ export default function AgentsPage() {
             <label className="block text-sm font-medium text-gray-900 dark:text-white mb-2">Agent Runner</label>
             <select
               value={runnerType}
-              onChange={(e) => setRunnerType(e.target.value as RunnerType)}
+              onChange={(e) => {
+                const newRunner = e.target.value as RunnerType;
+                const runner = RUNNERS.find((r) => r.value === newRunner);
+                if (runner && !runner.available) {
+                  alert(`${runner.label} is coming soon!`);
+                  return;
+                }
+                setRunnerType(newRunner);
+                // Clear thread when runner changes (different backend)
+                setThreadId(null);
+                setEvents([]);
+                setStatus("idle");
+                setStreamingText("");
+                setActiveToolCall(null);
+                eventSourceRef.current?.close();
+                eventSourceRef.current = null;
+              }}
               className="w-full rounded-md border border-gray-300 dark:border-zinc-600 bg-white dark:bg-zinc-700 px-3 py-2 text-sm text-gray-900 dark:text-white"
             >
               {RUNNERS.map((r) => (

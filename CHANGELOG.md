@@ -5,6 +5,34 @@ All notable changes to OpenLI HIE (Healthcare Integration Engine) will be docume
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.7.1] - 2026-02-11
+
+### Added - Multi-Runner Architecture (Codex + Claude, plug-and-play)
+
+**Codex Runner Service** (`codex-runner/`, port 9342):
+- Node.js/TypeScript Express server using OpenAI Codex SDK (`@openai/codex-sdk`)
+- Identical API contract to agent-runner: `POST /threads`, `POST /runs`, `GET /runs/:id/events`
+- SSE streaming with event buffering and subscriber management
+- Workspace path resolution and security validation
+- Dockerfile with Codex CLI global install and config
+
+**Runner Factory / Dispatch Pattern**:
+- `getRunnerApiBase(runnerType)` dispatches to `/api/codex-runner` or `/api/agent-runner`
+- Both runners expose identical API contracts for plug-and-play interoperability
+- Thread/session state cleared on runner switch (different backends)
+- Coming-soon runners blocked with alert: Gemini, Azure OpenAI, AWS Bedrock, OpenLI Agent, Custom
+
+**Portal Frontend Updates**:
+- `/api/codex-runner/[...path]` proxy route to codex-runner service with SSE support
+- Agents page: full RUNNERS array (7 runners), dispatch to correct backend, clear state on switch
+- Chat page: runner selector dropdown, dispatch to correct backend per session
+- RunnerType expanded: claude, codex, gemini, azure, bedrock, openli, custom
+
+**Docker Compose** (`docker-compose.yml`):
+- Added hie-codex-runner service (9342:8081) with CODEX_API_KEY, OPENAI_API_KEY env vars
+- Added CODEX_RUNNER_URL to Portal environment
+- Added hie_workspaces shared volume for runner workspace access
+
 ## [1.7.0] - 2026-02-11
 
 ### Added - Full-Stack GenAI Backend Services (ported from saas-codex)

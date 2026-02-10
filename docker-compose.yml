@@ -14,8 +14,9 @@ version: '3.8'
 #   9321 - HTTP Echo Server
 #   9330 - Adminer (DB UI)
 #   9331 - Redis Commander
-#   9340 - Agent Runner (GenAI)
+#   9340 - Agent Runner / Claude (GenAI)
 #   9341 - Prompt Manager
+#   9342 - Codex Runner / OpenAI (GenAI)
 
 services:
   # ==========================================================================
@@ -103,9 +104,11 @@ services:
       - NEXT_PUBLIC_API_URL=http://hie-manager:8081
       - PROMPT_MANAGER_URL=http://hie-prompt-manager:8083
       - AGENT_RUNNER_URL=http://hie-agent-runner:8082
+      - CODEX_RUNNER_URL=http://hie-codex-runner:8081
     depends_on:
       - hie-manager
       - hie-agent-runner
+      - hie-codex-runner
       - hie-prompt-manager
     restart: unless-stopped
     networks:
@@ -146,6 +149,34 @@ services:
       timeout: 10s
       retries: 3
       start_period: 10s
+
+  # ==========================================================================
+  # GenAI Codex Runner (OpenAI)
+  # ==========================================================================
+  hie-codex-runner:
+    build:
+      context: ./codex-runner
+      dockerfile: Dockerfile
+    container_name: hie-codex-runner
+    ports:
+      - "9342:8081"
+    environment:
+      - CODEX_API_KEY=${CODEX_API_KEY:-}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - CODEX_SANDBOX_TYPE=none
+      - WORKSPACES_ROOT=/workspaces
+      - PORT=8081
+    volumes:
+      - hie_workspaces:/workspaces
+    restart: unless-stopped
+    networks:
+      - hie-network
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"fetch('http://127.0.0.1:8081/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\""]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
 
   # ==========================================================================
   # Prompt & Skills Manager
@@ -285,6 +316,7 @@ services:
 volumes:
   postgres_data:
   redis_data:
+  hie_workspaces:
 
 networks:
   hie-network:

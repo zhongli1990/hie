@@ -8,12 +8,23 @@ interface VersionHistory {
   features: string[];
 }
 
-const VERSION = "1.7.0";
+const VERSION = "1.7.1";
 const BUILD_DATE = "Feb 11, 2026";
 const PLATFORM_NAME = "OpenLI HIE";
 const PRODUCT_NAME = "OpenLI Healthcare Integration Engine";
 
 const versionHistory: VersionHistory[] = [
+  {
+    version: "1.7.1",
+    date: "Feb 11, 2026",
+    features: [
+      "Codex Runner microservice (OpenAI Codex SDK, Node.js/TypeScript)",
+      "Multi-runner architecture: plug-and-play Claude + Codex interoperability",
+      "Runner factory dispatch pattern (getRunnerApiBase) for API routing",
+      "Runner selector on Agents and Chat pages with coming-soon runners",
+      "Coming soon: Gemini, Azure OpenAI, AWS Bedrock, OpenLI Agent",
+    ],
+  },
   {
     version: "1.7.0",
     date: "Feb 11, 2026",

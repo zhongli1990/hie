@@ -16,7 +16,13 @@ import { MessagesSquare, Send, Loader2, Plus, Bot, User as UserIcon, Terminal, A
 import { useWorkspace } from "@/contexts/WorkspaceContext";
 import { listProjects, type Project } from "@/lib/api-v2";
 
-type RunnerType = "claude" | "codex";
+type RunnerType = "claude" | "codex" | "gemini" | "azure" | "bedrock" | "openli" | "custom";
+
+/** Map runner type to the correct proxy API base path */
+function getRunnerApiBase(runner: RunnerType): string {
+  if (runner === "codex") return "/api/codex-runner";
+  return "/api/agent-runner";
+}
 
 type ChatMessage = {
   id: string;
@@ -97,9 +103,10 @@ export default function ChatPage() {
   async function onCreateSession() {
     if (!selectedWorkspaceId) return;
     try {
-      const ws = workspaces.find(w => w.id === selectedWorkspaceId);
+      const apiBase = getRunnerApiBase(runnerType);
+      const ws = workspaces.find((w: any) => w.id === selectedWorkspaceId);
       const workingDir = `/workspaces/${ws?.name || "default"}`;
-      const res = await fetch("/api/agent-runner/threads", {
+      const res = await fetch(`${apiBase}/threads`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ workingDirectory: workingDir }),
@@ -155,8 +162,9 @@ export default function ChatPage() {
     setMessages(prev => [...prev, userMsg]);
 
     try {
-      // Create a run on the thread
-      const runRes = await fetch("/api/agent-runner/runs", {
+      // Create a run on the thread — dispatch to correct runner
+      const apiBase = getRunnerApiBase(runnerType);
+      const runRes = await fetch(`${apiBase}/runs`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ threadId: selectedSessionId, prompt: userMessage }),
@@ -166,7 +174,7 @@ export default function ChatPage() {
       const runId = runData.runId;
 
       // Subscribe to SSE events
-      const evtSource = new EventSource(`/api/agent-runner/runs/${runId}/events`);
+      const evtSource = new EventSource(`${apiBase}/runs/${runId}/events`);
       let accumulatedText = "";
 
       evtSource.onmessage = (event) => {
@@ -283,6 +291,23 @@ export default function ChatPage() {
                 <option key={p.id} value={p.id}>{p.name}</option>
               ))}
             </select>
+          )}
+          {/* Runner Selector */}
+          {selectedWorkspaceId && (
+            <div className="mt-2">
+              <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Runner</label>
+              <select
+                value={runnerType}
+                onChange={(e) => setRunnerType(e.target.value as RunnerType)}
+                className="w-full rounded-md border border-gray-300 dark:border-zinc-600 bg-white dark:bg-zinc-700 px-3 py-2 text-sm text-gray-900 dark:text-white"
+              >
+                <option value="claude">Claude (Anthropic)</option>
+                <option value="codex">OpenAI Agent (Codex)</option>
+                <option value="gemini" disabled>Gemini (Coming Soon)</option>
+                <option value="azure" disabled>Azure OpenAI (Coming Soon)</option>
+                <option value="bedrock" disabled>AWS Bedrock (Coming Soon)</option>
+              </select>
+            </div>
           )}
         </div>
 
