@@ -59,12 +59,13 @@ class HostMetrics:
     messages_processed: int = 0
     messages_sent: int = 0
     messages_failed: int = 0
-    
+
     last_message_at: datetime | None = None
     started_at: datetime | None = None
     stopped_at: datetime | None = None
-    
+
     total_processing_time_ms: float = 0.0
+    restart_count: int = 0  # Track auto-restart count
     
     @property
     def avg_processing_time_ms(self) -> float:

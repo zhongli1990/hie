@@ -138,6 +138,11 @@ class ProductionEngine:
         # Service messaging
         self._service_registry = ServiceRegistry()
 
+        # Host monitoring for auto-restart
+        self._monitor_task: asyncio.Task | None = None
+        self._monitoring_enabled = True
+        self._monitoring_interval = 5.0  # Check every 5 seconds
+
         # Metrics
         self._metrics = ProductionMetrics()
 
@@ -332,7 +337,15 @@ class ProductionEngine:
             
             # Set up shutdown handler
             self._setup_shutdown()
-            
+
+            # Start host monitoring for auto-restart
+            if self._monitoring_enabled:
+                self._monitor_task = asyncio.create_task(
+                    self._monitor_hosts(),
+                    name="production-host-monitor"
+                )
+                self._log.info("host_monitoring_enabled", interval=self._monitoring_interval)
+
             self._state = ProductionState.RUNNING
             self._metrics.started_at = datetime.now(timezone.utc)
             
@@ -443,7 +456,15 @@ class ProductionEngine:
         
         self._state = ProductionState.STOPPING
         self._log.info("stopping_production", name=self.production_name)
-        
+
+        # Stop monitoring
+        if self._monitor_task:
+            self._monitor_task.cancel()
+            try:
+                await self._monitor_task
+            except asyncio.CancelledError:
+                pass
+
         try:
             # Stop hosts in reverse order
             for host in reversed(list(self._services.values())):
@@ -572,7 +593,103 @@ class ProductionEngine:
             "enabled": host.enabled,
             "pool_size": host.pool_size,
         }
-    
+
+    async def _monitor_hosts(self) -> None:
+        """
+        Background task to monitor host health and auto-restart failed hosts.
+
+        Runs continuously while production is running, checking all hosts
+        every monitoring_interval seconds. If a host is in ERROR state and
+        has an auto-restart policy configured, attempts to restart it.
+        """
+        self._log.info(
+            "host_monitoring_started",
+            interval=self._monitoring_interval,
+            enabled=self._monitoring_enabled
+        )
+
+        try:
+            while self._state == ProductionState.RUNNING:
+                await asyncio.sleep(self._monitoring_interval)
+
+                # Check each host's health
+                for name, host in list(self._all_hosts.items()):
+                    if host.state == HostState.ERROR:
+                        # Get restart policy from host settings
+                        restart_policy = host.get_setting("Host", "RestartPolicy", "never")
+                        max_restarts = int(host.get_setting("Host", "MaxRestarts", "3"))
+                        restart_delay = float(host.get_setting("Host", "RestartDelay", "5.0"))
+
+                        # Check if we should restart
+                        if restart_policy == "never":
+                            continue
+
+                        if restart_policy == "always":
+                            should_restart = True
+                        elif restart_policy == "on_failure":
+                            should_restart = True
+                        else:
+                            continue
+
+                        # Check restart count
+                        restart_count = host.metrics.restart_count if hasattr(host.metrics, 'restart_count') else 0
+                        if restart_count >= max_restarts:
+                            self._log.warning(
+                                "host_restart_limit_reached",
+                                host=name,
+                                restart_count=restart_count,
+                                max_restarts=max_restarts
+                            )
+                            continue
+
+                        # Perform restart
+                        self._log.warning(
+                            "auto_restarting_host",
+                            host=name,
+                            restart_policy=restart_policy,
+                            restart_count=restart_count
+                        )
+
+                        try:
+                            # Wait before restarting
+                            if restart_delay > 0:
+                                await asyncio.sleep(restart_delay)
+
+                            # Stop the failed host
+                            await host.stop()
+
+                            # Start it again
+                            await host.start()
+
+                            # Increment restart counter
+                            if not hasattr(host.metrics, 'restart_count'):
+                                host.metrics.restart_count = 0
+                            host.metrics.restart_count += 1
+
+                            self._log.info(
+                                "host_restarted_successfully",
+                                host=name,
+                                restart_count=host.metrics.restart_count
+                            )
+
+                        except Exception as e:
+                            self._log.error(
+                                "host_restart_failed",
+                                host=name,
+                                error=str(e),
+                                exc_info=True
+                            )
+
+        except asyncio.CancelledError:
+            self._log.info("host_monitoring_stopped")
+            raise
+        except Exception as e:
+            self._log.error(
+                "host_monitoring_error",
+                error=str(e),
+                exc_info=True
+            )
+
     def get_status(self) -> dict[str, Any]:
         """Get production status summary."""
         return {
