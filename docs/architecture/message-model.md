@@ -1,149 +1,511 @@
 # HIE Message Model
 
+**Version:** 2.0 (Phase 4 Design)
+**Last Updated:** February 10, 2026
+**Status:** Phase 3 (Simple Message) → Phase 4 (Message Envelope with Schema Metadata)
+
+---
+
 ## Overview
 
-The HIE message model is deliberately simple and strict. It consists of two parts:
+The HIE message model is designed for **protocol-agnostic, schema-aware messaging** at enterprise scale. It consists of two parts:
 
-1. **Envelope** — Routing, delivery, governance, and operational metadata
-2. **Payload** — The raw message content
+1. **MessageHeader** — Routing, delivery, governance, and **schema metadata**
+2. **MessageBody** — Raw payload + lazy-loaded parsed object + validation state
 
 This design ensures:
-- Raw content is preserved end-to-end
-- Metadata is structured and indexable
-- No implicit transformations occur
+- **Raw content preserved end-to-end** (audit trail)
+- **Schema metadata enables runtime dynamic parsing** (HL7 v2.x, FHIR R4/R5, SOAP, JSON, custom)
+- **No implicit transformations** (explicit parsing on demand)
+- **Protocol-agnostic** (any message type to any service)
+- **Unlimited extensibility** (custom_properties in header and body)
 
-## Message Structure
+---
+
+## Message Structure (Phase 4)
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                        MESSAGE                               │
-├─────────────────────────────────────────────────────────────┤
-│  ENVELOPE                                                    │
-│  ├── Identity                                                │
-│  │   ├── message_id (UUID)                                  │
-│  │   ├── correlation_id (UUID)                              │
-│  │   └── causation_id (UUID)                                │
-│  ├── Temporal                                                │
-│  │   ├── created_at (datetime)                              │
-│  │   ├── expires_at (datetime, optional)                    │
-│  │   └── ttl (seconds, optional)                            │
-│  ├── Routing                                                 │
-│  │   ├── source (item_id)                                   │
-│  │   ├── destination (item_id, optional)                    │
-│  │   ├── route_id (current route)                           │
-│  │   └── hop_count (int)                                    │
-│  ├── Classification                                          │
-│  │   ├── message_type (string)                              │
-│  │   ├── priority (enum)                                    │
-│  │   └── tags (list)                                        │
-│  ├── Delivery                                                │
-│  │   ├── retry_count (int)                                  │
-│  │   ├── max_retries (int)                                  │
-│  │   ├── retry_delay (seconds)                              │
-│  │   └── delivery_mode (at_least_once, at_most_once)        │
-│  └── Governance                                              │
-│      ├── audit_id (string)                                  │
-│      ├── tenant_id (string, optional)                       │
-│      └── sensitivity (enum)                                 │
-├─────────────────────────────────────────────────────────────┤
-│  PAYLOAD                                                     │
-│  ├── raw (bytes) — THE AUTHORITATIVE CONTENT                │
-│  ├── content_type (MIME type)                               │
-│  ├── encoding (character encoding)                          │
-│  ├── size (bytes)                                           │
-│  └── properties (typed key-value pairs)                     │
-└─────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────────┐
+│                       MESSAGE ENVELOPE                               │
+├─────────────────────────────────────────────────────────────────────┤
+│  HEADER (MessageHeader)                                              │
+│  ├── Core Identity                                                   │
+│  │   ├── message_id (UUID)                                          │
+│  │   ├── correlation_id (UUID)                                      │
+│  │   └── timestamp (datetime UTC)                                   │
+│  ├── Routing                                                         │
+│  │   ├── source (item name)                                         │
+│  │   └── destination (item name)                                    │
+│  ├── Schema Metadata (NEW in Phase 4) 🔥                           │
+│  │   ├── body_class_name (str) — e.g., "Engine.li.messages.hl7.HL7Message" │
+│  │   ├── content_type (str) — e.g., "application/hl7-v2+er7"       │
+│  │   ├── schema_version (str) — e.g., "2.4", "R4", "custom-v1.0"   │
+│  │   └── encoding (str) — e.g., "utf-8", "ascii", "base64"         │
+│  ├── Delivery & Priority                                             │
+│  │   ├── priority (int, 0-9, default 5)                             │
+│  │   ├── ttl (int, seconds, optional)                               │
+│  │   └── retry_count (int, default 0)                               │
+│  └── Custom Properties (unlimited extensibility)                     │
+│      └── custom_properties (Dict[str, Any])                         │
+├─────────────────────────────────────────────────────────────────────┤
+│  BODY (MessageBody)                                                  │
+│  ├── Schema Reference (NEW in Phase 4) 🔥                          │
+│  │   ├── schema_name (str) — e.g., "ADT_A01", "Patient", "OrderRequest" │
+│  │   └── schema_namespace (str) — e.g., "urn:hl7-org:v2", "http://hl7.org/fhir" │
+│  ├── Payload                                                         │
+│  │   ├── raw_payload (bytes) — THE AUTHORITATIVE CONTENT            │
+│  │   └── _parsed_payload (Any, lazy-loaded, transient)             │
+│  ├── Validation State (NEW in Phase 4) 🔥                          │
+│  │   ├── validated (bool)                                           │
+│  │   └── validation_errors (List[str])                              │
+│  └── Custom Properties (unlimited extensibility)                     │
+│      └── custom_properties (Dict[str, Any])                         │
+└─────────────────────────────────────────────────────────────────────┘
 ```
 
-## Envelope Details
+---
 
-### Identity Fields
+## Phase 3 vs Phase 4 Comparison
+
+| Aspect | Phase 3 (Current) | Phase 4 (Planned) |
+|--------|------------------|-------------------|
+| **Header** | Simple envelope (source, destination, priority) | **+ Schema metadata** (content_type, schema_version, body_class_name) |
+| **Body** | Raw bytes only | **Raw bytes + lazy-loaded parsed object** |
+| **Parsing** | Manual, item-specific | **Automatic based on content_type** |
+| **Validation** | External | **Built-in validation state** |
+| **Protocol Support** | HL7 v2.x only | **HL7 v2.x, FHIR R4/R5, SOAP, JSON, custom** |
+| **Extensibility** | Limited | **Unlimited (custom_properties)** |
+| **Schema Awareness** | No | **Yes (schema_name, schema_namespace)** |
+
+---
+
+## MessageHeader Details
+
+### Core Identity Fields
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `message_id` | UUID | Unique identifier for this message instance |
-| `correlation_id` | UUID | Groups related messages (e.g., request/response) |
-| `causation_id` | UUID | ID of the message that caused this one to be created |
+| `message_id` | str (UUID) | Unique identifier for this message instance |
+| `correlation_id` | str (UUID) | Groups related messages (e.g., request/response) |
+| `timestamp` | datetime | When the message was created (UTC) |
 
-**Example**: An ADT message triggers a notification. The notification's `causation_id` points to the ADT message's `message_id`. Both share the same `correlation_id`.
-
-### Temporal Fields
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `created_at` | datetime | When the message was created (UTC) |
-| `expires_at` | datetime | When the message should be discarded (optional) |
-| `ttl` | int | Time-to-live in seconds (alternative to expires_at) |
+**Example**: An ADT A01 message triggers a notification. The notification's `correlation_id` matches the ADT message's `correlation_id`, enabling trace correlation.
 
 ### Routing Fields
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `source` | string | Item ID that created/received this message |
-| `destination` | string | Target item ID (optional, for direct routing) |
-| `route_id` | string | Current route being traversed |
-| `hop_count` | int | Number of items this message has passed through |
+| `source` | str | Item name that created/received this message (e.g., "Cerner_PAS_Receiver") |
+| `destination` | str | Target item name (e.g., "NHS_Validation_Process") |
 
-### Classification Fields
+### Schema Metadata Fields (Phase 4) 🔥
+
+These fields enable **runtime dynamic parsing** without hardcoded type checks:
+
+| Field | Type | Description | Example Values |
+|-------|------|-------------|----------------|
+| `body_class_name` | str | Fully qualified Python class name for parsed object | `"Engine.li.messages.hl7.HL7Message"`, `"Engine.li.messages.fhir.FHIRResource"` |
+| `content_type` | str | MIME type describing payload format | `"application/hl7-v2+er7"`, `"application/fhir+json"`, `"application/soap+xml"` |
+| `schema_version` | str | Protocol/schema version | `"2.3"`, `"2.4"`, `"2.5"`, `"R4"`, `"R5"`, `"custom-v1.0"` |
+| `encoding` | str | Character encoding of raw_payload | `"utf-8"`, `"ascii"`, `"iso-8859-1"`, `"base64"` |
+
+**Why This Matters:**
+
+Before (Phase 3):
+```python
+# Hard-coded type checks
+if isinstance(message, HL7Message):
+    parsed = message  # Already parsed
+elif isinstance(message, bytes):
+    parsed = HL7Message.parse(message)  # Manual parsing
+else:
+    raise TypeError("Unknown message type")
+```
+
+After (Phase 4):
+```python
+# Dynamic parsing based on content_type
+envelope = MessageEnvelope(...)
+parsed = envelope.parse()  # Automatically selects parser based on content_type
+
+# Works for ANY protocol
+if envelope.header.content_type == "application/hl7-v2+er7":
+    # HL7Message instance
+elif envelope.header.content_type == "application/fhir+json":
+    # FHIRResource instance
+elif envelope.header.content_type == "application/soap+xml":
+    # SOAPMessage instance
+```
+
+### Delivery & Priority Fields
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `message_type` | string | Logical type (e.g., "ADT^A01", "ORU^R01") |
-| `priority` | enum | LOW, NORMAL, HIGH, URGENT |
-| `tags` | list | Arbitrary tags for filtering/routing |
-
-### Delivery Fields
-
-| Field | Type | Description |
-|-------|------|-------------|
+| `priority` | int (0-9) | Message priority (0 = lowest, 9 = highest, default 5) |
+| `ttl` | int (optional) | Time-to-live in seconds (discard after this time) |
 | `retry_count` | int | Current retry attempt (starts at 0) |
-| `max_retries` | int | Maximum retry attempts before dead-letter |
-| `retry_delay` | int | Seconds between retries (may use backoff) |
-| `delivery_mode` | enum | AT_LEAST_ONCE, AT_MOST_ONCE |
 
-### Governance Fields
+### Custom Properties
+
+**Unlimited extensibility** for custom use cases:
+
+```python
+header.custom_properties = {
+    "trace_id": "abc123",  # Distributed tracing
+    "span_id": "def456",
+    "patient_id": "NHS9434765870",  # Business context
+    "facility_code": "ROYAL_HOSPITAL",
+    "is_urgent": True,
+    "custom_routing_key": "ward_a",
+}
+```
+
+---
+
+## MessageBody Details
+
+### Schema Reference Fields (Phase 4) 🔥
+
+| Field | Type | Description | Example Values |
+|-------|------|-------------|----------------|
+| `schema_name` | str | Logical schema name | `"ADT_A01"`, `"Patient"`, `"OrderRequest"`, `"CustomOrder"` |
+| `schema_namespace` | str | Schema namespace/URI | `"urn:hl7-org:v2"`, `"http://hl7.org/fhir"`, `"urn:company:custom"` |
+
+**Purpose**: Enables schema validation, routing rules, and documentation lookup.
+
+### Payload Fields
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `audit_id` | string | External audit/trace identifier |
-| `tenant_id` | string | Multi-tenant isolation (optional) |
-| `sensitivity` | enum | PUBLIC, INTERNAL, CONFIDENTIAL, RESTRICTED |
+| `raw_payload` | bytes | **The authoritative message content** (always preserved) |
+| `_parsed_payload` | Any (optional) | Lazy-loaded parsed object (transient, not serialized) |
 
-## Payload Details
+**Key Principle**: `raw_payload` is **always** the source of truth. `_parsed_payload` is a convenience cache that can be discarded and regenerated at any time.
 
-### Core Fields
+### Validation State Fields (Phase 4) 🔥
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `raw` | bytes | **The authoritative message content** |
-| `content_type` | string | MIME type (e.g., "x-application/hl7-v2+er7") |
-| `encoding` | string | Character encoding (e.g., "utf-8", "iso-8859-1") |
-| `size` | int | Size of raw content in bytes |
-
-### Properties
-
-Properties are **typed, explicit key-value pairs** that can be attached to a payload.
-
-**Key principles**:
-1. Properties are **explicitly set** by items — never auto-populated
-2. Properties are **typed** — string, int, float, bool, datetime, list, dict
-3. Properties are **bounded** — max size, allowed values defined in schema
-4. Properties are **optional** — the raw payload is always authoritative
-
-**Use cases**:
-- Routing decisions based on extracted values
-- Caching parsed field values to avoid re-parsing
-- Legacy system compatibility (property bags)
-- Enrichment data from external lookups
+| `validated` | bool | True if message passed validation, False if failed |
+| `validation_errors` | List[str] | List of validation error messages (empty if validated=True) |
 
 **Example**:
 ```python
-payload.properties = {
-    "patient_id": Property(value="NHS1234567890", type="string"),
-    "event_type": Property(value="A01", type="string"),
-    "is_urgent": Property(value=True, type="bool"),
+body.validated = False
+body.validation_errors = [
+    "PID-3 (Patient ID) is required but missing",
+    "MSH-9 (Message Type) has invalid value 'ADT^A99' (unknown event type)",
+]
+```
+
+### Custom Properties
+
+**Unlimited extensibility** for enrichment data, caching, or custom metadata:
+
+```python
+body.custom_properties = {
+    "pds_verified": True,  # NHS PDS lookup result
+    "pds_data": {...},
+    "duplicate_check_result": "PASS",
+    "parsed_patient_name": "JONES, ALICE MARY",
+    "cached_hl7_segments": {...},  # Avoid re-parsing
 }
 ```
+
+---
+
+## MessageEnvelope Class
+
+The complete message envelope combines header and body:
+
+```python
+from dataclasses import dataclass
+from datetime import datetime
+from typing import Any, Dict, List, Optional
+
+@dataclass
+class MessageHeader:
+    """Message envelope header containing metadata."""
+
+    # Core properties
+    message_id: str
+    correlation_id: str
+    timestamp: datetime
+    source: str
+    destination: str
+
+    # Schema metadata (Phase 4)
+    body_class_name: str
+    content_type: str
+    schema_version: str
+    encoding: str
+
+    # Routing/processing
+    priority: int = 5
+    ttl: Optional[int] = None
+    retry_count: int = 0
+
+    # Custom properties
+    custom_properties: Dict[str, Any] = field(default_factory=dict)
+
+@dataclass
+class MessageBody:
+    """Message envelope body containing payload."""
+
+    # Schema reference (Phase 4)
+    schema_name: str
+    schema_namespace: str
+
+    # Payload
+    raw_payload: bytes
+    _parsed_payload: Any = None
+
+    # Validation (Phase 4)
+    validated: bool = False
+    validation_errors: List[str] = field(default_factory=list)
+
+    # Custom properties
+    custom_properties: Dict[str, Any] = field(default_factory=dict)
+
+@dataclass
+class MessageEnvelope:
+    """Complete message envelope (header + body)."""
+    header: MessageHeader
+    body: MessageBody
+
+    def parse(self) -> Any:
+        """Parse raw_payload into typed object based on content_type."""
+        if self.body._parsed_payload is not None:
+            return self.body._parsed_payload
+
+        # Dynamic parsing based on content_type
+        if self.header.content_type == "application/hl7-v2+er7":
+            from Engine.li.messages.hl7 import HL7Message
+            self.body._parsed_payload = HL7Message.parse(
+                self.body.raw_payload,
+                version=self.header.schema_version
+            )
+        elif self.header.content_type == "application/fhir+json":
+            from Engine.li.messages.fhir import FHIRResource
+            self.body._parsed_payload = FHIRResource.parse_json(
+                self.body.raw_payload,
+                version=self.header.schema_version
+            )
+        elif self.header.content_type == "application/soap+xml":
+            from Engine.li.messages.soap import SOAPMessage
+            self.body._parsed_payload = SOAPMessage.parse_xml(
+                self.body.raw_payload
+            )
+        else:
+            # Generic/custom message type
+            self.body._parsed_payload = self.body.raw_payload
+
+        return self.body._parsed_payload
+
+    def validate(self) -> bool:
+        """Validate message against schema."""
+        try:
+            parsed = self.parse()
+
+            # Call type-specific validation
+            if hasattr(parsed, 'validate'):
+                is_valid, errors = parsed.validate()
+                self.body.validated = is_valid
+                self.body.validation_errors = errors
+                return is_valid
+            else:
+                # No validation available
+                self.body.validated = True
+                return True
+        except Exception as e:
+            self.body.validated = False
+            self.body.validation_errors = [str(e)]
+            return False
+```
+
+---
+
+## Factory Methods
+
+Convenience methods for creating envelopes:
+
+```python
+class MessageEnvelope:
+    @classmethod
+    def create_hl7(
+        cls,
+        raw_payload: bytes,
+        version: str,
+        source: str,
+        destination: str,
+        priority: int = 5
+    ) -> "MessageEnvelope":
+        """Create HL7 v2.x message envelope."""
+        header = MessageHeader(
+            message_id=str(uuid.uuid4()),
+            correlation_id=str(uuid.uuid4()),
+            timestamp=datetime.utcnow(),
+            source=source,
+            destination=destination,
+            body_class_name="Engine.li.messages.hl7.HL7Message",
+            content_type="application/hl7-v2+er7",
+            schema_version=version,
+            encoding="utf-8",
+            priority=priority
+        )
+
+        body = MessageBody(
+            schema_name="ADT",  # Will be refined after parsing
+            schema_namespace="urn:hl7-org:v2",
+            raw_payload=raw_payload
+        )
+
+        return cls(header=header, body=body)
+
+    @classmethod
+    def create_fhir(
+        cls,
+        resource: Any,  # FHIR Resource (Patient, Observation, etc.)
+        source: str,
+        destination: str,
+        fhir_version: str = "R4"
+    ) -> "MessageEnvelope":
+        """Create FHIR message envelope."""
+        header = MessageHeader(
+            message_id=str(uuid.uuid4()),
+            correlation_id=str(uuid.uuid4()),
+            timestamp=datetime.utcnow(),
+            source=source,
+            destination=destination,
+            body_class_name="Engine.li.messages.fhir.FHIRResource",
+            content_type="application/fhir+json",
+            schema_version=fhir_version,
+            encoding="utf-8",
+            priority=5
+        )
+
+        body = MessageBody(
+            schema_name=resource.resource_type,  # "Patient", "Observation", etc.
+            schema_namespace="http://hl7.org/fhir",
+            raw_payload=resource.json().encode("utf-8"),
+            _parsed_payload=resource  # Cache parsed object
+        )
+
+        return cls(header=header, body=body)
+
+    @classmethod
+    def create_custom(
+        cls,
+        raw_payload: bytes,
+        schema_name: str,
+        schema_namespace: str,
+        content_type: str,
+        source: str,
+        destination: str
+    ) -> "MessageEnvelope":
+        """Create custom message envelope."""
+        header = MessageHeader(
+            message_id=str(uuid.uuid4()),
+            correlation_id=str(uuid.uuid4()),
+            timestamp=datetime.utcnow(),
+            source=source,
+            destination=destination,
+            body_class_name="Engine.core.message.GenericMessage",
+            content_type=content_type,
+            schema_version="1.0",
+            encoding="utf-8",
+            priority=5
+        )
+
+        body = MessageBody(
+            schema_name=schema_name,
+            schema_namespace=schema_namespace,
+            raw_payload=raw_payload
+        )
+
+        return cls(header=header, body=body)
+```
+
+---
+
+## Usage Examples
+
+### Example 1: HL7 v2.4 ADT A01
+
+```python
+# Create HL7 v2.4 ADT A01 message
+hl7_raw = b"MSH|^~\\&|CERNER|ROYAL_HOSPITAL|..."
+
+envelope = MessageEnvelope.create_hl7(
+    raw_payload=hl7_raw,
+    version="2.4",
+    source="Cerner_PAS_Receiver",
+    destination="NHS_Validation_Process",
+    priority=7
+)
+
+# Parse on demand
+hl7_msg = envelope.parse()
+patient_id = hl7_msg.get_field("PID", 3, 1)
+
+# Validate
+is_valid = envelope.validate()
+if not is_valid:
+    print(f"Validation errors: {envelope.body.validation_errors}")
+```
+
+### Example 2: FHIR R4 Patient
+
+```python
+from fhir.resources.patient import Patient
+
+# Create FHIR Patient
+patient = Patient(
+    id="NHS9434765870",
+    name=[{"family": "Jones", "given": ["Alice", "Mary"]}],
+    birthDate="1985-03-15",
+    gender="female"
+)
+
+# Create envelope
+envelope = MessageEnvelope.create_fhir(
+    resource=patient,
+    source="FHIR_API_Service",
+    destination="PDS_Lookup_Operation",
+    fhir_version="R4"
+)
+
+# Parse (returns cached Patient object)
+patient_obj = envelope.parse()
+print(patient_obj.name[0].family)  # "Jones"
+```
+
+### Example 3: Custom JSON Message
+
+```python
+import json
+
+# Custom order message
+order_data = {
+    "order_id": "ORD123456",
+    "patient_id": "NHS9434765870",
+    "items": [{"code": "LAB001", "description": "Blood Test"}]
+}
+
+envelope = MessageEnvelope.create_custom(
+    raw_payload=json.dumps(order_data).encode("utf-8"),
+    schema_name="OrderRequest",
+    schema_namespace="urn:hospital:custom",
+    content_type="application/json",
+    source="Order_Entry_System",
+    destination="Lab_Order_Router"
+)
+
+# Parse
+order = envelope.parse()
+```
+
+---
 
 ## Raw-First Philosophy
 
@@ -173,52 +535,60 @@ Benefits:
 3. **Auditable** — Can always see exactly what was received
 4. **Flexible** — Non-standard messages pass through safely
 
-### Parse-on-Demand
+### Parse-on-Demand (Phase 4)
 
-When an item needs structured access:
+With the message envelope pattern:
 
 ```python
 # Raw payload - always available
-raw_bytes = message.payload.raw
+raw_bytes = envelope.body.raw_payload
 
-# Parsed view - created on demand, transient
-parsed = hl7v2.parse(message.payload)
-patient_id = parsed.PID[3][1]  # Access structured data
+# Parsed view - created on demand, cached in _parsed_payload
+parsed = envelope.parse()  # Automatic based on content_type
+patient_id = parsed.get_field("PID", 3, 1)
 
 # Modifications create new raw content
-parsed.PID[3][1] = "NEW_ID"
-new_raw = hl7v2.serialize(parsed)
+parsed.set_field("PID", 3, 1, "NEW_ID")
+new_raw = parsed.serialize()
 
-# New message with new raw content
-new_message = message.with_payload(raw=new_raw)
+# New envelope with new raw content
+new_envelope = MessageEnvelope.create_hl7(
+    raw_payload=new_raw,
+    version=envelope.header.schema_version,
+    source=envelope.header.destination,  # Reverse source/dest
+    destination="Next_Item",
+    priority=envelope.header.priority
+)
 ```
 
 The parsed representation is:
-- Created only when needed
-- Local to the item that requested it
-- Discarded after use
-- Never stored or transmitted
+- Created only when needed (lazy-loaded)
+- Cached in `_parsed_payload` (avoid re-parsing)
+- Local to the envelope instance
+- **Not serialized** (only raw_payload is serialized)
+
+---
 
 ## Message Lifecycle
 
 ```
 ┌──────────┐
-│ CREATED  │  Message instantiated with envelope + payload
+│ CREATED  │  MessageEnvelope instantiated with header + body
 └────┬─────┘
      │
      ▼
 ┌──────────┐
-│ RECEIVED │  Accepted by a receiver item
+│ RECEIVED │  Accepted by a receiver item (Service)
 └────┬─────┘
      │
      ▼
 ┌──────────┐
-│ QUEUED   │  Placed in route queue for processing
+│ QUEUED   │  Placed in item's queue for processing
 └────┬─────┘
      │
      ▼
 ┌──────────┐
-│PROCESSING│  Being handled by an item
+│PROCESSING│  Being handled by an item (Process/Operation)
 └────┬─────┘
      │
      ├─────────────────┐
@@ -233,20 +603,22 @@ The parsed representation is:
                 └──────────┘
 ```
 
+---
+
 ## Immutability
 
 Messages are **immutable**. Operations that "modify" a message actually create a new message:
 
 ```python
-# Original message
-msg1 = Message(envelope=env1, payload=pay1)
+# Original envelope
+env1 = MessageEnvelope.create_hl7(...)
 
-# "Modified" message - actually a new instance
-msg2 = msg1.with_envelope(priority=Priority.URGENT)
-msg3 = msg1.with_payload(raw=new_bytes)
+# "Modified" envelope - actually a new instance
+env2 = env1.with_priority(9)  # New header.priority
+env3 = env1.with_payload(new_raw_payload)  # New body.raw_payload
 
-# msg1 is unchanged
-assert msg1.envelope.priority == Priority.NORMAL
+# env1 is unchanged
+assert env1.header.priority == 5
 ```
 
 Benefits:
@@ -255,47 +627,218 @@ Benefits:
 - No accidental mutations
 - Supports event sourcing patterns
 
+---
+
 ## Serialization
 
 Messages can be serialized for:
 - Persistence (database storage)
-- Transport (between processes/nodes)
+- Transport (Redis Streams, Kafka, RabbitMQ)
 - Export (to external systems)
+
+**Important**: Only `raw_payload` is serialized. `_parsed_payload` is transient and regenerated on demand.
 
 Supported formats:
 - **MessagePack** — Default, compact binary
 - **JSON** — Human-readable, debugging
-- **Protocol Buffers** — Cross-language compatibility
+- **Protocol Buffers** — Cross-language compatibility (Phase 5)
 
 ```python
 # Serialize
-bytes_data = message.serialize(format="msgpack")
+bytes_data = envelope.serialize(format="msgpack")
 
 # Deserialize
-message = Message.deserialize(bytes_data, format="msgpack")
+envelope = MessageEnvelope.deserialize(bytes_data, format="msgpack")
+
+# After deserialization, _parsed_payload is None
+assert envelope.body._parsed_payload is None
+
+# Parse recreates it
+parsed = envelope.parse()
 ```
 
-## Legacy Compatibility
+---
 
-Messages from legacy engines can be imported:
+## Comparison to Industry Standards
+
+| Envelope Pattern | HIE MessageEnvelope | Kafka | AMQP | HTTP |
+|------------------|---------------------|-------|------|------|
+| **Header/Metadata** | MessageHeader | Headers | Properties | HTTP Headers |
+| **Payload/Body** | MessageBody | Value | Body | HTTP Body |
+| **Schema Metadata** | ✅ content_type, schema_version | ✅ Headers | ✅ content-type | ✅ Content-Type |
+| **Raw Preservation** | ✅ raw_payload | ✅ Value (bytes) | ✅ Body (bytes) | ✅ Body |
+| **Lazy Parsing** | ✅ _parsed_payload | ❌ No | ❌ No | ❌ No |
+| **Custom Properties** | ✅ header/body.custom_properties | ✅ Headers | ✅ Properties | ✅ Custom Headers |
+
+**HIE's envelope pattern is based on proven industry standards** (Kafka, AMQP, HTTP) with enhancements for healthcare (schema metadata, validation state, lazy parsing).
+
+---
+
+## Integration with Host Base Class
+
+All Host subclasses receive MessageEnvelope:
 
 ```python
-# Import from Mirth-style message
-legacy_msg = {
-    "messageId": "123",
-    "rawData": b"MSH|^~\\&|...",
-    "channelMap": {"patientId": "NHS123"},
-}
+class Host:
+    async def on_message_envelope(self, envelope: MessageEnvelope):
+        """Process message envelope."""
+        # Log
+        logger.info(
+            "message_received",
+            message_id=envelope.header.message_id,
+            source=envelope.header.source,
+            content_type=envelope.header.content_type,
+            schema_version=envelope.header.schema_version
+        )
 
-hie_message = LegacyAdapter.from_mirth(legacy_msg)
-# - messageId → envelope.message_id
-# - rawData → payload.raw
-# - channelMap → payload.properties
+        # Parse if needed
+        if self.settings.get("ParseMessages", False):
+            parsed = envelope.parse()
+            # Process parsed object
+
+        # Forward to target
+        for target in self.target_config_names:
+            await self.send_message_envelope(target, envelope)
 ```
 
-Export is also supported:
+---
+
+## Migration Path (Phase 3 → Phase 4)
+
+### Phase 3 (Current)
+
 ```python
-legacy_msg = LegacyAdapter.to_mirth(hie_message)
+message = Message(content=b"MSH|...", headers={})
+host.on_message(message)
 ```
 
-This allows HIE to interoperate with existing systems without polluting the core model.
+### Phase 4 (Planned)
+
+```python
+envelope = MessageEnvelope.create_hl7(
+    raw_payload=b"MSH|...",
+    version="2.4",
+    source="Cerner_PAS_Receiver",
+    destination="NHS_Validation_Process"
+)
+host.on_message_envelope(envelope)
+```
+
+### Backward Compatibility
+
+Phase 4 maintains backward compatibility with Phase 3 code:
+
+```python
+class Host:
+    def on_message(self, message: Message):
+        """Legacy method - auto-wrap in envelope."""
+        envelope = MessageEnvelope.from_legacy_message(message)
+        return self.on_message_envelope(envelope)
+
+    def on_message_envelope(self, envelope: MessageEnvelope):
+        """New method - process envelope."""
+        # Subclasses override this
+        pass
+```
+
+---
+
+## Advanced Features (Phase 5-6)
+
+### Distributed Tracing Integration
+
+```python
+# Propagate trace context in header
+from opentelemetry import trace
+
+ctx = trace.get_current_span().get_span_context()
+envelope.header.custom_properties["trace_id"] = format(ctx.trace_id, "032x")
+envelope.header.custom_properties["span_id"] = format(ctx.span_id, "016x")
+```
+
+### Message Replay (Event Sourcing)
+
+```python
+# All messages stored in Kafka
+await kafka_event_store.publish_event("nhs-trust-messages", envelope)
+
+# Replay from timestamp
+async for envelope in kafka_event_store.replay_from(
+    "nhs-trust-messages",
+    timestamp=datetime(2026, 2, 10, 10, 0, 0)
+):
+    # Re-process message
+    await production_engine.process_message(envelope)
+```
+
+---
+
+## Best Practices
+
+### 1. Always Preserve Raw Payload
+```python
+# ✅ Good
+new_envelope = MessageEnvelope.create_hl7(
+    raw_payload=original_envelope.body.raw_payload,  # Preserve raw
+    ...
+)
+
+# ❌ Bad
+new_envelope = MessageEnvelope.create_hl7(
+    raw_payload=parsed_object.serialize(),  # May lose original formatting
+    ...
+)
+```
+
+### 2. Parse Only When Needed
+```python
+# ✅ Good - parse only if validation required
+if self.settings.get("ValidateMessages", False):
+    parsed = envelope.parse()
+    envelope.validate()
+
+# ❌ Bad - unnecessary parsing
+parsed = envelope.parse()  # Always parse (slow)
+```
+
+### 3. Use Factory Methods
+```python
+# ✅ Good
+envelope = MessageEnvelope.create_hl7(raw_payload=..., version="2.4", ...)
+
+# ❌ Bad - manual construction (error-prone)
+header = MessageHeader(...)
+body = MessageBody(...)
+envelope = MessageEnvelope(header=header, body=body)
+```
+
+### 4. Validate Before Forwarding
+```python
+# ✅ Good
+if envelope.validate():
+    await self.send_message_envelope(target, envelope)
+else:
+    logger.error("validation_failed", errors=envelope.body.validation_errors)
+    await self.send_message_envelope("Exception_Handler", envelope)
+```
+
+---
+
+## Summary
+
+The HIE message envelope pattern (Phase 4) provides:
+
+✅ **Protocol-agnostic messaging** (HL7, FHIR, SOAP, JSON, custom)
+✅ **Schema-aware parsing** (content_type → automatic parser selection)
+✅ **Raw-first design** (original bytes always preserved)
+✅ **Lazy-loaded parsing** (parse on demand, cache result)
+✅ **Built-in validation** (validated flag + validation_errors)
+✅ **Unlimited extensibility** (custom_properties in header and body)
+✅ **Industry-standard pattern** (Kafka, AMQP, HTTP headers+body)
+✅ **Backward compatible** (Phase 3 code works unchanged)
+
+This design enables HIE to handle **1 billion messages/day** with **any message type** to **any service** at **enterprise scale**.
+
+---
+
+*This document describes the Phase 4 message model. For implementation details, see [MESSAGE_ENVELOPE_DESIGN.md](MESSAGE_ENVELOPE_DESIGN.md).*

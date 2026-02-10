@@ -133,13 +133,64 @@ class ClassRegistry:
         return cls._hosts.get(resolved)
     
     @classmethod
+    def get_or_import_host_class(cls, name: str) -> Type[Any]:
+        """
+        Get a host class by name with automatic import fallback.
+
+        Strategy:
+        1. Try ClassRegistry (fast, pre-registered)
+        2. Try dynamic import (flexible, on-demand)
+        3. Raise if neither works
+
+        Args:
+            name: Class name (can be alias, short name, or fully qualified name)
+
+        Returns:
+            Host class
+
+        Raises:
+            ValueError: If class cannot be found or imported
+
+        Examples:
+            # Pre-registered class (fast path)
+            cls = get_or_import_host_class("li.hosts.hl7.HL7TCPService")
+
+            # Fully qualified name (dynamic import)
+            cls = get_or_import_host_class("Engine.li.hosts.hl7.HL7TCPService")
+
+            # Custom user class (dynamic import)
+            cls = get_or_import_host_class("custom.my_org.MyCustomProcess")
+        """
+        # 1. Try registry first (fast)
+        host_class = cls.get_host_class(name)
+        if host_class is not None:
+            logger.debug("host_class_from_registry", name=name)
+            return host_class
+
+        # 2. Try dynamic import (flexible)
+        try:
+            from Engine.core.meta_instantiation import import_host_class
+            host_class = import_host_class(name)
+            logger.info("host_class_dynamically_imported", name=name)
+
+            # Cache in registry for future use
+            cls.register_host(name, host_class)
+
+            return host_class
+        except Exception as e:
+            raise ValueError(
+                f"Cannot find or import host class '{name}'. "
+                f"Not in registry and dynamic import failed: {e}"
+            )
+
+    @classmethod
     def get_adapter_class(cls, name: str) -> Type[Any] | None:
         """
         Get an adapter class by name.
-        
+
         Args:
             name: Class name (will resolve aliases)
-            
+
         Returns:
             Adapter class or None if not found
         """

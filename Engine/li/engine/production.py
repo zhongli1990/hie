@@ -257,26 +257,42 @@ class ProductionEngine:
                 )
     
     def _create_host_from_config(self, config: ItemConfig) -> Host | None:
-        """Create a host instance from ItemConfig."""
+        """
+        Create a host instance from ItemConfig.
+
+        Uses enhanced meta-instantiation with automatic import fallback.
+        Supports ANY Python class (built-in, pre-registered, or custom).
+        """
         class_name = config.class_name
-        
-        # Try to get class from registry
-        host_class = ClassRegistry.get_host_class(class_name)
-        
-        if not host_class:
-            # Map known class names
-            if "HL7TCPService" in class_name or "Service.TCPService" in class_name:
-                host_class = HL7TCPService
-            elif "HL7TCPOperation" in class_name or "Operation.TCPOperation" in class_name:
-                host_class = HL7TCPOperation
-            elif "RoutingEngine" in class_name:
-                host_class = HL7RoutingEngine
-            else:
-                self._log.warning("unknown_host_class", class_name=class_name)
-                return None
-        
-        # Create host instance
-        return host_class(name=config.name, config=config)
+
+        self._log.info(
+            "creating_host",
+            name=config.name,
+            class_name=class_name,
+            item_type=config.item_type
+        )
+
+        try:
+            # Get or import class (with automatic fallback)
+            # 1. Tries ClassRegistry first (fast, pre-registered)
+            # 2. Falls back to dynamic import (flexible, custom classes)
+            host_class = ClassRegistry.get_or_import_host_class(class_name)
+
+            # Create host instance
+            host = host_class(name=config.name, config=config)
+
+            self._log.info("host_created", name=config.name, class_name=class_name)
+
+            return host
+
+        except Exception as e:
+            self._log.error(
+                "host_creation_failed",
+                name=config.name,
+                class_name=class_name,
+                error=str(e)
+            )
+            return None
     
     def _register_host(self, host: Host, config: ItemConfig) -> None:
         """Register a host in the appropriate category and service registry."""
