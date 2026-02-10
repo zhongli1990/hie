@@ -8,12 +8,23 @@ interface VersionHistory {
   features: string[];
 }
 
-const VERSION = "1.7.1";
+const VERSION = "1.7.2";
 const BUILD_DATE = "Feb 11, 2026";
 const PLATFORM_NAME = "OpenLI HIE";
 const PRODUCT_NAME = "OpenLI Healthcare Integration Engine";
 
 const versionHistory: VersionHistory[] = [
+  {
+    version: "1.7.2",
+    date: "Feb 11, 2026",
+    features: [
+      "E2E test suite ported from saas-codex (26 tests, all passing)",
+      "Unit tests for security hooks, clinical safety, path escape (21 tests)",
+      "Portal proxy routing fix: GenAI routes no longer intercepted by Manager API",
+      "Prompt Manager API E2E tests (template CRUD, skills, categories)",
+      "SSE streaming E2E tests (runner health, thread lifecycle, error handling)",
+    ],
+  },
   {
     version: "1.7.1",
     date: "Feb 11, 2026",

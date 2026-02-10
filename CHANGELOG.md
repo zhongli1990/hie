@@ -5,6 +5,36 @@ All notable changes to OpenLI HIE (Healthcare Integration Engine) will be docume
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.7.2] - 2026-02-11
+
+### Added - E2E & Unit Test Suite (ported from saas-codex)
+
+**Unit Tests** (`agent-runner/tests/`, 21 tests):
+- Security hooks: rm -rf, sudo, chmod 777, fork bomb, curl|bash blocking
+- Path escape: ../ and ..\\ traversal blocking, absolute path outside /workspaces
+- Clinical safety: DROP TABLE, DELETE FROM patient, TRUNCATE blocking
+- Pattern count verification: >=10 bash, >=2 path, >=4 SQL patterns
+- Post-tool audit hook validation
+
+**E2E Test Script** (`scripts/test_genai_features.sh`, 26 tests):
+- Service health checks: agent-runner, codex-runner, prompt-manager, Portal
+- Portal proxy routes: agent-runner, codex-runner, prompt-manager forwarding
+- Skills system: loader, directory, events, tools module verification
+- Hooks system: module, pattern counts, rm -rf/path escape/safe command/SQL injection
+- Thread/run lifecycle: thread creation, invalid threadId 404, empty prompt 400, invalid runId 404
+- Prompt Manager API: list templates, list skills, categories endpoint
+
+**E2E Python Tests** (`tests/genai/`):
+- `test_sse_streaming.py`: Runner health, Portal proxy, thread lifecycle, error handling
+- `test_prompt_manager_api.py`: Template CRUD (create/get/update/publish/render/clone/delete), skills CRUD, categories
+- `test_hooks.py`: Mirror of agent-runner unit tests for project-level reference
+
+### Fixed
+
+- **Portal proxy routing** (`next.config.js`): Rewrites were routing ALL `/api/*` to Manager API, blocking GenAI proxy routes. Fixed with `afterFiles`/`fallback` pattern so `/api/agent-runner`, `/api/codex-runner`, `/api/prompt-manager` hit Next.js API route handlers first.
+- **Prompts page TypeScript error** (`prompts/page.tsx`): `Set` iteration `downlevelIteration` error fixed with `Array.from()`.
+- **Agent runner Docker image**: Added pytest, pytest-asyncio, httpx to requirements; tests directory copied into image.
+
 ## [1.7.1] - 2026-02-11
 
 ### Added - Multi-Runner Architecture (Codex + Claude, plug-and-play)
