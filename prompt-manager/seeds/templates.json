@@ -1,0 +1,176 @@
+[
+  {
+    "name": "HL7 ADT Route Configuration",
+    "category": "hl7",
+    "description": "Configure an ADT (Admit/Discharge/Transfer) message route with inbound receiver, routing engine, and outbound sender.",
+    "template_body": "Configure an HL7 ADT route for {{facility_name}} with the following requirements:\n\n**Inbound Service:**\n- Protocol: MLLP/TCP on port {{inbound_port}}\n- Character encoding: {{encoding}}\n- Auto-acknowledge: {{auto_ack}}\n\n**Routing Rules:**\n- Route ADT^A01 (Admit) to {{admit_target}}\n- Route ADT^A02 (Transfer) to {{transfer_target}}\n- Route ADT^A03 (Discharge) to {{discharge_target}}\n- Default: {{default_target}}\n\n**Outbound Operations:**\n- Target host: {{target_host}}\n- Target port: {{target_port}}\n- Retry count: {{retry_count}}\n- Retry interval: {{retry_interval_ms}}ms\n\n**Error Handling:**\n- Dead letter queue for failed messages\n- Alert on consecutive failures > {{alert_threshold}}",
+    "variables": {
+      "facility_name": {"type": "string", "default": "Hospital A"},
+      "inbound_port": {"type": "number", "default": 10001},
+      "encoding": {"type": "string", "default": "UTF-8"},
+      "auto_ack": {"type": "boolean", "default": true},
+      "admit_target": {"type": "string", "default": "PAS"},
+      "transfer_target": {"type": "string", "default": "PAS"},
+      "discharge_target": {"type": "string", "default": "PAS"},
+      "default_target": {"type": "string", "default": "archive"},
+      "target_host": {"type": "string", "default": "pas-server"},
+      "target_port": {"type": "number", "default": 2575},
+      "retry_count": {"type": "number", "default": 3},
+      "retry_interval_ms": {"type": "number", "default": 5000},
+      "alert_threshold": {"type": "number", "default": 5}
+    },
+    "tags": ["hl7", "adt", "routing"]
+  },
+  {
+    "name": "FHIR Resource Mapping",
+    "category": "fhir",
+    "description": "Map HL7 v2.x segments to FHIR R4 resources for interoperability.",
+    "template_body": "Create a FHIR mapping for {{resource_type}} from HL7 v2.x {{source_segment}} segment.\n\n**Source System:** {{source_system}}\n**Target FHIR Server:** {{fhir_server_url}}\n**FHIR Profile:** {{fhir_profile}}\n\n**Field Mappings:**\n{{field_mappings}}\n\n**Validation Rules:**\n- Validate against UK Core profile: {{use_uk_core}}\n- NHS Number system: https://fhir.nhs.uk/Id/nhs-number\n- ODS Code system: https://fhir.nhs.uk/Id/ods-organization-code\n\n**Error Handling:**\n- On validation failure: {{on_validation_failure}}\n- Log unmapped fields: {{log_unmapped}}",
+    "variables": {
+      "resource_type": {"type": "string", "default": "Patient"},
+      "source_segment": {"type": "string", "default": "PID"},
+      "source_system": {"type": "string", "default": "PAS"},
+      "fhir_server_url": {"type": "string", "default": "http://fhir-server:8080/fhir"},
+      "fhir_profile": {"type": "string", "default": "UKCore-Patient"},
+      "field_mappings": {"type": "text", "default": "PID.3 -> Patient.identifier\nPID.5 -> Patient.name\nPID.7 -> Patient.birthDate"},
+      "use_uk_core": {"type": "boolean", "default": true},
+      "on_validation_failure": {"type": "string", "default": "reject"},
+      "log_unmapped": {"type": "boolean", "default": true}
+    },
+    "tags": ["fhir", "mapping", "interoperability"]
+  },
+  {
+    "name": "Clinical Safety Review (DCB0129)",
+    "category": "clinical",
+    "description": "Perform a clinical safety review of an HIE integration configuration per DCB0129/DCB0160.",
+    "template_body": "Perform a clinical safety review of the integration route for {{project_name}}.\n\n**Review Scope:**\n- Route type: {{route_type}}\n- Message types: {{message_types}}\n- Clinical risk level: {{risk_level}}\n\n**DCB0129 Checklist:**\n1. Message integrity - verify no data loss in transformation\n2. Patient identification - verify PID handling\n3. Error handling - verify clinical safety of failure modes\n4. Audit trail - verify all messages are logged\n5. Data quality - verify validation rules\n\n**Specific Concerns:**\n{{specific_concerns}}\n\n**Output Required:**\n- Risk assessment with severity ratings\n- Recommended mitigations\n- Sign-off requirements",
+    "variables": {
+      "project_name": {"type": "string", "default": "ADT Integration"},
+      "route_type": {"type": "string", "default": "ADT"},
+      "message_types": {"type": "string", "default": "ADT^A01, ADT^A02, ADT^A03"},
+      "risk_level": {"type": "string", "default": "medium"},
+      "specific_concerns": {"type": "text", "default": "None identified"}
+    },
+    "tags": ["clinical", "safety", "dcb0129"]
+  },
+  {
+    "name": "Integration Test Plan",
+    "category": "integration",
+    "description": "Generate a comprehensive integration test plan for an HIE route.",
+    "template_body": "Generate an integration test plan for {{project_name}}.\n\n**Route Under Test:**\n- Inbound: {{inbound_type}} on port {{inbound_port}}\n- Processing: {{processing_type}}\n- Outbound: {{outbound_type}} to {{outbound_target}}\n\n**Test Scenarios:**\n1. Happy path - valid {{message_type}} message\n2. Invalid message structure\n3. Missing required segments\n4. Target system unavailable (retry behaviour)\n5. High volume ({{volume_messages}} messages in {{volume_duration}})\n6. Character encoding edge cases\n\n**Test Data:**\n- Use synthetic patient data only\n- NHS Number range: 900 000 0000 - 999 999 9999 (test range)\n- Facility: {{test_facility}}\n\n**Acceptance Criteria:**\n- All messages acknowledged within {{ack_timeout_ms}}ms\n- Zero message loss\n- Error handling per specification\n- Audit log complete",
+    "variables": {
+      "project_name": {"type": "string", "default": "ADT Route"},
+      "inbound_type": {"type": "string", "default": "MLLP/TCP"},
+      "inbound_port": {"type": "number", "default": 10001},
+      "processing_type": {"type": "string", "default": "Routing Engine"},
+      "outbound_type": {"type": "string", "default": "MLLP/TCP"},
+      "outbound_target": {"type": "string", "default": "PAS"},
+      "message_type": {"type": "string", "default": "ADT^A01"},
+      "volume_messages": {"type": "number", "default": 1000},
+      "volume_duration": {"type": "string", "default": "5 minutes"},
+      "test_facility": {"type": "string", "default": "TEST_FACILITY"},
+      "ack_timeout_ms": {"type": "number", "default": 500}
+    },
+    "tags": ["testing", "integration", "qa"]
+  },
+  {
+    "name": "NHS Compliance Audit",
+    "category": "compliance",
+    "description": "Generate an NHS Digital compliance audit checklist for a healthcare integration system.",
+    "template_body": "Perform an NHS Digital compliance audit for:\n\nSystem: {{system_name}}\nIntegration Type: {{integration_type}}\nData Types Handled: {{data_types}}\nDeployment Environment: {{environment}}\n\nPlease audit against:\n1. NHS Digital Standards (DCB0129, DCB0160)\n2. Information Governance Toolkit\n3. Data Security and Protection Toolkit (DSPT)\n4. FHIR UK Core compliance (if applicable)\n5. HL7v2 UK extensions (if applicable)\n6. Clinical Safety (DCB0129 / DCB0160)\n7. GDPR / UK Data Protection Act 2018\n8. Cyber Essentials Plus requirements\n9. Access Control and Authentication\n10. Audit Logging and Monitoring\n\nFor each area, provide: Status (Compliant/Partial/Non-Compliant), Findings, and Recommendations.",
+    "variables": {
+      "system_name": {"type": "string", "default": "Trust Integration Engine"},
+      "integration_type": {"type": "string", "default": "Mixed"},
+      "data_types": {"type": "string", "default": "Patient demographics, clinical observations, lab results, discharge summaries"},
+      "environment": {"type": "string", "default": "Hybrid"}
+    },
+    "tags": ["nhs", "compliance", "audit", "healthcare"]
+  },
+  {
+    "name": "HL7 ORM Order Route",
+    "category": "hl7",
+    "description": "Configure an ORM (Order) message route for lab, radiology, or pharmacy orders.",
+    "template_body": "Configure an HL7 ORM order route for {{facility_name}}:\n\n**Inbound:**\n- Protocol: MLLP/TCP on port {{inbound_port}}\n- Expected messages: ORM^O01 (General Order)\n\n**Order Routing:**\n- Lab orders (OBR.4 starts with LAB): route to {{lab_target}}\n- Radiology orders (OBR.4 starts with RAD): route to {{rad_target}}\n- Pharmacy orders (OBR.4 starts with RX): route to {{rx_target}}\n- Default: {{default_target}}\n\n**Validation:**\n- Require PID segment with NHS Number\n- Require ORC segment with ordering provider\n- Require at least one OBR segment\n\n**Outbound:**\n- Target host: {{target_host}}:{{target_port}}\n- Retry: {{retry_count}} attempts, {{retry_interval_ms}}ms interval\n- Timeout: {{timeout_ms}}ms",
+    "variables": {
+      "facility_name": {"type": "string", "default": "Hospital A"},
+      "inbound_port": {"type": "number", "default": 10002},
+      "lab_target": {"type": "string", "default": "LIMS"},
+      "rad_target": {"type": "string", "default": "RIS"},
+      "rx_target": {"type": "string", "default": "Pharmacy"},
+      "default_target": {"type": "string", "default": "archive"},
+      "target_host": {"type": "string", "default": "order-system"},
+      "target_port": {"type": "number", "default": 2576},
+      "retry_count": {"type": "number", "default": 3},
+      "retry_interval_ms": {"type": "number", "default": 5000},
+      "timeout_ms": {"type": "number", "default": 30000}
+    },
+    "tags": ["hl7", "orm", "orders", "routing"]
+  },
+  {
+    "name": "HL7 ORU Results Route",
+    "category": "hl7",
+    "description": "Configure an ORU (Observation Result) route for lab results, pathology, and diagnostics.",
+    "template_body": "Configure an HL7 ORU results route for {{facility_name}}:\n\n**Inbound:**\n- Protocol: {{inbound_protocol}} on port {{inbound_port}}\n- Expected messages: ORU^R01 (Unsolicited Observation)\n\n**Result Processing:**\n- Parse OBX segments for result values\n- Flag abnormal results (OBX.8 = 'A' or 'H' or 'L')\n- Critical results (OBX.8 = 'C'): immediate alert to {{critical_alert_target}}\n\n**Routing:**\n- Normal results: {{normal_target}}\n- Abnormal results: {{abnormal_target}} + {{normal_target}}\n- Critical results: {{critical_target}} + alert\n\n**Outbound:**\n- Target: {{target_host}}:{{target_port}}\n- Retry: {{retry_count}} attempts\n- Dead letter on failure after retries",
+    "variables": {
+      "facility_name": {"type": "string", "default": "Hospital A"},
+      "inbound_protocol": {"type": "string", "default": "MLLP/TCP"},
+      "inbound_port": {"type": "number", "default": 10003},
+      "critical_alert_target": {"type": "string", "default": "on-call-team"},
+      "normal_target": {"type": "string", "default": "EPR"},
+      "abnormal_target": {"type": "string", "default": "EPR-Alerts"},
+      "critical_target": {"type": "string", "default": "EPR-Critical"},
+      "target_host": {"type": "string", "default": "epr-server"},
+      "target_port": {"type": "number", "default": 2577},
+      "retry_count": {"type": "number", "default": 5}
+    },
+    "tags": ["hl7", "oru", "results", "pathology"]
+  },
+  {
+    "name": "Weekly Status Report",
+    "category": "general",
+    "description": "Generate a structured weekly status report with RAG ratings, accomplishments, risks, and next steps.",
+    "template_body": "Generate a Weekly Status Report:\n\nProject: {{project_name}}\nReporting Period: {{period_start}} to {{period_end}}\nOverall RAG: {{rag_status}}\nProject Manager: {{pm_name}}\n\nAccomplishments This Week:\n{{accomplishments}}\n\nPlanned for Next Week:\n{{planned_next}}\n\nRisks/Issues:\n{{risks}}\n\nPlease format as a professional status report with:\n1. Executive Summary (2-3 sentences)\n2. RAG Dashboard (Schedule, Budget, Scope, Quality)\n3. Key Accomplishments\n4. Upcoming Milestones\n5. Risks & Issues (with owner and mitigation)\n6. Decisions Required\n7. Resource Updates",
+    "variables": {
+      "project_name": {"type": "string", "default": "FHIR R4 Migration"},
+      "period_start": {"type": "string", "default": "2026-02-03"},
+      "period_end": {"type": "string", "default": "2026-02-07"},
+      "rag_status": {"type": "string", "default": "Amber"},
+      "pm_name": {"type": "string", "default": "James Wilson"},
+      "accomplishments": {"type": "text", "default": "1. Completed ADT^A01 to FHIR Patient mapping\n2. Set up test environment\n3. Drafted integration test plan"},
+      "planned_next": {"type": "text", "default": "1. Implement ADT^A02/A03 mappings\n2. Begin integration testing\n3. Review with clinical team"},
+      "risks": {"type": "text", "default": "1. Test data availability delayed\n2. Clinical team availability limited"}
+    },
+    "tags": ["status", "report", "weekly", "rag"]
+  },
+  {
+    "name": "API Design Specification",
+    "category": "general",
+    "description": "Generate a REST API design specification with endpoints, schemas, authentication, and error handling.",
+    "template_body": "Design a REST API specification for:\n\nService: {{service_name}}\nPurpose: {{purpose}}\nAuth Method: {{auth_method}}\nAPI Style: {{api_style}}\n\nResources/Entities:\n{{resources}}\n\nPlease produce a complete API specification with:\n1. Overview & Base URL\n2. Authentication & Authorization\n3. Endpoints (for each resource: GET list, GET by ID, POST, PUT, DELETE)\n4. Request/Response schemas (JSON examples)\n5. Pagination, Filtering, Sorting\n6. Error Response Format (with HTTP status codes)\n7. Rate Limiting\n8. Versioning Strategy\n9. OpenAPI/Swagger snippet",
+    "variables": {
+      "service_name": {"type": "string", "default": "Integration Manager API"},
+      "purpose": {"type": "text", "default": "CRUD operations for HIE workspaces, projects, routes, and items"},
+      "auth_method": {"type": "string", "default": "JWT Bearer"},
+      "api_style": {"type": "string", "default": "REST"},
+      "resources": {"type": "text", "default": "1. Workspaces (CRUD)\n2. Projects (CRUD, start, stop, deploy)\n3. Routes (CRUD, items, connections)\n4. Items (Services, Processes, Operations)"}
+    },
+    "tags": ["api", "design", "specification", "rest"]
+  },
+  {
+    "name": "FHIR UK Core Patient Bundle",
+    "category": "fhir",
+    "description": "Generate a FHIR R4 UK Core Patient Bundle from HL7v2 ADT data for NHS Spine submission.",
+    "template_body": "Generate a FHIR R4 UK Core Patient Bundle for NHS Spine submission:\n\n**Patient Details (from PID):**\n- NHS Number: {{nhs_number}}\n- Family Name: {{family_name}}\n- Given Name: {{given_name}}\n- Date of Birth: {{dob}}\n- Gender: {{gender}}\n- Address: {{address}}\n- GP Practice (ODS): {{gp_ods_code}}\n\n**Requirements:**\n- Profile: https://fhir.hl7.org.uk/StructureDefinition/UKCore-Patient\n- NHS Number verified status: {{nhs_number_verified}}\n- Include GP registration (PractitionerRole reference)\n- Include managing organization\n- Validate against UK Core profile\n\n**Output:**\n- Complete FHIR Bundle (type: transaction)\n- Include Patient resource\n- Include Organization resource for GP practice\n- Include PractitionerRole if GP known",
+    "variables": {
+      "nhs_number": {"type": "string", "default": "9000000009"},
+      "family_name": {"type": "string", "default": "SMITH"},
+      "given_name": {"type": "string", "default": "John"},
+      "dob": {"type": "string", "default": "1970-01-01"},
+      "gender": {"type": "string", "default": "male"},
+      "address": {"type": "text", "default": "1 Test Street, Leeds, LS1 1AA"},
+      "gp_ods_code": {"type": "string", "default": "B81001"},
+      "nhs_number_verified": {"type": "boolean", "default": true}
+    },
+    "tags": ["fhir", "uk-core", "patient", "nhs-spine"]
+  }
+]

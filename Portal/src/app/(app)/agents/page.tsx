@@ -188,11 +188,16 @@ export default function AgentsPage() {
       let currentThreadId = threadId;
       if (!currentThreadId) {
         const ws = workspaces.find((w) => w.id === selectedWorkspaceId);
-        const workingDir = `/workspaces/${ws?.name || "default"}`;
         const threadRes = await fetch(`${apiBase}/threads`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ workingDirectory: workingDir }),
+          body: JSON.stringify({
+            workspaceId: selectedWorkspaceId,
+            workspaceName: ws?.name || "default",
+            projectId: selectedProjectId || undefined,
+            runnerType,
+            skipGitRepoCheck: true,
+          }),
         });
         if (!threadRes.ok) {
           throw new Error(`Failed to create thread: ${threadRes.statusText}`);
@@ -251,7 +256,7 @@ export default function AgentsPage() {
 
           // Handle errors
           if (eventType === "error") {
-            setStatus(`error: ${parsed.payload?.message || "Unknown error"}`);
+            setStatus(`error: ${parsed.message || parsed.payload?.message || "Unknown error"}`);
             setStreamingText("");
             setActiveToolCall(null);
             evtSource.close();

@@ -84,8 +84,10 @@ class TemplateRepository:
 
         if tenant_id:
             tid = uuid.UUID(tenant_id)
-            query = query.where(PromptTemplate.tenant_id == tid)
-            count_query = count_query.where(PromptTemplate.tenant_id == tid)
+            from sqlalchemy import or_
+            tenant_filter = or_(PromptTemplate.tenant_id == tid, PromptTemplate.tenant_id.is_(None))
+            query = query.where(tenant_filter)
+            count_query = count_query.where(tenant_filter)
         if category:
             query = query.where(PromptTemplate.category == category)
             count_query = count_query.where(PromptTemplate.category == category)

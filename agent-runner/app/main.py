@@ -9,6 +9,8 @@ Provides:
 """
 
 import asyncio
+import json
+import logging
 import os
 import pathlib
 import uuid
@@ -23,6 +25,70 @@ from .config import WORKSPACES_ROOT, PORT
 from .agent import run_agent_loop
 from .events import make_event, format_sse
 from .api.skills_router import router as skills_router
+
+logger = logging.getLogger(__name__)
+
+HOOKS_CONFIG_PATH = os.environ.get("HOOKS_CONFIG_PATH", "/app/hooks_config.json")
+
+# Default hooks configuration
+DEFAULT_HOOKS_CONFIG: dict[str, Any] = {
+    "platform": {
+        "security": {
+            "block_dangerous_commands": True,
+            "block_path_traversal": True,
+            "validate_hl7_structure": True,
+            "enforce_tls": False,
+            "blocked_patterns": [
+                "rm -rf /", "sudo rm", "DROP TABLE", "DELETE FROM hie_",
+                "curl | bash", "wget | sh", "chmod 777", "mkfs",
+                "dd if=", ":(){:|:&};:", ">/dev/sda", "format c:",
+                "curl | sh",
+            ],
+            "enabled": True,
+        },
+        "audit": {
+            "log_all_agent_actions": True,
+            "log_message_access": True,
+            "log_config_changes": True,
+            "enabled": True,
+        },
+    },
+    "tenant": {
+        "compliance": {
+            "detect_nhs_numbers": True,
+            "detect_pii": True,
+            "block_external_data_transfer": False,
+            "enforce_data_retention": True,
+            "retention_days": 365,
+            "enabled": True,
+        },
+        "clinical_safety": {
+            "validate_message_integrity": True,
+            "require_ack_confirmation": True,
+            "alert_on_message_loss": True,
+            "max_retry_attempts": 3,
+            "enabled": True,
+        },
+    },
+}
+
+
+def _load_hooks_config() -> dict[str, Any]:
+    """Load hooks config from file, falling back to defaults."""
+    try:
+        if os.path.exists(HOOKS_CONFIG_PATH):
+            with open(HOOKS_CONFIG_PATH, "r") as f:
+                return json.load(f)
+    except Exception as e:
+        logger.warning(f"Failed to load hooks config: {e}")
+    return DEFAULT_HOOKS_CONFIG.copy()
+
+
+def _save_hooks_config(config: dict[str, Any]) -> None:
+    """Persist hooks config to file."""
+    os.makedirs(os.path.dirname(HOOKS_CONFIG_PATH) or ".", exist_ok=True)
+    with open(HOOKS_CONFIG_PATH, "w") as f:
+        json.dump(config, f, indent=2)
 
 
 app = FastAPI(title="OpenLI HIE Agent Runner", version="1.6.0")
@@ -214,3 +280,23 @@ async def run_events(run_id: str, request: Request) -> StreamingResponse:
             "X-Accel-Buffering": "no"
         }
     )
+
+
+# ── Hooks Configuration API ──────────────────────────────────────────────────
+
+@app.get("/hooks/config")
+async def get_hooks_config() -> dict[str, Any]:
+    return _load_hooks_config()
+
+
+@app.post("/hooks/config")
+async def save_hooks_config(request: Request) -> dict[str, Any]:
+    body = await request.json()
+    config = _load_hooks_config()
+    if "platform" in body:
+        config["platform"] = body["platform"]
+    if "tenant" in body:
+        config["tenant"] = body["tenant"]
+    _save_hooks_config(config)
+    logger.info("Hooks configuration saved")
+    return {"status": "ok", "message": "Hooks configuration saved"}

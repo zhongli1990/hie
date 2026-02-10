@@ -59,6 +59,7 @@ export default function PromptsPage() {
     template_body: "",
   });
   const [creating, setCreating] = useState(false);
+  const [seeding, setSeeding] = useState(false);
 
   // Edit Template Modal
   const [editModal, setEditModal] = useState<PromptTemplate | null>(null);
@@ -179,6 +180,23 @@ export default function PromptsPage() {
     }
   };
 
+  const handleSeedTemplates = async () => {
+    setSeeding(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/prompt-manager/seed/templates", { method: "POST" });
+      if (!res.ok) throw new Error(`Seed failed: ${res.statusText}`);
+      const data = await res.json();
+      const msg = `Loaded ${data.total_created} template(s)${data.skipped?.length ? `, ${data.skipped.length} already existed` : ""}`;
+      alert(msg);
+      fetchTemplates();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to seed templates");
+    } finally {
+      setSeeding(false);
+    }
+  };
+
   const handleDeleteTemplate = async (id: string) => {
     if (!confirm("Delete this template and all its versions?")) return;
     try {
@@ -236,12 +254,21 @@ export default function PromptsPage() {
             Create, manage, and share parameterised prompt templates for healthcare integration
           </p>
         </div>
-        <button
-          onClick={() => setShowNewModal(true)}
-          className="rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700"
-        >
-          + New Template
-        </button>
+        <div className="flex gap-2">
+          <button
+            onClick={handleSeedTemplates}
+            disabled={seeding}
+            className="rounded-md border border-indigo-300 dark:border-indigo-700 px-4 py-2 text-sm font-medium text-indigo-700 dark:text-indigo-300 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 disabled:opacity-50"
+          >
+            {seeding ? "Loading..." : "Load Samples"}
+          </button>
+          <button
+            onClick={() => setShowNewModal(true)}
+            className="rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700"
+          >
+            + New Template
+          </button>
+        </div>
       </div>
 
       {/* Filters */}
@@ -281,9 +308,24 @@ export default function PromptsPage() {
       {/* Empty State */}
       {!loading && templates.length === 0 && (
         <div className="rounded-lg border border-dashed border-zinc-300 dark:border-zinc-600 p-12 text-center">
-          <p className="text-sm text-zinc-500 dark:text-zinc-400">
-            No templates found. Create your first prompt template to get started.
+          <p className="text-sm text-zinc-500 dark:text-zinc-400 mb-4">
+            No templates found. Load sample healthcare templates or create your own.
           </p>
+          <div className="flex justify-center gap-3">
+            <button
+              onClick={handleSeedTemplates}
+              disabled={seeding}
+              className="rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-50"
+            >
+              {seeding ? "Loading..." : "Load Sample Templates"}
+            </button>
+            <button
+              onClick={() => setShowNewModal(true)}
+              className="rounded-md border border-zinc-300 dark:border-zinc-600 px-4 py-2 text-sm text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-700"
+            >
+              Create from Scratch
+            </button>
+          </div>
         </div>
       )}
 

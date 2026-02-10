@@ -12,6 +12,7 @@ RUN pip install --no-cache-dir -r /app/requirements.txt
 COPY app /app/app
 COPY alembic.ini /app/alembic.ini
 COPY alembic /app/alembic
+COPY seeds /app/seeds
 
 ENV PYTHONUNBUFFERED=1
 

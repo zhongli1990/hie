@@ -89,8 +89,10 @@ class SkillRepository:
 
         if tenant_id:
             tid = uuid.UUID(tenant_id)
-            query = query.where(Skill.tenant_id == tid)
-            count_query = count_query.where(Skill.tenant_id == tid)
+            from sqlalchemy import or_
+            tenant_filter = or_(Skill.tenant_id == tid, Skill.tenant_id.is_(None))
+            query = query.where(tenant_filter)
+            count_query = count_query.where(tenant_filter)
         if category:
             query = query.where(Skill.category == category)
             count_query = count_query.where(Skill.category == category)

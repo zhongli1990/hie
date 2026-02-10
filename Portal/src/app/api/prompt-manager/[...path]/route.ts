@@ -43,14 +43,15 @@ export async function POST(
   const path = params.path.join("/");
 
   try {
-    const body = await request.json();
+    let body: any = undefined;
+    try { body = await request.json(); } catch { /* no body is fine for seed endpoints */ }
     const res = await fetch(`${PROMPT_MANAGER_URL}/${path}`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         ...getAuthHeader(request),
       },
-      body: JSON.stringify(body),
+      ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
     });
 
     const data = await res.json();

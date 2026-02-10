@@ -57,6 +57,7 @@ export default function SkillsManagementPage() {
   const [editDescription, setEditDescription] = useState("");
   const [saving, setSaving] = useState(false);
   const [showNewSkillModal, setShowNewSkillModal] = useState(false);
+  const [seedingSkills, setSeedingSkills] = useState(false);
   const [newSkill, setNewSkill] = useState({
     name: "",
     description: "",
@@ -164,6 +165,23 @@ export default function SkillsManagementPage() {
     }
   };
 
+  const handleSeedSkills = async () => {
+    setSeedingSkills(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/prompt-manager/seed/skills", { method: "POST" });
+      if (!res.ok) throw new Error(`Seed failed: ${res.statusText}`);
+      const data = await res.json();
+      const msg = `Loaded ${data.total_created} skill(s)${data.skipped?.length ? `, ${data.skipped.length} already existed` : ""}`;
+      alert(msg);
+      fetchSkills();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to seed skills");
+    } finally {
+      setSeedingSkills(false);
+    }
+  };
+
   const handleSyncFromFiles = async () => {
     try {
       const res = await fetch("/api/prompt-manager/skills/sync-from-files", { method: "POST" });
@@ -191,6 +209,13 @@ export default function SkillsManagementPage() {
           </p>
         </div>
         <div className="flex gap-2">
+          <button
+            onClick={handleSeedSkills}
+            disabled={seedingSkills}
+            className="flex items-center gap-2 rounded-md border border-gray-300 dark:border-zinc-600 px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-zinc-700 transition-colors disabled:opacity-50"
+          >
+            {seedingSkills ? "Loading..." : "Load Samples"}
+          </button>
           <button
             onClick={handleSyncFromFiles}
             className="flex items-center gap-2 rounded-md border border-gray-300 dark:border-zinc-600 px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-zinc-700 transition-colors"
@@ -258,7 +283,16 @@ export default function SkillsManagementPage() {
 
             <div className="flex-1 overflow-y-auto p-2">
               {filteredSkills.length === 0 ? (
-                <div className="text-center py-8 text-gray-500 dark:text-gray-400 text-sm">No skills found</div>
+                <div className="text-center py-8 text-gray-500 dark:text-gray-400 text-sm">
+                  <p className="mb-3">No skills found</p>
+                  <button
+                    onClick={handleSeedSkills}
+                    disabled={seedingSkills}
+                    className="rounded-md bg-nhs-blue px-3 py-1.5 text-xs font-medium text-white hover:bg-nhs-dark-blue disabled:opacity-50"
+                  >
+                    {seedingSkills ? "Loading..." : "Load Sample Skills"}
+                  </button>
+                </div>
               ) : (
                 <div className="space-y-2">
                   {filteredSkills.map((skill) => (
