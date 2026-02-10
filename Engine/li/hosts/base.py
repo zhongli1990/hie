@@ -20,6 +20,20 @@ from uuid import UUID, uuid4
 
 import structlog
 
+from Engine.core.messaging import (
+    MessageBroker,
+    MessagingPattern,
+    MessageEnvelope,
+    MessagePriority,
+    ServiceRegistry
+)
+from Engine.core.queues import (
+    QueueType,
+    OverflowStrategy,
+    create_queue,
+    ManagedQueue
+)
+
 if TYPE_CHECKING:
     from Engine.li.config import ItemConfig
     from Engine.li.adapters.base import InboundAdapter, OutboundAdapter
@@ -45,12 +59,13 @@ class HostMetrics:
     messages_processed: int = 0
     messages_sent: int = 0
     messages_failed: int = 0
-    
+
     last_message_at: datetime | None = None
     started_at: datetime | None = None
     stopped_at: datetime | None = None
-    
+
     total_processing_time_ms: float = 0.0
+    restart_count: int = 0  # Track auto-restart count
     
     @property
     def avg_processing_time_ms(self) -> float:
@@ -60,17 +75,22 @@ class HostMetrics:
         return self.total_processing_time_ms / self.messages_processed
 
 
-class Host(ABC):
+class Host(MessageBroker, ABC):
     """
     Base class for all business hosts.
-    
+
     A Host is a configurable runtime component that processes messages.
     It has a lifecycle (start/stop/pause/resume) and can be configured
     via adapter_settings and host_settings.
-    
-    This matches IRIS Ens.Host architecture.
+
+    Inherits from MessageBroker to support inter-service messaging:
+    - send_request_async(): Non-blocking fire-and-forget
+    - send_request_sync(): Blocking request/reply
+    - send_response(): Reply to sync requests
+
+    This matches IRIS Ens.Host architecture with SendRequestSync/Async.
     """
-    
+
     # Class-level adapter class (set by subclasses)
     adapter_class: type | None = None
     
@@ -95,11 +115,14 @@ class Host(ABC):
             adapter_settings: Settings for the adapter (Target="Adapter")
             host_settings: Settings for the host (Target="Host")
         """
+        # Initialize MessageBroker parent
+        MessageBroker.__init__(self)
+
         self._id = uuid4()
         self._name = name
         self._state = HostState.CREATED
         self._metrics = HostMetrics()
-        
+
         # Configuration
         if config:
             self._pool_size = config.pool_size
@@ -217,9 +240,42 @@ class Host(ABC):
                 )
                 await self._adapter.start()
             
-            # Create queue and workers
+            # Create queue with configurable type
             queue_size = self.get_setting("Host", "QueueSize", 1000)
-            self._queue = asyncio.Queue(maxsize=queue_size)
+            queue_type_str = self.get_setting("Host", "QueueType", "fifo")
+            overflow_strategy_str = self.get_setting("Host", "OverflowStrategy", "block")
+
+            # Parse queue type
+            try:
+                queue_type = QueueType(queue_type_str)
+            except ValueError:
+                self._log.warning(
+                    "invalid_queue_type",
+                    queue_type=queue_type_str,
+                    using_default="fifo"
+                )
+                queue_type = QueueType.FIFO
+
+            # Parse overflow strategy
+            try:
+                overflow_strategy = OverflowStrategy(overflow_strategy_str)
+            except ValueError:
+                overflow_strategy = OverflowStrategy.BLOCK
+
+            # Create managed queue
+            self._queue = create_queue(
+                queue_type=queue_type,
+                maxsize=queue_size,
+                overflow_strategy=overflow_strategy
+            )
+
+            self._log.info(
+                "queue_created",
+                queue_type=queue_type.value,
+                size=queue_size,
+                overflow=overflow_strategy.value
+            )
+
             self._shutdown_event.clear()
             
             for i in range(self._pool_size):
@@ -401,20 +457,23 @@ class Host(ABC):
     
     async def _worker_loop(self, worker_id: int) -> None:
         """
-        Main worker loop for processing messages.
-        
+        Main worker loop for processing messages with pattern support.
+
+        Handles both MessageEnvelope (from inter-service calls) and
+        raw messages (from external adapters).
+
         Args:
             worker_id: Worker instance ID
         """
         self._log.debug("worker_started", worker_id=worker_id)
-        
+
         while not self._shutdown_event.is_set():
             # Wait if paused
             await self._pause_event.wait()
-            
+
             try:
                 # Get message from queue with timeout
-                message = await asyncio.wait_for(
+                item = await asyncio.wait_for(
                     self._queue.get(),
                     timeout=1.0
                 )
@@ -422,41 +481,78 @@ class Host(ABC):
                 continue
             except asyncio.CancelledError:
                 break
-            
-            # Process message
+
+            # Process message with pattern awareness
             start_time = datetime.now(timezone.utc)
             try:
+                # Extract envelope if present
+                if isinstance(item, MessageEnvelope):
+                    envelope = item
+                    message = envelope.message
+                    correlation_id = envelope.correlation_id
+                    is_sync = envelope.pattern in (
+                        MessagingPattern.SYNC_RELIABLE,
+                        MessagingPattern.CONCURRENT_SYNC
+                    )
+                else:
+                    # Raw message (from adapter)
+                    envelope = None
+                    message = item
+                    correlation_id = None
+                    is_sync = False
+
+                # PRE-PROCESSING HOOK
+                message = await self.on_before_process(message)
+
+                # Process message
                 timeout = self.get_setting("Host", "Timeout", 30.0)
                 result = await asyncio.wait_for(
                     self._process_message(message),
                     timeout=timeout
                 )
-                
+
+                # POST-PROCESSING HOOK
+                result = await self.on_after_process(message, result)
+
                 # Update metrics
                 elapsed_ms = (datetime.now(timezone.utc) - start_time).total_seconds() * 1000
                 self._metrics.messages_processed += 1
                 self._metrics.total_processing_time_ms += elapsed_ms
                 self._metrics.last_message_at = datetime.now(timezone.utc)
-                
-                # Callback
-                if self._on_message and result is not None:
-                    await self._on_message(result)
-                    
-            except asyncio.TimeoutError:
+
+                # Handle response based on pattern
+                if envelope and is_sync:
+                    # Sync pattern: send response back to caller
+                    if correlation_id:
+                        await self.send_response(correlation_id, result)
+                elif result is not None:
+                    # Async pattern or no envelope: use callback
+                    if self._on_message:
+                        await self._on_message(result)
+
+            except asyncio.TimeoutError as timeout_error:
+                # ERROR HOOK for timeout
+                recovery_result = await self.on_process_error(message, timeout_error)
+
                 self._metrics.messages_failed += 1
                 self._log.error("message_timeout", worker_id=worker_id)
+
                 if self._on_error:
-                    await self._on_error(TimeoutError("Message processing timeout"), message)
-                    
+                    await self._on_error(timeout_error, message)
+
             except Exception as e:
+                # ERROR HOOK for general exceptions
+                recovery_result = await self.on_process_error(message, e)
+
                 self._metrics.messages_failed += 1
                 self._log.error("message_processing_failed", worker_id=worker_id, error=str(e))
+
                 if self._on_error:
                     await self._on_error(e, message)
-                    
+
             finally:
                 self._queue.task_done()
-        
+
         self._log.debug("worker_stopped", worker_id=worker_id)
     
     async def submit(self, message: Any) -> bool:
@@ -512,21 +608,101 @@ class Host(ABC):
     async def on_teardown(self) -> None:
         """
         Called during host teardown.
-        
+
         Override to release resources.
         """
         pass
-    
+
+    # Message-Level Hooks (NEW)
+
+    async def on_before_process(self, message: Any) -> Any:
+        """
+        Called BEFORE processing each message.
+
+        Override to add:
+        - Message validation
+        - Pre-processing transformation
+        - Audit logging (message received)
+        - Metric collection (start timer)
+        - Authentication/authorization checks
+
+        Args:
+            message: Incoming message
+
+        Returns:
+            Modified message (or original if no changes)
+
+        Raises:
+            Exception: To reject message and trigger error handling
+        """
+        return message
+
+    async def on_after_process(
+        self,
+        message: Any,
+        result: Any
+    ) -> Any:
+        """
+        Called AFTER processing each message successfully.
+
+        Override to add:
+        - Post-processing transformation
+        - Audit logging (message processed)
+        - Metric collection (end timer)
+        - Response enrichment
+        - Cleanup actions
+
+        Args:
+            message: Original incoming message
+            result: Processing result
+
+        Returns:
+            Modified result (or original if no changes)
+        """
+        return result
+
+    async def on_process_error(
+        self,
+        message: Any,
+        exception: Exception
+    ) -> Any:
+        """
+        Called when message processing fails.
+
+        Override to add:
+        - Error logging
+        - Dead letter queue routing
+        - Retry logic
+        - Alert generation
+        - Recovery actions
+
+        Args:
+            message: Message that caused error
+            exception: The exception raised
+
+        Returns:
+            Recovery result (if recovery successful) or None
+
+        Raises:
+            Exception: To propagate error up (if no recovery)
+        """
+        self._log.error(
+            "message_processing_error",
+            error=str(exception),
+            error_type=type(exception).__name__
+        )
+        return None
+
     @abstractmethod
     async def _process_message(self, message: Any) -> Any:
         """
         Process a single message.
-        
+
         Must be implemented by subclasses.
-        
+
         Args:
             message: Message to process
-            
+
         Returns:
             Processed message or None
         """
