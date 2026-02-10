@@ -14,6 +14,7 @@
 import cors from "cors";
 import express, { type Request, type Response } from "express";
 import { Codex } from "@openai/codex-sdk";
+import fs from "fs";
 import path from "path";
 import { randomUUID } from "crypto";
 
@@ -72,11 +73,22 @@ app.get("/health", (_req: Request, res: Response) => {
 // Create thread - identical contract to agent-runner
 app.post("/threads", async (req: Request, res: Response) => {
   try {
-    const workingDirectory = mustResolveWorkspace(
-      String(req.body?.workingDirectory || WORKSPACES_ROOT)
-    );
-    const skipGitRepoCheck = Boolean(req.body?.skipGitRepoCheck ?? false);
+    // Derive working directory from HIE context or explicit path
+    let workingDirectory: string;
+    if (req.body?.workingDirectory) {
+      workingDirectory = mustResolveWorkspace(String(req.body.workingDirectory));
+    } else if (req.body?.workspaceId) {
+      const wsName = req.body.workspaceName || req.body.workspaceId;
+      const sub = req.body.projectId ? `${wsName}/${req.body.projectId}` : wsName;
+      workingDirectory = mustResolveWorkspace(`${WORKSPACES_ROOT}/${sub}`);
+    } else {
+      workingDirectory = mustResolveWorkspace(WORKSPACES_ROOT);
+    }
+    const skipGitRepoCheck = Boolean(req.body?.skipGitRepoCheck ?? true);
 
+    if (!fs.existsSync(workingDirectory)) {
+      fs.mkdirSync(workingDirectory, { recursive: true });
+    }
     const thread = codex.startThread({ workingDirectory, skipGitRepoCheck });
     const threadId = randomUUID();
     threads.set(threadId, { thread, workingDirectory });

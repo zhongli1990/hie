@@ -11,27 +11,42 @@
 
 "use client";
 
-import { useCallback, useEffect, useRef, useState, type ChangeEvent, type KeyboardEvent } from "react";
-import { MessagesSquare, Send, Loader2, Plus, Bot, User as UserIcon, Terminal, AlertCircle } from "lucide-react";
+import { useEffect, useRef, useState, type ChangeEvent, type KeyboardEvent } from "react";
+import { MessagesSquare, Send, Loader2, Plus, Bot, User as UserIcon, Terminal, AlertCircle, Sparkles, Wrench, ShieldAlert } from "lucide-react";
 import { useWorkspace } from "@/contexts/WorkspaceContext";
 import { listProjects, type Project } from "@/lib/api-v2";
 
 type RunnerType = "claude" | "codex" | "gemini" | "azure" | "bedrock" | "openli" | "custom";
 
-/** Map runner type to the correct proxy API base path */
 function getRunnerApiBase(runner: RunnerType): string {
   if (runner === "codex") return "/api/codex-runner";
   return "/api/agent-runner";
 }
 
+function getRunnerLabel(runner: RunnerType): string {
+  const labels: Record<string, string> = {
+    claude: "Claude (Anthropic)",
+    codex: "OpenAI Agent (Codex)",
+    gemini: "Gemini",
+    azure: "Azure OpenAI",
+    bedrock: "AWS Bedrock",
+    openli: "OpenLI Agent",
+    custom: "Custom",
+  };
+  return labels[runner] || runner;
+}
+
 type ChatMessage = {
   id: string;
-  role: "user" | "assistant" | "tool" | "system";
+  role: "user" | "assistant" | "tool" | "system" | "thinking";
   content: string;
   metadata?: {
     tool_name?: string;
-    tool_input?: any;
-    tool_output?: any;
+    tool_input?: unknown;
+    tool_output?: unknown;
+    blocked_reason?: string;
+    skill_name?: string;
+    iteration?: { current: number; max: number };
   } | null;
   created_at: string;
   isStreaming?: boolean;
@@ -47,10 +62,52 @@ type ChatSession = {
   title: string;
 };
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Bouncing Dots Component
+// ─────────────────────────────────────────────────────────────────────────────
+
+function BouncingDots() {
+  return (
+    <span className="inline-flex items-center gap-1 ml-1">
+      <span className="w-1.5 h-1.5 rounded-full bg-nhs-blue animate-bounce" style={{ animationDelay: "0ms" }} />
+      <span className="w-1.5 h-1.5 rounded-full bg-nhs-blue animate-bounce" style={{ animationDelay: "150ms" }} />
+      <span className="w-1.5 h-1.5 rounded-full bg-nhs-blue animate-bounce" style={{ animationDelay: "300ms" }} />
+    </span>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Thinking Indicator
+// ─────────────────────────────────────────────────────────────────────────────
+
+function ThinkingIndicator({ iteration }: { iteration?: { current: number; max: number } }) {
+  return (
+    <div className="flex items-start gap-2">
+      <div className="flex-shrink-0 w-7 h-7 rounded-full bg-gradient-to-br from-nhs-blue to-indigo-500 flex items-center justify-center mt-1">
+        <Sparkles className="h-4 w-4 text-white animate-pulse" />
+      </div>
+      <div className="rounded-2xl px-4 py-3 bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20 border border-blue-200 dark:border-blue-800">
+        <div className="flex items-center gap-2 text-sm text-blue-700 dark:text-blue-300">
+          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+          <span>Thinking</span>
+          <BouncingDots />
+          {iteration && (
+            <span className="text-xs text-blue-500 dark:text-blue-400 ml-2">
+              (turn {iteration.current}/{iteration.max})
+            </span>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Main Chat Page
+// ─────────────────────────────────────────────────────────────────────────────
+
 export default function ChatPage() {
-  // Use the existing WorkspaceContext (provided by (app)/layout.tsx)
   const { workspaces, currentWorkspace } = useWorkspace();
-  const [selectedWorkspaceId, setSelectedWorkspaceId] = useState<string | null>(null);
   const [projects, setProjects] = useState<Project[]>([]);
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
   const [sessions, setSessions] = useState<ChatSession[]>([]);
@@ -58,134 +115,160 @@ export default function ChatPage() {
   const [runnerType, setRunnerType] = useState<RunnerType>("claude");
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [inputValue, setInputValue] = useState("");
-  const [status, setStatus] = useState<string>("idle");
+  const [status, setStatus] = useState<"idle" | "connecting" | "thinking" | "streaming" | "tool_running">("idle");
   const [streamingContent, setStreamingContent] = useState("");
+  const [currentIteration, setCurrentIteration] = useState<{ current: number; max: number } | null>(null);
+  const [activeToolName, setActiveToolName] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const eventSourceRef = useRef<EventSource | null>(null);
 
-  // Auto-select current workspace from context
+  // Fetch projects when workspace changes
   useEffect(() => {
-    if (currentWorkspace && !selectedWorkspaceId) {
-      setSelectedWorkspaceId(currentWorkspace.id);
-    }
-  }, [currentWorkspace, selectedWorkspaceId]);
-
-  // Fetch projects for selected workspace using api-v2
-  useEffect(() => {
-    if (!selectedWorkspaceId) {
+    if (!currentWorkspace) {
       setProjects([]);
       return;
     }
     setSelectedProjectId(null);
-    setSelectedSessionId(null);
-    setMessages([]);
     let cancelled = false;
     (async () => {
       try {
-        const data = await listProjects(selectedWorkspaceId);
-        if (!cancelled) {
-          setProjects(data.projects || []);
-        }
-      } catch (e) {
-        console.error("Failed to fetch projects:", e);
+        const data = await listProjects(currentWorkspace.id);
+        if (!cancelled) setProjects(data.projects || []);
+      } catch (err: unknown) {
+        console.error("Failed to fetch projects:", err);
         if (!cancelled) setProjects([]);
       }
     })();
     return () => { cancelled = true; };
-  }, [selectedWorkspaceId]);
+  }, [currentWorkspace]);
 
-  // Auto-scroll to bottom
+  // Auto-scroll
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, streamingContent]);
+  }, [messages, streamingContent, status]);
 
-  // Create new session via agent-runner backend
+  // Cleanup EventSource on unmount
+  useEffect(() => {
+    return () => { eventSourceRef.current?.close(); };
+  }, []);
+
+  // ─── Create Session ──────────────────────────────────────────────────────
+
   async function onCreateSession() {
-    if (!selectedWorkspaceId) return;
+    if (!currentWorkspace) return;
+    const apiBase = getRunnerApiBase(runnerType);
     try {
-      const apiBase = getRunnerApiBase(runnerType);
-      const ws = workspaces.find((w: any) => w.id === selectedWorkspaceId);
-      const workingDir = `/workspaces/${ws?.name || "default"}`;
       const res = await fetch(`${apiBase}/threads`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ workingDirectory: workingDir }),
+        body: JSON.stringify({
+          workspaceId: currentWorkspace.id,
+          workspaceName: currentWorkspace.name,
+          projectId: selectedProjectId || undefined,
+          runnerType,
+          skipGitRepoCheck: true,
+        }),
       });
-      if (!res.ok) throw new Error(`Failed to create session: ${res.statusText}`);
+      if (!res.ok) {
+        const errBody = await res.json().catch(() => ({}));
+        throw new Error(errBody.detail || errBody.error || res.statusText);
+      }
       const data = await res.json();
       const newSession: ChatSession = {
-        id: data.threadId || `session-${Date.now()}`,
-        workspace_id: selectedWorkspaceId,
+        id: data.threadId,
+        workspace_id: currentWorkspace.id,
         project_id: selectedProjectId,
         runner_type: runnerType,
         created_at: new Date().toISOString(),
         message_count: 0,
-        title: `Chat ${sessions.length + 1}`,
+        title: `${getRunnerLabel(runnerType).split(" ")[0]} Chat ${sessions.length + 1}`,
       };
-      setSessions(prev => [newSession, ...prev]);
+      setSessions((prev: ChatSession[]) => [newSession, ...prev]);
       setSelectedSessionId(newSession.id);
       setMessages([]);
-    } catch (e) {
-      console.error("Failed to create session:", e);
-      // Fallback to local session
-      const newSession: ChatSession = {
-        id: `session-${Date.now()}`,
-        workspace_id: selectedWorkspaceId,
-        project_id: selectedProjectId,
-        runner_type: runnerType,
+      setStreamingContent("");
+      setStatus("idle");
+      setTimeout(() => inputRef.current?.focus(), 100);
+    } catch (err: unknown) {
+      console.error("Failed to create session:", err);
+      const errorMsg: ChatMessage = {
+        id: `msg-${Date.now()}-error`,
+        role: "system",
+        content: `Failed to create session: ${err instanceof Error ? err.message : "Unknown error"}`,
         created_at: new Date().toISOString(),
-        message_count: 0,
-        title: `Chat ${sessions.length + 1}`,
       };
-      setSessions(prev => [newSession, ...prev]);
-      setSelectedSessionId(newSession.id);
-      setMessages([]);
+      setMessages((prev: ChatMessage[]) => [...prev, errorMsg]);
     }
   }
 
-  // Send message via agent-runner SSE streaming
+  // ─── Send Message ────────────────────────────────────────────────────────
+
   async function onSendMessage() {
-    if (!selectedSessionId || !inputValue.trim() || status === "running") return;
+    if (!selectedSessionId || !inputValue.trim() || status !== "idle") return;
 
     const userMessage = inputValue.trim();
     setInputValue("");
-    setStatus("running");
+    setStatus("connecting");
     setStreamingContent("");
+    setCurrentIteration(null);
+    setActiveToolName(null);
 
-    // Add user message
     const userMsg: ChatMessage = {
       id: `msg-${Date.now()}`,
       role: "user",
       content: userMessage,
       created_at: new Date().toISOString(),
     };
-    setMessages(prev => [...prev, userMsg]);
+    setMessages((prev: ChatMessage[]) => [...prev, userMsg]);
 
     try {
-      // Create a run on the thread — dispatch to correct runner
-      const apiBase = getRunnerApiBase(runnerType);
+      const session = sessions.find((s: ChatSession) => s.id === selectedSessionId);
+      const apiBase = getRunnerApiBase(session?.runner_type || runnerType);
+
       const runRes = await fetch(`${apiBase}/runs`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ threadId: selectedSessionId, prompt: userMessage }),
       });
-      if (!runRes.ok) throw new Error(`Failed to create run: ${runRes.statusText}`);
+      if (!runRes.ok) {
+        const errBody = await runRes.json().catch(() => ({}));
+        throw new Error(errBody.detail || errBody.error || runRes.statusText);
+      }
       const runData = await runRes.json();
       const runId = runData.runId;
 
+      setStatus("thinking");
+
       // Subscribe to SSE events
+      eventSourceRef.current?.close();
       const evtSource = new EventSource(`${apiBase}/runs/${runId}/events`);
+      eventSourceRef.current = evtSource;
       let accumulatedText = "";
 
-      evtSource.onmessage = (event) => {
+      evtSource.onmessage = (event: MessageEvent) => {
         if (!event.data || event.data.trim() === "") return;
         try {
           const parsed = JSON.parse(event.data);
-          const eventType = parsed.type || "";
+          const eventType: string = parsed.type || "";
 
-          if (eventType === "ui.message.assistant.delta") {
+          // ── Claude runner events ──────────────────────────────────────
+          if (eventType === "ui.iteration") {
+            setCurrentIteration(parsed.payload);
+            setStatus("thinking");
+          } else if (eventType === "ui.skill.activated") {
+            const skillMsg: ChatMessage = {
+              id: `msg-${Date.now()}-skill-${parsed.payload?.skillName}`,
+              role: "system",
+              content: `Skill activated: ${parsed.payload?.skillName}`,
+              metadata: { skill_name: parsed.payload?.skillName },
+              created_at: new Date().toISOString(),
+            };
+            setMessages((prev: ChatMessage[]) => [...prev, skillMsg]);
+          } else if (eventType === "ui.message.assistant.delta") {
             accumulatedText += parsed.payload?.textDelta || "";
             setStreamingContent(accumulatedText);
+            setStatus("streaming");
           } else if (eventType === "ui.message.assistant.final") {
             const finalText = parsed.payload?.text || accumulatedText;
             setStreamingContent("");
@@ -196,29 +279,86 @@ export default function ChatPage() {
               content: finalText,
               created_at: new Date().toISOString(),
             };
-            setMessages(prev => [...prev, assistantMsg]);
-          } else if (eventType === "ui.tool.call.start" || eventType === "ui.tool.call") {
+            setMessages((prev: ChatMessage[]) => [...prev, assistantMsg]);
+            setStatus("thinking");
+          } else if (eventType === "ui.tool.call.start") {
+            setActiveToolName(parsed.payload?.toolName || "tool");
+            setStatus("tool_running");
+          } else if (eventType === "ui.tool.call") {
             const toolMsg: ChatMessage = {
-              id: `msg-${Date.now()}-tool`,
+              id: `msg-${Date.now()}-tool-${parsed.payload?.toolId}`,
               role: "tool",
               content: `Calling ${parsed.payload?.toolName || "tool"}`,
               metadata: { tool_name: parsed.payload?.toolName, tool_input: parsed.payload?.input },
               created_at: new Date().toISOString(),
             };
-            setMessages(prev => [...prev, toolMsg]);
+            setMessages((prev: ChatMessage[]) => [...prev, toolMsg]);
           } else if (eventType === "ui.tool.result") {
             const toolResultMsg: ChatMessage = {
-              id: `msg-${Date.now()}-tool-result`,
+              id: `msg-${Date.now()}-result-${parsed.payload?.toolId}`,
               role: "tool",
               content: `Result from ${parsed.payload?.toolName || "tool"}`,
               metadata: { tool_name: parsed.payload?.toolName, tool_output: parsed.payload?.output },
               created_at: new Date().toISOString(),
             };
-            setMessages(prev => [...prev, toolResultMsg]);
+            setMessages((prev: ChatMessage[]) => [...prev, toolResultMsg]);
+            setActiveToolName(null);
+            setStatus("thinking");
+          } else if (eventType === "ui.tool.blocked") {
+            const blockedMsg: ChatMessage = {
+              id: `msg-${Date.now()}-blocked`,
+              role: "system",
+              content: `Tool blocked: ${parsed.payload?.toolName} - ${parsed.payload?.reason}`,
+              metadata: { tool_name: parsed.payload?.toolName, blocked_reason: parsed.payload?.reason },
+              created_at: new Date().toISOString(),
+            };
+            setMessages((prev: ChatMessage[]) => [...prev, blockedMsg]);
+            setActiveToolName(null);
+            setStatus("thinking");
+
+          // ── Codex runner events ───────────────────────────────────────
+          } else if (eventType === "run.started") {
+            setStatus("thinking");
+          } else if (eventType === "item.completed" && parsed.item) {
+            const item = parsed.item;
+            if (item.type === "command_execution") {
+              const toolMsg: ChatMessage = {
+                id: `msg-${Date.now()}-codex-tool`,
+                role: "tool",
+                content: item.status === "completed" ? "Command executed" : "Command failed",
+                metadata: { tool_name: "shell", tool_input: item.command, tool_output: item.aggregated_output || `Exit code: ${item.exit_code}` },
+                created_at: new Date().toISOString(),
+              };
+              setMessages((prev: ChatMessage[]) => [...prev, toolMsg]);
+            } else if (item.type === "agent_message" || item.text) {
+              const assistantMsg: ChatMessage = {
+                id: `msg-${Date.now()}-codex-msg`,
+                role: "assistant",
+                content: item.text || "",
+                created_at: new Date().toISOString(),
+              };
+              setMessages((prev: ChatMessage[]) => [...prev, assistantMsg]);
+            }
+
+          // ── Common completion events ──────────────────────────────────
           } else if (eventType === "run.completed" || eventType === "stream.closed") {
+            // Flush any remaining streamed content
+            if (accumulatedText) {
+              const finalMsg: ChatMessage = {
+                id: `msg-${Date.now()}-final`,
+                role: "assistant",
+                content: accumulatedText,
+                created_at: new Date().toISOString(),
+              };
+              setMessages((prev: ChatMessage[]) => [...prev, finalMsg]);
+              accumulatedText = "";
+              setStreamingContent("");
+            }
             setStatus("idle");
-            setStreamingContent("");
+            setCurrentIteration(null);
+            setActiveToolName(null);
             evtSource.close();
+            eventSourceRef.current = null;
             inputRef.current?.focus();
           } else if (eventType === "error") {
             const errorMsg: ChatMessage = {
@@ -227,10 +367,13 @@ export default function ChatPage() {
               content: `Error: ${parsed.payload?.message || "Unknown error"}`,
               created_at: new Date().toISOString(),
             };
-            setMessages(prev => [...prev, errorMsg]);
+            setMessages((prev: ChatMessage[]) => [...prev, errorMsg]);
             setStatus("idle");
             setStreamingContent("");
+            setCurrentIteration(null);
+            setActiveToolName(null);
             evtSource.close();
+            eventSourceRef.current = null;
           }
         } catch {
           // Ignore unparseable SSE events
@@ -238,19 +381,33 @@ export default function ChatPage() {
       };
 
       evtSource.onerror = () => {
+        // Flush any remaining streamed content
+        if (accumulatedText) {
+          const finalMsg: ChatMessage = {
+            id: `msg-${Date.now()}-final`,
+            role: "assistant",
+            content: accumulatedText,
+            created_at: new Date().toISOString(),
+          };
+          setMessages((prev: ChatMessage[]) => [...prev, finalMsg]);
+          accumulatedText = "";
+        }
         setStatus("idle");
         setStreamingContent("");
+        setCurrentIteration(null);
+        setActiveToolName(null);
         evtSource.close();
+        eventSourceRef.current = null;
         inputRef.current?.focus();
       };
-    } catch (e) {
+    } catch (err: unknown) {
       const errorMsg: ChatMessage = {
         id: `msg-${Date.now()}-error`,
         role: "system",
-        content: `Error: ${e instanceof Error ? e.message : "Unknown error"}`,
+        content: `Error: ${err instanceof Error ? err.message : "Unknown error"}`,
         created_at: new Date().toISOString(),
       };
-      setMessages(prev => [...prev, errorMsg]);
+      setMessages((prev: ChatMessage[]) => [...prev, errorMsg]);
       setStatus("idle");
       inputRef.current?.focus();
     }
@@ -263,51 +420,47 @@ export default function ChatPage() {
     }
   }
 
+  const isRunning = status !== "idle";
+  const wsName = currentWorkspace?.display_name || currentWorkspace?.name || "";
+  const selectedProject = projects.find((p: Project) => p.id === selectedProjectId);
+
   return (
     <div className="flex h-[calc(100vh-120px)] bg-gray-50 dark:bg-zinc-900 rounded-lg overflow-hidden border border-gray-200 dark:border-zinc-700">
       {/* Left Sidebar */}
       <div className="w-72 border-r border-gray-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 flex flex-col">
-        {/* Workspace Selector */}
+        {/* Context Panel */}
         <div className="p-4 border-b border-gray-200 dark:border-zinc-700">
-          <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Workspace</label>
-          <select
-            value={selectedWorkspaceId || ""}
-            onChange={(e) => setSelectedWorkspaceId(e.target.value || null)}
-            className="w-full rounded-md border border-gray-300 dark:border-zinc-600 bg-white dark:bg-zinc-700 px-3 py-2 text-sm text-gray-900 dark:text-white"
-          >
-            <option value="">Select workspace...</option>
-            {Array.isArray(workspaces) && workspaces.map((w) => (
-              <option key={w.id} value={w.id}>{w.display_name || w.name}</option>
-            ))}
-          </select>
-          {selectedWorkspaceId && (
-            <select
-              value={selectedProjectId || ""}
-              onChange={(e) => setSelectedProjectId(e.target.value || null)}
-              className="w-full mt-2 rounded-md border border-gray-300 dark:border-zinc-600 bg-white dark:bg-zinc-700 px-3 py-2 text-sm text-gray-900 dark:text-white"
-            >
-              <option value="">All projects</option>
-              {Array.isArray(projects) && projects.map((p) => (
-                <option key={p.id} value={p.id}>{p.name}</option>
-              ))}
-            </select>
-          )}
-          {/* Runner Selector */}
-          {selectedWorkspaceId && (
-            <div className="mt-2">
-              <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Runner</label>
+          <div className="flex items-center gap-2 mb-3">
+            <div className="w-2 h-2 rounded-full bg-green-500" />
+            <span className="text-xs font-medium text-gray-700 dark:text-gray-300 truncate">{wsName || "No workspace"}</span>
+          </div>
+          {currentWorkspace && (
+            <>
               <select
-                value={runnerType}
-                onChange={(e) => setRunnerType(e.target.value as RunnerType)}
+                value={selectedProjectId || ""}
+                onChange={(e: ChangeEvent<HTMLSelectElement>) => setSelectedProjectId(e.target.value || null)}
                 className="w-full rounded-md border border-gray-300 dark:border-zinc-600 bg-white dark:bg-zinc-700 px-3 py-2 text-sm text-gray-900 dark:text-white"
               >
-                <option value="claude">Claude (Anthropic)</option>
-                <option value="codex">OpenAI Agent (Codex)</option>
-                <option value="gemini" disabled>Gemini (Coming Soon)</option>
-                <option value="azure" disabled>Azure OpenAI (Coming Soon)</option>
-                <option value="bedrock" disabled>AWS Bedrock (Coming Soon)</option>
+                <option value="">All projects</option>
+                {projects.map((p: Project) => (
+                  <option key={p.id} value={p.id}>{p.display_name || p.name}</option>
+                ))}
               </select>
-            </div>
+              <div className="mt-2">
+                <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Runner</label>
+                <select
+                  value={runnerType}
+                  onChange={(e: ChangeEvent<HTMLSelectElement>) => setRunnerType(e.target.value as RunnerType)}
+                  className="w-full rounded-md border border-gray-300 dark:border-zinc-600 bg-white dark:bg-zinc-700 px-3 py-2 text-sm text-gray-900 dark:text-white"
+                >
+                  <option value="claude">Claude (Anthropic)</option>
+                  <option value="codex">OpenAI Agent (Codex)</option>
+                  <option value="gemini" disabled>Gemini (Coming Soon)</option>
+                  <option value="azure" disabled>Azure OpenAI (Coming Soon)</option>
+                  <option value="bedrock" disabled>AWS Bedrock (Coming Soon)</option>
+                </select>
+              </div>
+            </>
           )}
         </div>
 
@@ -315,28 +468,30 @@ export default function ChatPage() {
         <div className="flex-1 overflow-y-auto p-4">
           <div className="flex items-center justify-between mb-3">
             <span className="text-xs font-medium text-gray-500 dark:text-gray-400">Sessions</span>
-            {selectedWorkspaceId && (
+            {currentWorkspace && (
               <button
                 onClick={onCreateSession}
-                className="flex items-center gap-1 text-xs px-2 py-1 rounded bg-nhs-blue text-white hover:bg-nhs-dark-blue transition-colors"
+                disabled={isRunning}
+                className="flex items-center gap-1 text-xs px-2 py-1 rounded bg-nhs-blue text-white hover:bg-nhs-dark-blue disabled:opacity-50 transition-colors"
               >
                 <Plus className="h-3 w-3" /> New
               </button>
             )}
           </div>
 
-          {!selectedWorkspaceId ? (
-            <p className="text-xs text-gray-400 dark:text-gray-500">Select a workspace first</p>
+          {!currentWorkspace ? (
+            <p className="text-xs text-gray-400 dark:text-gray-500">Select a workspace from the sidebar</p>
           ) : sessions.length === 0 ? (
             <p className="text-xs text-gray-400 dark:text-gray-500">No sessions yet. Click + New to start.</p>
           ) : (
             <div className="space-y-1">
-              {sessions.map((s) => (
+              {sessions.map((s: ChatSession) => (
                 <button
                   key={s.id}
                   onClick={() => {
                     setSelectedSessionId(s.id);
                     setMessages([]);
+                    setStreamingContent("");
                   }}
                   className={`w-full text-left px-3 py-2 rounded-md text-sm transition-colors ${
                     selectedSessionId === s.id
@@ -351,28 +506,13 @@ export default function ChatPage() {
                     <span className="font-medium truncate">{s.title}</span>
                   </div>
                   <div className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-                    {s.runner_type} &bull; {new Date(s.created_at).toLocaleDateString()}
+                    {getRunnerLabel(s.runner_type).split("(")[0].trim()}
                   </div>
                 </button>
               ))}
             </div>
           )}
         </div>
-
-        {/* Runner Selector */}
-        {selectedWorkspaceId && !selectedSessionId && (
-          <div className="p-4 border-t border-gray-200 dark:border-zinc-700">
-            <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Runner</label>
-            <select
-              value={runnerType}
-              onChange={(e) => setRunnerType(e.target.value as RunnerType)}
-              className="w-full rounded-md border border-gray-300 dark:border-zinc-600 bg-white dark:bg-zinc-700 px-3 py-2 text-sm text-gray-900 dark:text-white"
-            >
-              <option value="claude">Claude (Anthropic)</option>
-              <option value="codex">Codex (OpenAI)</option>
-            </select>
-          </div>
-        )}
       </div>
 
       {/* Main Chat Area */}
@@ -382,18 +522,40 @@ export default function ChatPage() {
           <div className="flex items-center gap-3">
             <MessagesSquare className="h-5 w-5 text-nhs-blue" />
             <h1 className="text-lg font-semibold text-gray-900 dark:text-white">Chat</h1>
-            {selectedWorkspaceId && (
-              <span className="text-sm text-gray-500 dark:text-gray-400">
-                {Array.isArray(workspaces) && workspaces.find((w) => w.id === selectedWorkspaceId)?.display_name}
+            {wsName && <span className="text-sm text-gray-500 dark:text-gray-400">{wsName}</span>}
+            {selectedProject && (
+              <span className="text-xs px-2 py-0.5 rounded-full bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300">
+                {selectedProject.display_name || selectedProject.name}
               </span>
             )}
           </div>
-          {status === "running" && (
-            <div className="flex items-center gap-2">
-              <Loader2 className="h-4 w-4 animate-spin text-nhs-blue" />
-              <span className="text-xs text-nhs-blue">Agent is thinking...</span>
-            </div>
-          )}
+          {/* Status Indicator */}
+          <div className="flex items-center gap-2">
+            {status === "connecting" && (
+              <>
+                <Loader2 className="h-4 w-4 animate-spin text-gray-400" />
+                <span className="text-xs text-gray-400">Connecting...</span>
+              </>
+            )}
+            {status === "thinking" && (
+              <>
+                <Sparkles className="h-4 w-4 text-nhs-blue animate-pulse" />
+                <span className="text-xs text-nhs-blue">Thinking<BouncingDots /></span>
+              </>
+            )}
+            {status === "streaming" && (
+              <>
+                <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
+                <span className="text-xs text-green-600 dark:text-green-400">Streaming</span>
+              </>
+            )}
+            {status === "tool_running" && (
+              <>
+                <Wrench className="h-4 w-4 text-amber-500 animate-spin" />
+                <span className="text-xs text-amber-600 dark:text-amber-400">Running {activeToolName || "tool"}</span>
+              </>
+            )}
+          </div>
         </div>
 
         {/* Messages */}
@@ -406,12 +568,13 @@ export default function ChatPage() {
                   Start a Conversation
                 </h2>
                 <p className="text-sm text-gray-500 dark:text-gray-400 max-w-md">
-                  Select a workspace and create a new session to begin chatting with the HIE integration agent.
-                  Describe your integration needs in plain English.
+                  {currentWorkspace
+                    ? "Create a new session to begin chatting with the HIE integration agent."
+                    : "Select a workspace from the sidebar first, then create a new session."}
                 </p>
               </div>
             </div>
-          ) : messages.length === 0 && status !== "running" ? (
+          ) : messages.length === 0 && !isRunning ? (
             <div className="h-full flex items-center justify-center">
               <div className="text-center">
                 <Bot className="h-12 w-12 mx-auto text-nhs-blue mb-4" />
@@ -419,7 +582,7 @@ export default function ChatPage() {
                   Ready to assist
                 </h2>
                 <p className="text-sm text-gray-500 dark:text-gray-400 max-w-md mb-4">
-                  Ask me about HIE routes, items, HL7 configurations, or any integration question.
+                  Ask about HIE routes, HL7 configurations, FHIR mappings, or any integration question.
                 </p>
                 <div className="flex flex-wrap gap-2 justify-center max-w-lg">
                   {[
@@ -427,7 +590,7 @@ export default function ChatPage() {
                     "Show system health status",
                     "Help me configure MLLP sender",
                     "What protocols are supported?",
-                  ].map((q, i) => (
+                  ].map((q: string, i: number) => (
                     <button
                       key={i}
                       onClick={() => { setInputValue(q); inputRef.current?.focus(); }}
@@ -441,24 +604,38 @@ export default function ChatPage() {
             </div>
           ) : (
             <div className="max-w-3xl mx-auto space-y-4">
-              {messages.map((msg) => (
+              {messages.map((msg: ChatMessage) => (
                 <MessageBubble key={msg.id} message={msg} />
               ))}
+              {/* Streaming content */}
               {streamingContent && (
-                <MessageBubble
-                  message={{
-                    id: "streaming",
-                    role: "assistant",
-                    content: streamingContent,
-                    created_at: new Date().toISOString(),
-                    isStreaming: true,
-                  }}
-                />
+                <div className="flex items-start gap-2">
+                  <div className="flex-shrink-0 w-7 h-7 rounded-full bg-nhs-blue flex items-center justify-center mt-1">
+                    <Bot className="h-4 w-4 text-white" />
+                  </div>
+                  <div className="rounded-2xl px-4 py-3 bg-white dark:bg-zinc-700 border border-gray-200 dark:border-zinc-600 text-gray-900 dark:text-white max-w-[80%]">
+                    <div className="text-sm whitespace-pre-wrap">{streamingContent}</div>
+                    <span className="inline-block w-2 h-4 bg-nhs-blue animate-pulse ml-0.5 rounded-sm" />
+                  </div>
+                </div>
               )}
-              {status === "running" && !streamingContent && (
-                <div className="flex items-center gap-3 p-4 bg-gray-50 dark:bg-zinc-700 rounded-lg border border-gray-200 dark:border-zinc-600">
-                  <Loader2 className="h-4 w-4 animate-spin text-nhs-blue" />
-                  <span className="text-sm text-gray-600 dark:text-gray-300">Agent is working on your request...</span>
+              {/* Thinking indicator */}
+              {(status === "thinking" || status === "connecting") && !streamingContent && (
+                <ThinkingIndicator iteration={currentIteration || undefined} />
+              )}
+              {/* Tool running indicator */}
+              {status === "tool_running" && (
+                <div className="flex items-start gap-2">
+                  <div className="flex-shrink-0 w-7 h-7 rounded-full bg-amber-500 flex items-center justify-center mt-1">
+                    <Wrench className="h-4 w-4 text-white" />
+                  </div>
+                  <div className="rounded-2xl px-4 py-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800">
+                    <div className="flex items-center gap-2 text-sm text-amber-700 dark:text-amber-300">
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      <span>Running {activeToolName || "tool"}</span>
+                      <BouncingDots />
+                    </div>
+                  </div>
                 </div>
               )}
               <div ref={messagesEndRef} />
@@ -479,14 +656,14 @@ export default function ChatPage() {
                   placeholder="Describe your HIE integration need... (Enter to send, Shift+Enter for new line)"
                   className="flex-1 resize-none rounded-lg border border-gray-300 dark:border-zinc-600 bg-white dark:bg-zinc-700 px-4 py-3 text-sm text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-nhs-blue focus:border-transparent"
                   rows={2}
-                  disabled={status === "running"}
+                  disabled={isRunning}
                 />
                 <button
                   onClick={onSendMessage}
-                  disabled={!inputValue.trim() || status === "running"}
+                  disabled={!inputValue.trim() || isRunning}
                   className="px-6 py-3 rounded-lg bg-nhs-blue text-white font-medium hover:bg-nhs-dark-blue disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                 >
-                  {status === "running" ? (
+                  {isRunning ? (
                     <Loader2 className="h-4 w-4 animate-spin" />
                   ) : (
                     <Send className="h-4 w-4" />
@@ -501,7 +678,10 @@ export default function ChatPage() {
   );
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
 // Message Bubble Component
+// ─────────────────────────────────────────────────────────────────────────────
+
 function MessageBubble({ message }: { message: ChatMessage }) {
   const isUser = message.role === "user";
   const isTool = message.role === "tool";
@@ -516,23 +696,23 @@ function MessageBubble({ message }: { message: ChatMessage }) {
             {message.metadata?.tool_name || "Tool"}
           </summary>
           <div className="mt-2 space-y-2">
-            {message.metadata?.tool_input && (
+            {!!message.metadata?.tool_input && (
               <div>
                 <div className="text-xs font-medium text-amber-700 dark:text-amber-300 mb-1">Input:</div>
                 <pre className="bg-amber-100 dark:bg-amber-900/30 rounded p-2 text-xs overflow-x-auto font-mono">
-                  {typeof message.metadata.tool_input === "string"
-                    ? message.metadata.tool_input
-                    : JSON.stringify(message.metadata.tool_input, null, 2)}
+                  {typeof message.metadata!.tool_input === "string"
+                    ? message.metadata!.tool_input
+                    : JSON.stringify(message.metadata!.tool_input, null, 2)}
                 </pre>
               </div>
             )}
-            {message.metadata?.tool_output && (
+            {!!message.metadata?.tool_output && (
               <div>
                 <div className="text-xs font-medium text-amber-700 dark:text-amber-300 mb-1">Output:</div>
-                <pre className="bg-amber-100 dark:bg-amber-900/30 rounded p-2 text-xs overflow-x-auto font-mono max-h-40">
-                  {typeof message.metadata.tool_output === "string"
-                    ? message.metadata.tool_output
-                    : JSON.stringify(message.metadata.tool_output, null, 2)}
+                <pre className="bg-amber-100 dark:bg-amber-900/30 rounded p-2 text-xs overflow-x-auto font-mono max-h-40 overflow-y-auto">
+                  {typeof message.metadata!.tool_output === "string"
+                    ? message.metadata!.tool_output
+                    : JSON.stringify(message.metadata!.tool_output, null, 2)}
                 </pre>
               </div>
             )}
@@ -543,10 +723,18 @@ function MessageBubble({ message }: { message: ChatMessage }) {
   }
 
   if (isSystem) {
+    const isBlocked = !!message.metadata?.blocked_reason;
+    const isSkill = !!message.metadata?.skill_name;
     return (
       <div className="mx-8 my-2 text-center">
-        <span className="inline-flex items-center gap-1 px-3 py-1 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-full text-xs text-red-700 dark:text-red-300">
-          <AlertCircle className="h-3 w-3" />
+        <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs ${
+          isBlocked
+            ? "bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-300"
+            : isSkill
+            ? "bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-200 dark:border-indigo-800 text-indigo-700 dark:text-indigo-300"
+            : "bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-300"
+        }`}>
+          {isBlocked ? <ShieldAlert className="h-3 w-3" /> : isSkill ? <Sparkles className="h-3 w-3" /> : <AlertCircle className="h-3 w-3" />}
           {message.content}
         </span>
       </div>
@@ -568,16 +756,7 @@ function MessageBubble({ message }: { message: ChatMessage }) {
               : "bg-white dark:bg-zinc-700 border border-gray-200 dark:border-zinc-600 text-gray-900 dark:text-white"
           }`}
         >
-          {isUser ? (
-            <p className="text-sm whitespace-pre-wrap">{message.content}</p>
-          ) : (
-            <div className="prose prose-sm max-w-none prose-gray dark:prose-invert">
-              <div className="text-sm whitespace-pre-wrap">{message.content}</div>
-              {message.isStreaming && (
-                <span className="inline-block w-2 h-4 bg-gray-400 animate-pulse ml-1" />
-              )}
-            </div>
-          )}
+          <div className="text-sm whitespace-pre-wrap">{message.content}</div>
         </div>
         {isUser && (
           <div className="flex-shrink-0 w-7 h-7 rounded-full bg-gray-200 dark:bg-zinc-600 flex items-center justify-center mt-1">

@@ -247,13 +247,11 @@ echo -e "${BLUE}─────────────────────�
 echo -e "${BLUE}  5. THREAD/RUN LIFECYCLE (Agent Runner)${NC}"
 echo -e "${BLUE}─────────────────────────────────────────────────────────────────${NC}"
 
-# Create thread
+# Create thread using HIE workspace metadata (no filesystem path required)
 echo -e "${YELLOW}▶ Testing: Agent Runner thread creation${NC}"
-# Ensure /workspaces exists in agent-runner container
-docker compose exec -T hie-agent-runner mkdir -p /workspaces 2>/dev/null
 THREAD_RESPONSE=$(curl -sf -X POST ${AGENT_RUNNER_URL}/threads \
     -H "Content-Type: application/json" \
-    -d '{"workingDirectory": "/workspaces"}' 2>/dev/null)
+    -d '{"workspaceId": "test-ws-001", "workspaceName": "default", "skipGitRepoCheck": true}' 2>/dev/null)
 THREAD_ID=$(echo "$THREAD_RESPONSE" | grep -o '"threadId":"[^"]*"' | head -1 | cut -d'"' -f4)
 if [ -n "$THREAD_ID" ]; then
     echo -e "${GREEN}  ✅ PASSED (threadId: ${THREAD_ID:0:8}...)${NC}"

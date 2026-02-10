@@ -37,7 +37,11 @@ app.add_middleware(
 
 
 class CreateThreadRequest(BaseModel):
-    workingDirectory: str
+    workspaceId: str | None = None
+    projectId: str | None = None
+    workspaceName: str | None = None
+    runnerType: str | None = None
+    workingDirectory: str | None = None
     skipGitRepoCheck: bool = False
 
 
@@ -55,9 +59,12 @@ class CreateRunResponse(BaseModel):
 
 
 class ThreadRecord:
-    def __init__(self, thread_id: str, working_directory: str):
+    def __init__(self, thread_id: str, working_directory: str,
+                 workspace_id: str | None = None, project_id: str | None = None):
         self.thread_id = thread_id
         self.working_directory = working_directory
+        self.workspace_id = workspace_id
+        self.project_id = project_id
 
 
 class RunRecord:
@@ -90,13 +97,27 @@ async def health() -> dict[str, str]:
 
 @app.post("/threads", response_model=CreateThreadResponse)
 async def create_thread(req: CreateThreadRequest) -> CreateThreadResponse:
-    working_directory = must_resolve_workspace(req.workingDirectory)
+    # Derive working directory from HIE context or explicit path
+    if req.workingDirectory:
+        working_directory = must_resolve_workspace(req.workingDirectory)
+    elif req.workspaceId:
+        # Auto-provision from workspace/project IDs
+        ws_name = req.workspaceName or req.workspaceId
+        sub = ws_name
+        if req.projectId:
+            sub = f"{ws_name}/{req.projectId}"
+        working_directory = must_resolve_workspace(f"{WORKSPACES_ROOT}/{sub}")
+    else:
+        working_directory = must_resolve_workspace(WORKSPACES_ROOT)
 
-    if not os.path.isdir(working_directory):
-        raise HTTPException(status_code=400, detail=f"Directory does not exist: {working_directory}")
+    os.makedirs(working_directory, exist_ok=True)
 
     thread_id = str(uuid.uuid4())
-    threads[thread_id] = ThreadRecord(thread_id, working_directory)
+    threads[thread_id] = ThreadRecord(
+        thread_id, working_directory,
+        workspace_id=req.workspaceId,
+        project_id=req.projectId
+    )
 
     return CreateThreadResponse(threadId=thread_id)
 
