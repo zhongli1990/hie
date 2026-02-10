@@ -27,6 +27,12 @@ from Engine.core.messaging import (
     MessagePriority,
     ServiceRegistry
 )
+from Engine.core.queues import (
+    QueueType,
+    OverflowStrategy,
+    create_queue,
+    ManagedQueue
+)
 
 if TYPE_CHECKING:
     from Engine.li.config import ItemConfig
@@ -233,9 +239,42 @@ class Host(MessageBroker, ABC):
                 )
                 await self._adapter.start()
             
-            # Create queue and workers
+            # Create queue with configurable type
             queue_size = self.get_setting("Host", "QueueSize", 1000)
-            self._queue = asyncio.Queue(maxsize=queue_size)
+            queue_type_str = self.get_setting("Host", "QueueType", "fifo")
+            overflow_strategy_str = self.get_setting("Host", "OverflowStrategy", "block")
+
+            # Parse queue type
+            try:
+                queue_type = QueueType(queue_type_str)
+            except ValueError:
+                self._log.warning(
+                    "invalid_queue_type",
+                    queue_type=queue_type_str,
+                    using_default="fifo"
+                )
+                queue_type = QueueType.FIFO
+
+            # Parse overflow strategy
+            try:
+                overflow_strategy = OverflowStrategy(overflow_strategy_str)
+            except ValueError:
+                overflow_strategy = OverflowStrategy.BLOCK
+
+            # Create managed queue
+            self._queue = create_queue(
+                queue_type=queue_type,
+                maxsize=queue_size,
+                overflow_strategy=overflow_strategy
+            )
+
+            self._log.info(
+                "queue_created",
+                queue_type=queue_type.value,
+                size=queue_size,
+                overflow=overflow_strategy.value
+            )
+
             self._shutdown_event.clear()
             
             for i in range(self._pool_size):
