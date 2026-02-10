@@ -12,6 +12,7 @@ RUN pip install --no-cache-dir -r /app/requirements.txt
 
 COPY app /app/app
 COPY skills /app/skills
+COPY tests /app/tests
 
 ENV PYTHONUNBUFFERED=1
 ENV GLOBAL_SKILLS_PATH=/app/skills
