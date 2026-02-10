@@ -1,0 +1,313 @@
+{
+  "workspace": {
+    "name": "NHS_Acute_Trust_Demo",
+    "display_name": "NHS Acute Trust - Royal Hospital",
+    "description": "Complete acute trust integration demo with Cerner PAS, RIS, ICE Lab systems"
+  },
+  "project": {
+    "name": "Main_Integration_Production",
+    "display_name": "Main Integration Production",
+    "description": "Primary production for all acute trust integrations",
+    "enabled": true
+  },
+  "items": [
+    {
+      "name": "Cerner_PAS_Receiver",
+      "display_name": "Cerner PAS HL7 Receiver",
+      "item_type": "SERVICE",
+      "type": "hl7.tcp.service",
+      "enabled": true,
+      "pool_size": 4,
+      "comment": "Receives ADT messages from Cerner Millennium PAS - HL7 v2.3",
+      "adapter_settings": {
+        "Port": 2575,
+        "IPAddress": "0.0.0.0",
+        "ReadTimeout": 30,
+        "LocalInterface": ""
+      },
+      "host_settings": {
+        "TargetConfigNames": ["NHS_Validation_Process"],
+        "AckMode": "App",
+        "MessageSchemaCategory": "2.3",
+        "Validation": "",
+        "ExecutionMode": "multiprocess",
+        "WorkerCount": 4,
+        "QueueType": "priority",
+        "QueueSize": 10000,
+        "OverflowStrategy": "drop_oldest",
+        "RestartPolicy": "always",
+        "MaxRestarts": 100,
+        "RestartDelay": 10.0,
+        "MessagingPattern": "async_reliable",
+        "MessageTimeout": 30.0
+      }
+    },
+    {
+      "name": "File_ADT_Receiver",
+      "display_name": "File-based ADT Receiver",
+      "item_type": "SERVICE",
+      "type": "file.service",
+      "enabled": true,
+      "pool_size": 2,
+      "comment": "Watches for ADT messages dropped to file system (backup/batch route)",
+      "adapter_settings": {
+        "FilePath": "/data/inbound/adt",
+        "FileSpec": "*.hl7",
+        "ArchivePath": "/data/archive/adt",
+        "WorkPath": "",
+        "Interval": 5
+      },
+      "host_settings": {
+        "TargetConfigNames": ["NHS_Validation_Process"],
+        "DeleteAfterProcessing": false,
+        "ExecutionMode": "async",
+        "WorkerCount": 2,
+        "QueueType": "fifo",
+        "QueueSize": 1000,
+        "OverflowStrategy": "block",
+        "RestartPolicy": "on_failure",
+        "MaxRestarts": 10,
+        "RestartDelay": 5.0,
+        "MessagingPattern": "async_reliable"
+      }
+    },
+    {
+      "name": "NHS_Validation_Process",
+      "display_name": "NHS Validation & Enrichment Process",
+      "item_type": "PROCESS",
+      "type": "process.custom",
+      "class_name": "demos.nhs_trust.lib.nhs_validation_process.NHSValidationProcess",
+      "enabled": true,
+      "pool_size": 4,
+      "comment": "Custom validation: NHS Number check digit, PDS lookup, duplicate detection, postcode validation",
+      "adapter_settings": {},
+      "host_settings": {
+        "TargetConfigNames": ["ADT_Router"],
+        "ValidateNHSNumber": true,
+        "EnrichFromPDS": false,
+        "CheckDuplicates": true,
+        "ValidatePostcode": true,
+        "ExecutionMode": "thread_pool",
+        "WorkerCount": 4,
+        "QueueType": "priority",
+        "QueueSize": 5000,
+        "OverflowStrategy": "block",
+        "RestartPolicy": "always",
+        "MaxRestarts": 50,
+        "RestartDelay": 5.0,
+        "MessagingPattern": "sync_reliable",
+        "MessageTimeout": 60.0
+      }
+    },
+    {
+      "name": "ADT_Router",
+      "display_name": "ADT Routing Process",
+      "item_type": "PROCESS",
+      "type": "process.routing",
+      "enabled": true,
+      "pool_size": 2,
+      "comment": "Routes validated ADT messages to downstream systems based on message type and business rules",
+      "adapter_settings": {},
+      "host_settings": {
+        "TargetConfigNames": ["RIS_Operation", "ICE_Lab_Operation", "Audit_File_Writer"],
+        "RoutingRules": [
+          {
+            "name": "Route_A01_to_RIS",
+            "condition": "message.MSH.MessageType == 'ADT^A01'",
+            "targets": ["RIS_Operation", "Audit_File_Writer"],
+            "priority": 10,
+            "description": "Route admission (A01) to RIS for imaging scheduling"
+          },
+          {
+            "name": "Route_A03_to_RIS",
+            "condition": "message.MSH.MessageType == 'ADT^A03'",
+            "targets": ["RIS_Operation", "Audit_File_Writer"],
+            "priority": 10,
+            "description": "Route discharge (A03) to RIS to close imaging requests"
+          },
+          {
+            "name": "Route_A08_to_ICE",
+            "condition": "message.MSH.MessageType == 'ADT^A08'",
+            "targets": ["ICE_Lab_Operation", "Audit_File_Writer"],
+            "priority": 5,
+            "description": "Route patient update (A08) to ICE Lab for demographic sync"
+          },
+          {
+            "name": "Route_All_to_Audit",
+            "condition": "true",
+            "targets": ["Audit_File_Writer"],
+            "priority": 1,
+            "description": "All messages to audit trail"
+          }
+        ],
+        "ExecutionMode": "async",
+        "WorkerCount": 2,
+        "QueueType": "priority",
+        "QueueSize": 5000,
+        "OverflowStrategy": "block",
+        "RestartPolicy": "always",
+        "MaxRestarts": 50,
+        "RestartDelay": 5.0,
+        "MessagingPattern": "concurrent_async"
+      }
+    },
+    {
+      "name": "RIS_Operation",
+      "display_name": "RIS HL7 v2.4 Sender",
+      "item_type": "OPERATION",
+      "type": "hl7.tcp.operation",
+      "enabled": true,
+      "pool_size": 2,
+      "comment": "Sends ADT to Radiology Information System (RIS) - HL7 v2.4",
+      "adapter_settings": {
+        "IPAddress": "ris.hospital.nhs.uk",
+        "Port": 2576,
+        "ResponseTimeout": 30,
+        "ConnectTimeout": 10,
+        "HeartbeatInterval": 60
+      },
+      "host_settings": {
+        "MessageSchemaCategory": "2.4",
+        "GetReplyCode": "MSA:1",
+        "FailureTimeout": 5,
+        "QueueCountAlert": 100,
+        "QueueWaitAlert": 10,
+        "ExecutionMode": "thread_pool",
+        "WorkerCount": 2,
+        "QueueType": "fifo",
+        "QueueSize": 2000,
+        "OverflowStrategy": "block",
+        "RestartPolicy": "always",
+        "MaxRestarts": 100,
+        "RestartDelay": 15.0,
+        "MessagingPattern": "sync_reliable",
+        "MessageTimeout": 45.0
+      }
+    },
+    {
+      "name": "ICE_Lab_Operation",
+      "display_name": "ICE Lab HL7 v2.5.1 Sender",
+      "item_type": "OPERATION",
+      "type": "hl7.tcp.operation",
+      "enabled": true,
+      "pool_size": 2,
+      "comment": "Sends ADT to ICE (iSoft Clinical & Enterprise) Lab system - HL7 v2.5.1",
+      "adapter_settings": {
+        "IPAddress": "ice.hospital.nhs.uk",
+        "Port": 2577,
+        "ResponseTimeout": 30,
+        "ConnectTimeout": 10,
+        "HeartbeatInterval": 60
+      },
+      "host_settings": {
+        "MessageSchemaCategory": "2.5.1",
+        "GetReplyCode": "MSA:1",
+        "FailureTimeout": 5,
+        "QueueCountAlert": 100,
+        "QueueWaitAlert": 10,
+        "ExecutionMode": "thread_pool",
+        "WorkerCount": 2,
+        "QueueType": "fifo",
+        "QueueSize": 2000,
+        "OverflowStrategy": "block",
+        "RestartPolicy": "always",
+        "MaxRestarts": 100,
+        "RestartDelay": 15.0,
+        "MessagingPattern": "sync_reliable",
+        "MessageTimeout": 45.0
+      }
+    },
+    {
+      "name": "Audit_File_Writer",
+      "display_name": "Audit Trail File Writer",
+      "item_type": "OPERATION",
+      "type": "file.operation",
+      "enabled": true,
+      "pool_size": 1,
+      "comment": "Writes all processed messages to audit trail for compliance and troubleshooting",
+      "adapter_settings": {
+        "FilePath": "/data/audit",
+        "FileName": "%Q_%f_%t.hl7"
+      },
+      "host_settings": {
+        "Overwrite": false,
+        "ExecutionMode": "async",
+        "WorkerCount": 1,
+        "QueueType": "unordered",
+        "QueueSize": 50000,
+        "OverflowStrategy": "drop_oldest",
+        "RestartPolicy": "on_failure",
+        "MaxRestarts": 10,
+        "RestartDelay": 5.0,
+        "MessagingPattern": "async_reliable"
+      }
+    },
+    {
+      "name": "Exception_Handler",
+      "display_name": "Exception & Error Handler",
+      "item_type": "OPERATION",
+      "type": "file.operation",
+      "enabled": true,
+      "pool_size": 1,
+      "comment": "Writes failed messages to exception queue for manual review",
+      "adapter_settings": {
+        "FilePath": "/data/exceptions",
+        "FileName": "ERROR_%Q_%f_%t.hl7"
+      },
+      "host_settings": {
+        "Overwrite": false,
+        "ExecutionMode": "async",
+        "WorkerCount": 1,
+        "QueueType": "fifo",
+        "QueueSize": 10000,
+        "OverflowStrategy": "block",
+        "RestartPolicy": "always",
+        "MaxRestarts": 100,
+        "RestartDelay": 5.0,
+        "MessagingPattern": "async_reliable"
+      }
+    }
+  ],
+  "connections": [
+    {
+      "from": "Cerner_PAS_Receiver",
+      "to": "NHS_Validation_Process",
+      "description": "MLLP inbound → Validation"
+    },
+    {
+      "from": "File_ADT_Receiver",
+      "to": "NHS_Validation_Process",
+      "description": "File inbound → Validation"
+    },
+    {
+      "from": "NHS_Validation_Process",
+      "to": "ADT_Router",
+      "description": "Validated messages → Router",
+      "condition": "validation_success == true"
+    },
+    {
+      "from": "NHS_Validation_Process",
+      "to": "Exception_Handler",
+      "description": "Failed validation → Exceptions",
+      "condition": "validation_success == false"
+    },
+    {
+      "from": "ADT_Router",
+      "to": "RIS_Operation",
+      "description": "ADT A01/A03 → RIS",
+      "condition": "message_type in ['ADT^A01', 'ADT^A03']"
+    },
+    {
+      "from": "ADT_Router",
+      "to": "ICE_Lab_Operation",
+      "description": "ADT A08 → ICE Lab",
+      "condition": "message_type == 'ADT^A08'"
+    },
+    {
+      "from": "ADT_Router",
+      "to": "Audit_File_Writer",
+      "description": "All messages → Audit trail",
+      "condition": "always"
+    }
+  ]
+}
