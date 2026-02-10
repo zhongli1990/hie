@@ -21,7 +21,106 @@ These requirements are **NON-NEGOTIABLE** and must be fully implemented before p
 
 ---
 
+## Deployment Architecture: Docker-First Design
+
+### Container-Based Deployment Model
+
+**CRITICAL:** HIE runs entirely in Docker containers. ALL services execute within Docker Compose orchestrated containers.
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│ Docker Compose Orchestration (docker-compose.yml)              │
+│                                                                   │
+│  ┌───────────────────────────────────────────────────────┐     │
+│  │ hie-engine Container                                   │     │
+│  │                                                         │     │
+│  │  ┌────────────────────────────────────────────┐       │     │
+│  │  │ ProductionEngine (Main Process)            │       │     │
+│  │  │                                             │       │     │
+│  │  │  ┌──────────┐  ┌──────────┐  ┌──────────┐ │       │     │
+│  │  │  │HL7Service│  │  Router  │  │  Sender  │ │       │     │
+│  │  │  │          │  │          │  │          │ │       │     │
+│  │  │  │Process 1 │  │Process 1 │  │Process 1 │ │       │     │
+│  │  │  │Process 2 │  │Process 2 │  │Process 2 │ │       │     │
+│  │  │  │Process 3 │  │Process 3 │  │Process 3 │ │       │     │
+│  │  │  │Process 4 │  │Process 4 │  │Process 4 │ │       │     │
+│  │  │  └──────────┘  └──────────┘  └──────────┘ │       │     │
+│  │  └────────────────────────────────────────────┘       │     │
+│  └───────────────────────────────────────────────────────┘     │
+│                              ↕                                   │
+│  ┌───────────────────────────────────────────────────────┐     │
+│  │ PostgreSQL Container (Message Store, WAL, Config)     │     │
+│  └───────────────────────────────────────────────────────┘     │
+│                              ↕                                   │
+│  ┌───────────────────────────────────────────────────────┐     │
+│  │ Redis Container (Queue, Cache, Session)               │     │
+│  └───────────────────────────────────────────────────────┘     │
+│                              ↕                                   │
+│  ┌───────────────────────────────────────────────────────┐     │
+│  │ hie-manager Container (Management API)                │     │
+│  └───────────────────────────────────────────────────────┘     │
+│                              ↕                                   │
+│  ┌───────────────────────────────────────────────────────┐     │
+│  │ hie-portal Container (Next.js Frontend)               │     │
+│  └───────────────────────────────────────────────────────┘     │
+│                                                                   │
+│  Docker Network Bridge (hie-network)                            │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### Key Architectural Principles
+
+1. **Multiprocessing WITHIN Containers**
+   - Each service item spawns multiple OS processes INSIDE its container
+   - Docker provides container isolation; multiprocessing provides GIL bypass
+   - Example: `hie-engine` container runs HL7Service with 4 worker processes
+
+2. **Inter-Container Communication**
+   - Containers communicate via Docker network + Redis/PostgreSQL
+   - NO direct inter-container multiprocessing
+   - Message passing via Redis queues for async
+   - HTTP/gRPC for sync requests
+
+3. **Resource Allocation**
+   - Docker Compose controls CPU/memory per container
+   - Within container, multiprocessing splits workload across CPUs
+   - Example: Container with 4 CPUs → 4 processes → full core utilization
+
+**Example docker-compose.yml:**
+```yaml
+services:
+  hie-engine:
+    build: .
+    dockerfile: Dockerfile
+    environment:
+      - EXECUTION_MODE=multi_process
+      - CONCURRENCY=8                    # 8 processes in container
+      - MESSAGING_PATTERN=async_reliable
+    deploy:
+      resources:
+        limits:
+          cpus: '4.0'                     # 4 CPUs allocated
+          memory: 4G
+    depends_on:
+      - postgres
+      - redis
+
+  postgres:
+    image: postgres:15
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+
+  redis:
+    image: redis:7-alpine
+```
+
+---
+
 ## Mandatory Requirement #1: Multi-Process Service Architecture
+
+### ⚠️ CLARIFICATION: Within-Container Multiprocessing
+
+> **Each workflow item MUST run as a service loop of one or more CPU Python processes WITHIN ITS DOCKER CONTAINER, and each process MUST be able to spawn one or more threads.**
 
 ### Requirement Statement
 
@@ -103,6 +202,16 @@ class Item(ABC):
 ### Requirement Statement
 
 > **Services MUST continuously wait for inbound request message(s), perform transformations as defined in their class, send responses, and support calling other services via messaging or events.**
+
+**📖 See Also:** [MESSAGE_PATTERNS_SPECIFICATION.md](./MESSAGE_PATTERNS_SPECIFICATION.md) for detailed patterns
+
+### Message Patterns Overview
+
+Services MUST support these patterns (configurable):
+1. **Async Reliable** - Non-blocking, event-driven, persisted (PRIMARY)
+2. **Sync Reliable** - Blocking request/reply, FIFO ordering (CRITICAL)
+3. **Concurrent Async** - Parallel non-blocking, no ordering (HIGH PERFORMANCE)
+4. **Concurrent Sync** - Parallel blocking workers (BALANCED)
 
 ### Technical Specifications
 
