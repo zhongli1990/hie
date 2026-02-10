@@ -2,15 +2,18 @@
 
 import { useState, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { Bell, Search, User, LogOut, Settings, ChevronDown, X } from "lucide-react";
+import { Bell, Search, User, LogOut, Settings, ChevronDown, X, Info } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import WorkspaceSelector from "./WorkspaceSelector";
+import AboutModal, { VERSION } from "./AboutModal";
+import ThemeSwitcher from "./ThemeSwitcher";
 
 export default function TopNav() {
   const { user, logout } = useAuth();
   const router = useRouter();
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
+  const [showAbout, setShowAbout] = useState(false);
   const userMenuRef = useRef<HTMLDivElement>(null);
   const notificationsRef = useRef<HTMLDivElement>(null);
 
@@ -55,6 +58,18 @@ export default function TopNav() {
       </div>
 
       <div className="flex items-center gap-4">
+        {/* Theme Switcher */}
+        <ThemeSwitcher />
+
+        {/* About Button */}
+        <button
+          onClick={() => setShowAbout(true)}
+          className="flex h-9 w-9 items-center justify-center rounded-lg text-gray-500 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-zinc-700"
+          title="About HIE"
+        >
+          <Info className="h-5 w-5" />
+        </button>
+
         {/* Notifications */}
         <div className="relative" ref={notificationsRef}>
           <button
@@ -168,6 +183,9 @@ export default function TopNav() {
           )}
         </div>
       </div>
+
+      {/* About Modal */}
+      <AboutModal isOpen={showAbout} onClose={() => setShowAbout(false)} />
     </div>
   );
 }
