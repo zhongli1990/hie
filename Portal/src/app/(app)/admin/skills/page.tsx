@@ -36,11 +36,14 @@ interface Skill {
 
 
 const CATEGORY_COLORS: Record<string, string> = {
-  protocol: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300",
-  routing: "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300",
-  transform: "bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300",
-  monitoring: "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300",
-  deployment: "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300",
+  hl7: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300",
+  fhir: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300",
+  clinical: "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300",
+  compliance: "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300",
+  integration: "bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300",
+  development: "bg-cyan-100 text-cyan-700 dark:bg-cyan-900/30 dark:text-cyan-300",
+  architecture: "bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300",
+  support: "bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300",
   general: "bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300",
 };
 
@@ -262,11 +265,14 @@ export default function SkillsManagementPage() {
                   className="flex-1 rounded-md border border-gray-300 dark:border-zinc-600 bg-white dark:bg-zinc-700 px-3 py-1.5 text-sm text-gray-900 dark:text-white"
                 >
                   <option value="all">All Categories</option>
-                  <option value="protocol">Protocol</option>
-                  <option value="routing">Routing</option>
-                  <option value="transform">Transform</option>
-                  <option value="monitoring">Monitoring</option>
-                  <option value="deployment">Deployment</option>
+                  <option value="hl7">HL7</option>
+                  <option value="fhir">FHIR</option>
+                  <option value="clinical">Clinical</option>
+                  <option value="compliance">Compliance</option>
+                  <option value="integration">Integration</option>
+                  <option value="development">Development</option>
+                  <option value="architecture">Architecture</option>
+                  <option value="support">Support</option>
                 </select>
               </div>
               <div className="relative">
@@ -385,11 +391,56 @@ export default function SkillsManagementPage() {
                   </div>
                 </div>
               ) : (
-                <div className="flex-1 overflow-y-auto p-4">
-                  <div className="mb-4">
-                    <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Description</h3>
-                    <p className="text-sm text-gray-600 dark:text-gray-400">{selectedSkill.description}</p>
+                <div className="flex-1 overflow-y-auto p-4 space-y-4">
+                  {/* Metadata Grid */}
+                  <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                    <div className="bg-gray-50 dark:bg-zinc-700/50 rounded-md p-3">
+                      <span className="text-xs text-gray-500 dark:text-gray-400 block mb-0.5">Source</span>
+                      <span className="text-sm font-medium text-gray-900 dark:text-white capitalize">{selectedSkill.source}</span>
+                    </div>
+                    <div className="bg-gray-50 dark:bg-zinc-700/50 rounded-md p-3">
+                      <span className="text-xs text-gray-500 dark:text-gray-400 block mb-0.5">Invocable</span>
+                      <span className="text-sm font-medium text-gray-900 dark:text-white">{selectedSkill.is_user_invocable ? "Yes" : "No"}</span>
+                    </div>
+                    <div className="bg-gray-50 dark:bg-zinc-700/50 rounded-md p-3">
+                      <span className="text-xs text-gray-500 dark:text-gray-400 block mb-0.5">Created</span>
+                      <span className="text-sm font-medium text-gray-900 dark:text-white">{new Date(selectedSkill.created_at).toLocaleDateString()}</span>
+                    </div>
+                    <div className="bg-gray-50 dark:bg-zinc-700/50 rounded-md p-3">
+                      <span className="text-xs text-gray-500 dark:text-gray-400 block mb-0.5">Updated</span>
+                      <span className="text-sm font-medium text-gray-900 dark:text-white">{new Date(selectedSkill.updated_at).toLocaleDateString()}</span>
+                    </div>
                   </div>
+
+                  {/* Description */}
+                  <div>
+                    <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Description</h3>
+                    <p className="text-sm text-gray-600 dark:text-gray-400">{selectedSkill.description || "No description"}</p>
+                  </div>
+
+                  {/* Allowed Tools */}
+                  {selectedSkill.allowed_tools && (
+                    <div>
+                      <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Allowed Tools</h3>
+                      <div className="flex flex-wrap gap-1.5">
+                        {selectedSkill.allowed_tools.split(",").map((tool) => (
+                          <span key={tool.trim()} className="inline-flex items-center px-2 py-0.5 rounded text-xs font-mono bg-blue-50 text-blue-700 dark:bg-blue-900/20 dark:text-blue-300 border border-blue-200 dark:border-blue-800">
+                            {tool.trim()}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* File Path */}
+                  {selectedSkill.file_path && (
+                    <div>
+                      <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">File Path</h3>
+                      <code className="text-xs text-gray-600 dark:text-gray-400 bg-gray-50 dark:bg-zinc-700 px-2 py-1 rounded">{selectedSkill.file_path}</code>
+                    </div>
+                  )}
+
+                  {/* Skill Content */}
                   <div>
                     <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Skill Content</h3>
                     <pre className="bg-gray-50 dark:bg-zinc-700 border border-gray-200 dark:border-zinc-600 rounded-md p-4 text-xs font-mono overflow-x-auto whitespace-pre-wrap text-gray-800 dark:text-gray-200">
@@ -450,11 +501,14 @@ export default function SkillsManagementPage() {
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Category</label>
                   <select value={newSkill.category} onChange={(e) => setNewSkill({ ...newSkill, category: e.target.value as any })}
                     className="w-full rounded-md border border-gray-300 dark:border-zinc-600 bg-white dark:bg-zinc-700 px-3 py-2 text-sm text-gray-900 dark:text-white">
-                    <option value="protocol">Protocol</option>
-                    <option value="routing">Routing</option>
-                    <option value="transform">Transform</option>
-                    <option value="monitoring">Monitoring</option>
-                    <option value="deployment">Deployment</option>
+                    <option value="hl7">HL7</option>
+                    <option value="fhir">FHIR</option>
+                    <option value="clinical">Clinical</option>
+                    <option value="compliance">Compliance</option>
+                    <option value="integration">Integration</option>
+                    <option value="development">Development</option>
+                    <option value="architecture">Architecture</option>
+                    <option value="support">Support</option>
                     <option value="general">General</option>
                   </select>
                 </div>

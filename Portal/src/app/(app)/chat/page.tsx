@@ -186,6 +186,15 @@ export default function ChatPage() {
     return () => { cancelled = true; };
   }, [currentWorkspace]);
 
+  // Pick up prefilled prompt from Prompts page
+  useEffect(() => {
+    const prefill = sessionStorage.getItem("prefill-prompt");
+    if (prefill) {
+      setInputValue(prefill);
+      sessionStorage.removeItem("prefill-prompt");
+    }
+  }, []);
+
   // Auto-scroll
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -365,6 +374,10 @@ export default function ChatPage() {
                 created_at: new Date().toISOString(),
               };
               setChatMessages((prev: any) => [...prev, toolMsg as any]);
+              // Persist tool message to database
+              if (selectedSessionId) {
+                await persistMessage(selectedSessionId, "tool", toolMsg.content, runId, toolMsg.metadata);
+              }
             } else if (item.type === "agent_message" || item.text) {
               const assistantMsg: DisplayMessage = {
                 id: `msg-${Date.now()}-codex-msg`,
@@ -373,6 +386,10 @@ export default function ChatPage() {
                 created_at: new Date().toISOString(),
               };
               setChatMessages((prev: any) => [...prev, assistantMsg as any]);
+              // Persist assistant message to database
+              if (selectedSessionId && assistantMsg.content) {
+                await persistMessage(selectedSessionId, "assistant", assistantMsg.content, runId);
+              }
             }
 
           // ── Common completion events ──────────────────────────────────

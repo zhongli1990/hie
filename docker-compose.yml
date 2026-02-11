@@ -137,8 +137,15 @@ services:
       - DATABASE_URL=postgresql+asyncpg://hie:hie_password@postgres:5432/hie
       - JWT_SECRET_KEY=hie-jwt-secret-key-change-in-production
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - HIE_MANAGER_URL=http://hie-manager:8081
+      - WORKSPACES_ROOT=/workspaces
+    volumes:
+      - ./agent-runner/skills:/app/skills:ro
+      - hie_workspaces:/workspaces
     depends_on:
       postgres:
+        condition: service_healthy
+      hie-manager:
         condition: service_healthy
     restart: unless-stopped
     networks:

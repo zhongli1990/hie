@@ -133,6 +133,11 @@ export default function PromptsPage() {
     router.push("/agents");
   };
 
+  const handleSendToChat = () => {
+    sessionStorage.setItem("prefill-prompt", renderedPrompt);
+    router.push("/chat");
+  };
+
   const handleCopyToClipboard = async () => {
     await navigator.clipboard.writeText(renderedPrompt);
   };
@@ -456,6 +461,12 @@ export default function PromptsPage() {
                 className="rounded-md border border-zinc-300 dark:border-zinc-600 px-4 py-2 text-sm text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-700"
               >
                 Copy
+              </button>
+              <button
+                onClick={handleSendToChat}
+                className="rounded-md bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-green-700"
+              >
+                Send to Chat
               </button>
               <button
                 onClick={handleSendToAgent}

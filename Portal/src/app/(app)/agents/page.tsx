@@ -80,6 +80,8 @@ export default function AgentsPage() {
   const transcriptEndRef = useRef<HTMLDivElement>(null);
   const [threadId, setThreadId] = useState<string | null>(null);
   const eventSourceRef = useRef<EventSource | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [uploading, setUploading] = useState(false);
 
   // Use agentStatus from context as primary status
   const status = agentStatus;
@@ -389,6 +391,77 @@ export default function AgentsPage() {
     }
   }
 
+  // ─── File Upload/Download ────────────────────────────────────────────────────
+
+  async function handleFileUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+    if (!currentWorkspace || !selectedProjectId) {
+      alert("Please select a project first");
+      return;
+    }
+
+    setUploading(true);
+    try {
+      const formData = new FormData();
+      for (let i = 0; i < files.length; i++) {
+        formData.append("files", files[i]);
+      }
+      formData.append("workspace_id", currentWorkspace.id);
+      formData.append("project_id", selectedProjectId);
+
+      const res = await fetch("/api/project-files/upload", {
+        method: "POST",
+        body: formData,
+      });
+
+      if (!res.ok) {
+        const error = await res.json().catch(() => ({ error: "Upload failed" }));
+        throw new Error(error.error || "Upload failed");
+      }
+
+      alert(`Successfully uploaded ${files.length} file(s)`);
+      // Reset file input
+      if (fileInputRef.current) {
+        fileInputRef.current.value = "";
+      }
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Upload failed");
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  async function handleFileDownload() {
+    if (!currentWorkspace || !selectedProjectId) {
+      alert("Please select a project first");
+      return;
+    }
+
+    try {
+      const res = await fetch(
+        `/api/project-files/download?workspace_id=${currentWorkspace.id}&project_id=${selectedProjectId}`
+      );
+
+      if (!res.ok) {
+        const error = await res.json().catch(() => ({ error: "Download failed" }));
+        throw new Error(error.error || "Download failed");
+      }
+
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `project-${selectedProjectId}-files.zip`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      window.URL.revokeObjectURL(url);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Download failed");
+    }
+  }
+
   // Cleanup EventSource on unmount
   useEffect(() => {
     return () => {
@@ -663,18 +736,27 @@ export default function AgentsPage() {
                   )}
                 </div>
                 <div className="space-y-3">
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    multiple
+                    className="hidden"
+                    onChange={handleFileUpload}
+                  />
                   <button
-                    disabled
-                    className="w-full flex items-center gap-2 px-4 py-3 text-sm border border-gray-200 dark:border-zinc-600 rounded-lg text-gray-400 dark:text-gray-500 cursor-not-allowed hover:bg-gray-50 dark:hover:bg-zinc-700/50"
-                    title="Coming soon"
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={!selectedProjectId || uploading}
+                    className="w-full flex items-center gap-2 px-4 py-3 text-sm border border-gray-200 dark:border-zinc-600 rounded-lg text-gray-900 dark:text-white hover:bg-gray-50 dark:hover:bg-zinc-700/50 disabled:opacity-50 disabled:cursor-not-allowed"
+                    title={!selectedProjectId ? "Please select a project first" : "Upload files to project"}
                   >
                     <Upload className="h-4 w-4" />
-                    Upload Folder/Files
+                    {uploading ? "Uploading..." : "Upload Folder/Files"}
                   </button>
                   <button
-                    disabled
-                    className="w-full flex items-center gap-2 px-4 py-3 text-sm border border-gray-200 dark:border-zinc-600 rounded-lg text-gray-400 dark:text-gray-500 cursor-not-allowed hover:bg-gray-50 dark:hover:bg-zinc-700/50"
-                    title="Coming soon"
+                    onClick={handleFileDownload}
+                    disabled={!selectedProjectId}
+                    className="w-full flex items-center gap-2 px-4 py-3 text-sm border border-gray-200 dark:border-zinc-600 rounded-lg text-gray-900 dark:text-white hover:bg-gray-50 dark:hover:bg-zinc-700/50 disabled:opacity-50 disabled:cursor-not-allowed"
+                    title={!selectedProjectId ? "Please select a project first" : "Download project files as ZIP"}
                   >
                     <Download className="h-4 w-4" />
                     Download Project Files

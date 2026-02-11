@@ -86,8 +86,66 @@ services:
     environment:
       - NODE_ENV=production
       - NEXT_PUBLIC_API_URL=http://hie-manager:8081
+      - PROMPT_MANAGER_URL=http://hie-prompt-manager:8083
+      - AGENT_RUNNER_URL=http://hie-agent-runner:8082
     depends_on:
       - hie-manager
+      - hie-agent-runner
+      - hie-prompt-manager
+    restart: unless-stopped
+    networks:
+      - hie-network
+
+  # GenAI Agent Runner (Claude/Anthropic) - Development mode
+  hie-agent-runner:
+    build:
+      context: ./agent-runner
+      dockerfile: Dockerfile
+    container_name: hie-agent-runner-dev
+    ports:
+      - "9340:8082"
+    volumes:
+      - ./agent-runner:/app:rw
+      - ./agent-runner/skills:/app/skills:ro
+      - hie_workspaces:/workspaces
+    environment:
+      - GLOBAL_SKILLS_PATH=/app/skills
+      - ENABLE_HOOKS=true
+      - MAX_AGENT_TURNS=25
+      - DATABASE_URL=postgresql+asyncpg://hie:hie_password@postgres:5432/hie
+      - JWT_SECRET_KEY=hie-jwt-secret-key-change-in-production
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - HIE_MANAGER_URL=http://hie-manager:8081
+      - WORKSPACES_ROOT=/workspaces
+      - PYTHONUNBUFFERED=1
+    depends_on:
+      postgres:
+        condition: service_healthy
+      hie-manager:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - hie-network
+
+  # Prompt & Skills Manager - Development mode
+  hie-prompt-manager:
+    build:
+      context: ./prompt-manager
+      dockerfile: Dockerfile
+    container_name: hie-prompt-manager-dev
+    ports:
+      - "9341:8083"
+    volumes:
+      - ./prompt-manager:/app:rw
+      - ./agent-runner/skills:/app/skills:ro
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://hie:hie_password@postgres:5432/hie
+      - JWT_SECRET_KEY=hie-jwt-secret-key-change-in-production
+      - SKILLS_DIR=/app/skills
+      - PYTHONUNBUFFERED=1
+    depends_on:
+      postgres:
+        condition: service_healthy
     restart: unless-stopped
     networks:
       - hie-network
@@ -228,6 +286,7 @@ services:
 volumes:
   postgres_data:
   redis_data:
+  hie_workspaces:
   prometheus_data:
 
 networks:
