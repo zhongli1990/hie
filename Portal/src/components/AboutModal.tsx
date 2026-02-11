@@ -8,12 +8,24 @@ interface VersionHistory {
   features: string[];
 }
 
-const VERSION = "1.7.3";
+const VERSION = "1.8.0";
 const BUILD_DATE = "Feb 11, 2026";
 const PLATFORM_NAME = "OpenLI HIE";
 const PRODUCT_NAME = "OpenLI Healthcare Integration Engine";
 
 const versionHistory: VersionHistory[] = [
+  {
+    version: "1.8.0",
+    date: "Feb 11, 2026",
+    features: [
+      "Class namespace enforcement: li.* protected, custom.* developer namespace",
+      "Agent HIE Skills: 16 tools for full workspace/project/item/routing lifecycle",
+      "E2E route builder skill v2.0 with 10-step workflow",
+      "Custom class framework: @register_host decorator, auto-discovery, NHS reference impl",
+      "Developer documentation: CUSTOM_CLASSES.md, workflow scenarios, NHS Trust demo",
+      "GenAI sessions API with agent/chat page persistence",
+    ],
+  },
   {
     version: "1.7.3",
     date: "Feb 11, 2026",

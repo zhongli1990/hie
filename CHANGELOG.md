@@ -5,6 +5,83 @@ All notable changes to OpenLI HIE (Healthcare Integration Engine) will be docume
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.8.0] - 2026-02-11
+
+### Added - Developer Platform, Agent HIE Skills, Class Namespace Enforcement
+
+**Class Namespace Convention Enforcement** (core product protection):
+- `PROTECTED_NAMESPACES` (`li.*`, `Engine.li.*`, `EnsLib.*`) — runtime-enforced, developers cannot register classes here
+- `CUSTOM_NAMESPACE_PREFIX` (`custom.*`) — all developer extensions must use this namespace
+- `ClassRegistry._validate_custom_namespace()` raises `ValueError` on protected namespace violations
+- `ClassRegistry._register_internal()` for core engine class registration (bypasses validation)
+- `register_host()`, `register_transform()`, `register_rule()` now validate namespace before registering
+- `is_protected_namespace()` / `is_custom_namespace()` helper methods on ClassRegistry
+- Fixed `get_or_import_host_class()` caching to use `_register_internal` for dynamic imports
+- Fixed IRIS alias: `EnsLib.HL7.MsgRouter.RoutingEngine` → `li.hosts.routing.HL7RoutingEngine`
+- Core class registrations in `hl7.py` and `routing.py` switched to `_register_internal()`
+
+**Custom Developer Extension Framework** (`Engine/custom/`):
+- `Engine/custom/__init__.py` — `@register_host` and `@register_transform` decorators with namespace validation
+- `load_custom_modules()` auto-discovers and imports all modules in `Engine/custom/` at startup
+- `ProductionEngine._create_hosts()` calls `load_custom_modules()` before host instantiation
+- `Engine/custom/nhs/validation.py` — `custom.nhs.NHSValidationProcess` reference implementation:
+  - NHS Number validation (Modulus 11 check digit algorithm)
+  - PDS demographic lookup stub (FHIR API ready)
+  - Duplicate message detection (sliding window)
+  - UK postcode validation
+  - Configurable fail mode: `nack_and_exception_queue` or `warn_and_continue`
+- `Engine/custom/_example/example_process.py` — copy-paste template for developers
+
+**Agent HIE Skills** (16 tools, was 10):
+- New tools: `hie_list_workspaces`, `hie_create_workspace`, `hie_create_project`, `hie_create_routing_rule`, `hie_start_project`, `hie_stop_project`, `hie_project_status`
+- Tools reorganized into `STANDARD_TOOLS` + `HIE_TOOLS` with namespace convention documentation
+- All tool descriptions include class namespace guidance and IRIS equivalents
+- `execute_tool()` handlers for all 16 tools with proper request body construction
+
+**Agent System Prompt & Skills**:
+- System prompt rewritten with IRIS-aligned architecture table
+- Class namespace convention section (CRITICAL rules)
+- Core class catalog with IRIS equivalents
+- 10-step end-to-end route creation workflow
+- ReplyCodeActions syntax reference
+- `hl7-route-builder` skill v2.0: complete e2e examples, HL7 field reference, routing rule syntax
+
+**GenAI Sessions** (Portal + Engine):
+- GenAI sessions models, repositories, and API routes in Engine
+- `002_genai_sessions.sql` migration
+- Portal `/api/genai-sessions/` proxy
+- `AppContext` for shared state across Portal pages
+- Agent and Chat pages updated with session persistence
+
+**Documentation**:
+- `docs/guides/CUSTOM_CLASSES.md` — **New**: namespace rules, quick start, base class reference, Docker volume mount, IRIS comparison
+- `docs/guides/LI_HIE_DEVELOPER_GUIDE.md` — Revised: expanded 3+2+3 route topology, FHIR inbound, agent guide section
+- `docs/guides/NHS_TRUST_DEMO.md` — Revised: matching 3-inbound/2-process/3-outbound architecture
+- `docs/DEVELOPER_WORKFLOW_SCENARIOS.md` — **New**: 8 developer/user workflow scenarios comparing HIE to IRIS/Rhapsody/Mirth
+
+### Version Bumps
+
+All services bumped to **1.8.0**:
+- `agent-runner` FastAPI app + `/health` endpoint
+- `prompt-manager` FastAPI app + `/health` endpoint
+- `codex-runner` Express app + `/health` endpoint
+- `Portal/package.json`
+- `AboutModal.tsx` VERSION constant + version history entry
+
+### Breaking Changes
+
+None — 100% backward compatible with v1.7.3 configurations.
+
+### Remaining Work (this branch)
+
+- E2E testing: Agent conversation → HIE Engine API → production running
+- Verify Manager API endpoints exist for all new tools (`/routing-rules`, `/start`, `/stop`, `/status`)
+- Additional skills: `fhir-mapper`, `clinical-safety-review`, `nhs-compliance-check`, `integration-test`
+- Portal UI: Show `custom.*` vs `li.*` distinction in item type picker
+- Hot reload for custom classes without full engine restart
+
+---
+
 ## [1.7.3] - 2026-02-11
 
 ### Added - Data-Driven Seed System, Hooks Config API, UI/UX Fixes
