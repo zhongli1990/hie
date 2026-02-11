@@ -160,8 +160,8 @@ Send an ADT^A01 to port 10001 via any MLLP client. Check the **Messages** tab �
 Send an ADT^A02 — only EPR_Out should receive it (not RIS_Out).
 
 For the complete walkthrough with sample messages, condition syntax reference, and IRIS path translation map, see:
-- [Developer Guide — Quickstart](guides/LI_HIE_DEVELOPER_GUIDE.md#quickstart-create-your-first-workflow-route-10-minutes)
-- [Message Routing Workflow](MESSAGE_ROUTING_WORKFLOW.md)
+- [Developer Guide — Quickstart](DEVELOPER_AND_USER_GUIDE.md#quickstart-create-your-first-workflow-route-10-minutes)
+- [Message Routing Workflow](../reference/MESSAGE_ROUTING_WORKFLOW.md)
 
 ---
 

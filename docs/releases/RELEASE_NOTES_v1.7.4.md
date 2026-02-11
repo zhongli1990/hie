@@ -392,18 +392,18 @@ docker exec hie-codex-runner ls /root/.codex/skills/
 
 ### Changelog
 
-See [CHANGELOG.md](../CHANGELOG.md) for detailed commit history.
+See [CHANGELOG.md](../../CHANGELOG.md) for detailed commit history.
 
 ---
 
 ## 🔗 Resources
 
 ### Documentation
-- [Developer Guide](guides/LI_HIE_DEVELOPER_GUIDE.md)
-- [Custom Classes Guide](guides/CUSTOM_CLASSES.md)
-- [Skills Compatibility](SKILLS_COMPATIBILITY.md)
-- [Developer Workflows](DEVELOPER_WORKFLOW_SCENARIOS.md)
-- [NHS Trust Demo](guides/NHS_TRUST_DEMO.md)
+- [Developer Guide](../guides/DEVELOPER_AND_USER_GUIDE.md)
+- [Custom Classes Guide](../guides/CUSTOM_CLASSES_GUIDE.md)
+- [Skills Compatibility](../reference/SKILLS_COMPATIBILITY.md)
+- [Developer Workflows](../guides/DEVELOPER_WORKFLOW_SCENARIOS.md)
+- [NHS Trust Demo](../guides/NHS_TRUST_DEMO_GUIDE.md)
 
 ### Release Notes
 - [v1.7.4 (Current)](RELEASE_NOTES_v1.7.4.md)

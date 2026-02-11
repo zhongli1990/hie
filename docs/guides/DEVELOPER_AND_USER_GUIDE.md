@@ -317,7 +317,7 @@ HL7.PID:PatientName.FamilyName = "Smith"
 **Operators:** `=`, `!=`, `<`, `>`, `<=`, `>=`, `Contains`, `StartsWith`, `EndsWith`, `IN`
 **Logic:** `AND`, `OR`, `NOT`, parentheses `( )`
 
-For the complete IRIS path translation map and implementation details, see [Message Routing Workflow](../MESSAGE_ROUTING_WORKFLOW.md).
+For the complete IRIS path translation map and implementation details, see [Message Routing Workflow](../reference/MESSAGE_ROUTING_WORKFLOW.md).
 
 ---
 
@@ -1440,8 +1440,9 @@ curl -X POST $HIE_URL/api/workspaces/$WS_ID/projects/$PROJ_ID/items/RIS.HL7.Send
 
 ## See Also
 
-- [Developer Workflow Scenarios](../DEVELOPER_WORKFLOW_SCENARIOS.md) — 8 detailed workflow scenarios with competitive analysis
-- [NHS Trust Demo](./NHS_TRUST_DEMO.md) — Technical implementation reference
-- [Product Vision](../PRODUCT_VISION.md) — Strategic positioning
-- [Configuration Reference](../CONFIGURATION_REFERENCE.md) — All settings reference
-- [UI Configuration Guide](../UI_CONFIGURATION_GUIDE.md) — Portal UI implementation
+- [Developer Workflow Scenarios](DEVELOPER_WORKFLOW_SCENARIOS.md) — 8 detailed workflow scenarios with competitive analysis
+- [NHS Trust Demo](NHS_TRUST_DEMO_GUIDE.md) — Technical implementation reference
+- [Product Vision](../design/PRODUCT_VISION.md) — Strategic positioning
+- [Configuration Reference](../reference/CONFIGURATION_REFERENCE.md) — All settings reference
+- [UI Configuration Guide](UI_CONFIGURATION_GUIDE.md) — Portal UI implementation
+- [Message Routing Workflow](../reference/MESSAGE_ROUTING_WORKFLOW.md) — E2E routing implementation details
