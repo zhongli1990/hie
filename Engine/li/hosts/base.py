@@ -151,6 +151,9 @@ class Host(MessageBroker, ABC):
         # Adapter (created during start)
         self._adapter: Any = None
         
+        # Reference to production engine (set after deploy)
+        self._production: Any = None
+        
         # Logger with context
         self._log = logger.bind(host=self._name, host_type=self.__class__.__name__)
     
@@ -847,10 +850,25 @@ class BusinessService(Host):
         Args:
             message: Message to send
         """
-        # This will be implemented when we have the production engine
-        # For now, just log
         targets = self.target_config_names
-        self._log.debug("send_to_targets", targets=targets, message_id=getattr(message, 'id', None))
+        if not targets:
+            self._log.debug("no_targets_configured", host=self.name)
+            return
+        
+        if not self._production:
+            self._log.warning("no_production_reference", host=self.name)
+            return
+        
+        for target_name in targets:
+            target_host = self._production.get_host(target_name)
+            if target_host:
+                try:
+                    await target_host.submit(message)
+                    self._log.debug("message_forwarded", target=target_name, source=self.name)
+                except Exception as e:
+                    self._log.error("forward_failed", target=target_name, error=str(e))
+            else:
+                self._log.warning("target_not_found", target=target_name, source=self.name)
     
     async def _process_message(self, message: Any) -> Any:
         """Process received message and send to targets."""

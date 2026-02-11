@@ -85,9 +85,85 @@ class EngineManager:
         engine.project_id = project_id  # Track project_id for message storage
         await engine.load_from_config(production_config)
         
-        # Set project_id on all hosts for message storage
+        # Set project_id and production reference on all hosts
         for host in engine._all_hosts.values():
             host.project_id = project_id
+            host._production = engine
+        
+        # Wire connections: build TargetConfigNames from project connections
+        # Connections store source_item_id/target_item_id (UUIDs), resolve to names
+        connections = config.get('connections', [])
+        # Build item ID -> name lookup
+        item_id_to_name: dict[str, str] = {}
+        for item_data in config.get('items', []):
+            item_id = str(item_data.get('id', ''))
+            item_name = item_data.get('name', '')
+            if item_id and item_name:
+                item_id_to_name[item_id] = item_name
+        
+        # Build a map: source_name -> [target_names]
+        target_map: dict[str, list[str]] = {}
+        for conn in connections:
+            src_id = str(conn.get('source_item_id', ''))
+            tgt_id = str(conn.get('target_item_id', ''))
+            src = item_id_to_name.get(src_id, conn.get('source_name', ''))
+            tgt = item_id_to_name.get(tgt_id, conn.get('target_name', ''))
+            if src and tgt:
+                target_map.setdefault(src, []).append(tgt)
+        
+        # Apply TargetConfigNames to each host that has connections
+        for source_name, targets in target_map.items():
+            host = engine.get_host(source_name)
+            if host:
+                existing = host.get_setting("Host", "TargetConfigNames", "")
+                if existing:
+                    targets = [t.strip() for t in existing.split(",") if t.strip()] + targets
+                host._host_settings["TargetConfigNames"] = ",".join(targets)
+                logger.info("connection_wired", source=source_name, targets=targets)
+        
+        # Wire routing rules into HL7RoutingEngine hosts
+        routing_rules = config.get('routing_rules', [])
+        if routing_rules:
+            from Engine.li.hosts.routing import RoutingRule as EngineRoutingRule, RuleAction as EngineRuleAction
+            for host in engine._all_hosts.values():
+                from Engine.li.hosts.routing import HL7RoutingEngine
+                if isinstance(host, HL7RoutingEngine):
+                    for rule_data in routing_rules:
+                        if not rule_data.get('enabled', True):
+                            continue
+                        # Map action string to enum
+                        action_str = rule_data.get('action', 'send')
+                        try:
+                            action = EngineRuleAction(action_str)
+                        except ValueError:
+                            action = EngineRuleAction.SEND
+                        
+                        # Routing rules can have multiple target_items
+                        target_items = rule_data.get('target_items', [])
+                        # Create one rule per target (engine rules have single target)
+                        if target_items:
+                            for target in target_items:
+                                engine_rule = EngineRoutingRule(
+                                    name=rule_data.get('name', 'Unnamed'),
+                                    condition=rule_data.get('condition_expression', ''),
+                                    action=action,
+                                    target=target,
+                                    transform=rule_data.get('transform_name'),
+                                    enabled=True,
+                                )
+                                host.add_rule(engine_rule)
+                        else:
+                            engine_rule = EngineRoutingRule(
+                                name=rule_data.get('name', 'Unnamed'),
+                                condition=rule_data.get('condition_expression', ''),
+                                action=action,
+                                target=None,
+                                transform=rule_data.get('transform_name'),
+                                enabled=True,
+                            )
+                            host.add_rule(engine_rule)
+                    
+                    logger.info("routing_rules_loaded", host=host.name, rule_count=len(host._rules))
         
         self._engines[project_id] = engine
         

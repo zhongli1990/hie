@@ -506,10 +506,21 @@ class HL7RoutingEngine(BusinessProcess):
             # TODO: Apply transform
             pass
         
-        # TODO: Send to target via Production
-        self._log.debug("routing_to_target", target=target, message_type=message.message_type)
+        # Send to target via Production
+        if not self._production:
+            self._log.warning("no_production_reference", host=self.name)
+            return
         
-        self._metrics.messages_sent += 1
+        target_host = self._production.get_host(target)
+        if target_host:
+            try:
+                await target_host.submit(message)
+                self._log.debug("routed_to_target", target=target, message_type=message.message_type)
+                self._metrics.messages_sent += 1
+            except Exception as e:
+                self._log.error("route_to_target_failed", target=target, error=str(e))
+        else:
+            self._log.warning("routing_target_not_found", target=target)
 
 
 # Convenience function to create common routing rules

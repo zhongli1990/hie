@@ -305,7 +305,7 @@ class HL7TCPService(BusinessService):
                 message_type=message.message_type,
                 targets=targets,
             )
-            # TODO: Implement routing to targets via Production
+            await self.send_to_targets(message)
         
         return message
 
