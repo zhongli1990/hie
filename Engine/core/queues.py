@@ -171,6 +171,24 @@ class ManagedQueue(Generic[T]):
         except asyncio.QueueFull:
             return await self._handle_overflow(item)
 
+    def put_nowait(self, item: T) -> None:
+        """
+        Put item in queue without blocking.
+
+        Raises:
+            asyncio.QueueFull: If queue is full
+        """
+        if self._queue_type == QueueType.PRIORITY:
+            item = self._wrap_for_priority(item)
+
+        self._queue.put_nowait(item)
+        self._metrics.total_enqueued += 1
+        self._metrics.current_size = self._queue.qsize()
+        self._metrics.peak_size = max(
+            self._metrics.peak_size,
+            self._metrics.current_size
+        )
+
     async def get(self, timeout: float | None = None) -> T:
         """
         Get item from queue.
@@ -276,6 +294,10 @@ class ManagedQueue(Generic[T]):
     def task_done(self) -> None:
         """Mark task as done."""
         self._queue.task_done()
+
+    async def join(self) -> None:
+        """Block until all items in the queue have been processed."""
+        await self._queue.join()
 
     @property
     def metrics(self) -> QueueMetrics:
