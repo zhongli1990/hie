@@ -8,12 +8,24 @@ interface VersionHistory {
   features: string[];
 }
 
-const VERSION = "1.8.0";
+const VERSION = "1.7.4";
 const BUILD_DATE = "Feb 11, 2026";
 const PLATFORM_NAME = "OpenLI HIE";
 const PRODUCT_NAME = "OpenLI Healthcare Integration Engine";
 
 const versionHistory: VersionHistory[] = [
+  {
+    version: "1.7.4",
+    date: "Feb 11, 2026",
+    features: [
+      "OpenAI/Codex runner response persistence - questions and answers now reload from DB",
+      "Prompt Manager: Send to Chat button with prefill workflow",
+      "Project file management: upload/download with ZIP support and workspace folders",
+      "Custom class hot-reload: dynamic reload without engine restart",
+      "HIE Skills ported to Codex runner - all 5 skills now work with both Claude and OpenAI",
+      "Skills compatibility: automated porting script and unified SKILL.md format",
+    ],
+  },
   {
     version: "1.8.0",
     date: "Feb 11, 2026",
