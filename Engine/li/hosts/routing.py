@@ -444,8 +444,43 @@ class HL7RoutingEngine(BusinessProcess):
             for target in result.targets:
                 await self._route_to_target(message, target, result.transform)
         
+        # Store message in portal_messages for visibility
+        project_id = getattr(self, 'project_id', None)
+        if project_id:
+            import asyncio
+            asyncio.create_task(self._store_routing_message(
+                project_id=project_id,
+                message=message,
+                result=result,
+            ))
+        
         return result
     
+    async def _store_routing_message(
+        self,
+        project_id: UUID,
+        message: HL7Message,
+        result: RoutingResult,
+    ) -> None:
+        """Store routing decision in portal_messages for UI visibility."""
+        try:
+            from Engine.api.services.message_store import store_and_complete_message
+            raw = message.raw if isinstance(message.raw, bytes) else str(message.raw).encode()
+            status = "completed" if result.matched else "no_match"
+            dest = ",".join(result.targets) if result.targets else None
+            await store_and_complete_message(
+                project_id=project_id,
+                item_name=self.name,
+                item_type="process",
+                direction="inbound",
+                raw_content=raw,
+                status=status,
+                source_item=getattr(message, 'source', None),
+                destination_item=dest,
+            )
+        except Exception as e:
+            self._log.warning("routing_message_storage_failed", error=str(e))
+
     def _evaluate_rules(self, message: HL7Message) -> RoutingResult:
         """
         Evaluate routing rules against a message.
