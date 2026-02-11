@@ -16,10 +16,15 @@ import {
   testItem,
   createConnection,
   deleteConnection,
+  createRoutingRule,
+  updateRoutingRule,
+  deleteRoutingRule,
   listItemTypes,
   type ProjectDetail,
   type ProjectItem,
   type Connection,
+  type RoutingRule,
+  type RoutingRuleCreate,
   type ItemCreate,
   type ItemTypeDefinition,
   type TestMessageResult,
@@ -36,7 +41,7 @@ export default function ProjectDetailPage() {
   const [error, setError] = useState<string | null>(null);
   const [selectedItem, setSelectedItem] = useState<ProjectItem | null>(null);
   const [showAddItemModal, setShowAddItemModal] = useState(false);
-  const [activeTab, setActiveTab] = useState<'items' | 'connections' | 'settings'>('items');
+  const [activeTab, setActiveTab] = useState<'items' | 'connections' | 'routing' | 'settings'>('items');
 
   const loadProject = async () => {
     if (!currentWorkspace || !projectId) return;
@@ -219,7 +224,7 @@ export default function ProjectDetailPage() {
 
         {/* Tabs */}
         <div className="mt-4 flex gap-4 border-b -mb-px">
-          {(['items', 'connections', 'settings'] as const).map((tab) => (
+          {(['items', 'connections', 'routing', 'settings'] as const).map((tab) => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
@@ -229,9 +234,10 @@ export default function ProjectDetailPage() {
                   : 'text-gray-500 border-transparent hover:text-gray-700'
               }`}
             >
-              {tab.charAt(0).toUpperCase() + tab.slice(1)}
+              {tab === 'routing' ? 'Routing Rules' : tab.charAt(0).toUpperCase() + tab.slice(1)}
               {tab === 'items' && ` (${project.items.length})`}
               {tab === 'connections' && ` (${project.connections.length})`}
+              {tab === 'routing' && ` (${project.routing_rules?.length || 0})`}
             </button>
           ))}
         </div>
@@ -315,6 +321,17 @@ export default function ProjectDetailPage() {
               projectId={projectId}
               onUpdate={loadProject}
               onDelete={handleDeleteConnection}
+            />
+          </div>
+        )}
+
+        {activeTab === 'routing' && (
+          <div className="flex-1 overflow-y-auto p-6">
+            <RoutingRulesPanel
+              rules={project.routing_rules || []}
+              items={project.items}
+              projectId={projectId}
+              onUpdate={loadProject}
             />
           </div>
         )}
@@ -1034,6 +1051,376 @@ function ProjectSettingsPanel({ project }: { project: ProjectDetail }) {
           ))}
         </div>
       </div>
+    </div>
+  );
+}
+
+interface RoutingRulesPanelProps {
+  rules: RoutingRule[];
+  items: ProjectItem[];
+  projectId: string;
+  onUpdate: () => void;
+}
+
+function RoutingRulesPanel({ rules, items, projectId, onUpdate }: RoutingRulesPanelProps) {
+  const [showForm, setShowForm] = useState(false);
+  const [editingRule, setEditingRule] = useState<RoutingRule | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  // Form state
+  const [formName, setFormName] = useState('');
+  const [formPriority, setFormPriority] = useState(10);
+  const [formEnabled, setFormEnabled] = useState(true);
+  const [formCondition, setFormCondition] = useState('');
+  const [formAction, setFormAction] = useState<'send' | 'transform' | 'stop' | 'delete'>('send');
+  const [formTargets, setFormTargets] = useState<string[]>([]);
+  const [formTransform, setFormTransform] = useState('');
+
+  const resetForm = () => {
+    setFormName('');
+    setFormPriority(10);
+    setFormEnabled(true);
+    setFormCondition('');
+    setFormAction('send');
+    setFormTargets([]);
+    setFormTransform('');
+    setEditingRule(null);
+    setError(null);
+  };
+
+  const openCreate = () => {
+    resetForm();
+    setShowForm(true);
+  };
+
+  const openEdit = (rule: RoutingRule) => {
+    setEditingRule(rule);
+    setFormName(rule.name);
+    setFormPriority(rule.priority);
+    setFormEnabled(rule.enabled);
+    setFormCondition(rule.condition_expression || '');
+    setFormAction(rule.action);
+    setFormTargets(rule.target_items || []);
+    setFormTransform(rule.transform_name || '');
+    setShowForm(true);
+  };
+
+  const handleSubmit = async () => {
+    if (!formName.trim()) return;
+    setIsSaving(true);
+    setError(null);
+    try {
+      const data: RoutingRuleCreate = {
+        name: formName,
+        priority: formPriority,
+        enabled: formEnabled,
+        condition_expression: formCondition || undefined,
+        action: formAction,
+        target_items: formTargets,
+        transform_name: formTransform || undefined,
+      };
+      if (editingRule) {
+        await updateRoutingRule(projectId, editingRule.id, data);
+      } else {
+        await createRoutingRule(projectId, data);
+      }
+      setShowForm(false);
+      resetForm();
+      onUpdate();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to save routing rule');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleDelete = async (rule: RoutingRule) => {
+    if (!confirm(`Delete routing rule "${rule.name}"?`)) return;
+    try {
+      await deleteRoutingRule(projectId, rule.id);
+      onUpdate();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to delete routing rule');
+    }
+  };
+
+  const handleToggleEnabled = async (rule: RoutingRule) => {
+    try {
+      await updateRoutingRule(projectId, rule.id, { enabled: !rule.enabled });
+      onUpdate();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to toggle rule');
+    }
+  };
+
+  const getItemName = (id: string) => items.find(i => i.id === id || i.name === id)?.name || id;
+
+  const sortedRules = [...rules].sort((a, b) => a.priority - b.priority);
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <h2 className="text-lg font-semibold text-gray-900">Routing Rules</h2>
+        <button
+          onClick={openCreate}
+          className="flex items-center gap-2 px-3 py-1.5 text-sm font-medium text-blue-600 bg-blue-50 rounded-lg hover:bg-blue-100"
+        >
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+          </svg>
+          New Rule
+        </button>
+      </div>
+
+      {error && (
+        <div className="p-3 text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg flex justify-between items-center">
+          <span>{error}</span>
+          <button onClick={() => setError(null)} className="text-red-500 hover:text-red-700">×</button>
+        </div>
+      )}
+
+      {/* Rules List */}
+      {sortedRules.length === 0 && !showForm ? (
+        <div className="text-center py-12 bg-gray-50 rounded-lg border-2 border-dashed">
+          <svg className="mx-auto h-12 w-12 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M13 10V3L4 14h7v7l9-11h-7z" />
+          </svg>
+          <p className="mt-4 text-gray-500">No routing rules defined</p>
+          <p className="text-sm text-gray-400 mt-1">Add rules to control how messages are routed between items</p>
+          <button
+            onClick={openCreate}
+            className="mt-4 px-4 py-2 text-sm font-medium text-blue-600 bg-blue-50 rounded-lg hover:bg-blue-100"
+          >
+            Create First Rule
+          </button>
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {sortedRules.map((rule) => (
+            <div key={rule.id} className={`p-4 rounded-lg border ${rule.enabled ? 'bg-white border-gray-200' : 'bg-gray-50 border-gray-200 opacity-60'}`}>
+              <div className="flex items-start justify-between">
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-3">
+                    <span className="inline-flex items-center justify-center w-7 h-7 rounded-full bg-blue-100 text-blue-700 text-xs font-bold">
+                      {rule.priority}
+                    </span>
+                    <h3 className="text-sm font-semibold text-gray-900">{rule.name}</h3>
+                    <span className={`px-2 py-0.5 text-xs rounded-full font-medium ${
+                      rule.action === 'send' ? 'bg-green-100 text-green-700' :
+                      rule.action === 'transform' ? 'bg-purple-100 text-purple-700' :
+                      rule.action === 'stop' ? 'bg-red-100 text-red-700' :
+                      'bg-gray-100 text-gray-700'
+                    }`}>
+                      {rule.action}
+                    </span>
+                    {!rule.enabled && (
+                      <span className="px-2 py-0.5 text-xs rounded-full bg-gray-200 text-gray-500">disabled</span>
+                    )}
+                  </div>
+                  {rule.condition_expression && (
+                    <p className="mt-2 text-xs font-mono text-gray-600 bg-gray-50 px-3 py-1.5 rounded border">
+                      {rule.condition_expression}
+                    </p>
+                  )}
+                  {rule.target_items && rule.target_items.length > 0 && (
+                    <div className="mt-2 flex items-center gap-1.5 flex-wrap">
+                      <span className="text-xs text-gray-500">→</span>
+                      {rule.target_items.map((t, i) => (
+                        <span key={i} className="px-2 py-0.5 text-xs bg-blue-50 text-blue-700 rounded">
+                          {getItemName(t)}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                  {rule.transform_name && (
+                    <p className="mt-1 text-xs text-gray-500">Transform: <code className="text-purple-600">{rule.transform_name}</code></p>
+                  )}
+                </div>
+                <div className="flex items-center gap-1 ml-4">
+                  <button
+                    onClick={() => handleToggleEnabled(rule)}
+                    className={`p-1.5 rounded ${rule.enabled ? 'text-green-600 hover:bg-green-50' : 'text-gray-400 hover:bg-gray-100'}`}
+                    title={rule.enabled ? 'Disable rule' : 'Enable rule'}
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      {rule.enabled ? (
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                      ) : (
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" />
+                      )}
+                    </svg>
+                  </button>
+                  <button
+                    onClick={() => openEdit(rule)}
+                    className="p-1.5 text-blue-600 hover:bg-blue-50 rounded"
+                    title="Edit rule"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                    </svg>
+                  </button>
+                  <button
+                    onClick={() => handleDelete(rule)}
+                    className="p-1.5 text-red-600 hover:bg-red-50 rounded"
+                    title="Delete rule"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                    </svg>
+                  </button>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Create/Edit Form Modal */}
+      {showForm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-lg mx-4 max-h-[90vh] overflow-hidden flex flex-col">
+            <div className="flex items-center justify-between px-6 py-4 border-b">
+              <h2 className="text-lg font-semibold text-gray-900">
+                {editingRule ? 'Edit Routing Rule' : 'New Routing Rule'}
+              </h2>
+              <button onClick={() => { setShowForm(false); resetForm(); }} className="text-gray-400 hover:text-gray-600">
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            <div className="p-6 space-y-4 overflow-y-auto">
+              {error && (
+                <div className="p-3 text-sm text-red-700 bg-red-50 border border-red-200 rounded">
+                  {error}
+                </div>
+              )}
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700">Rule Name *</label>
+                <input
+                  type="text"
+                  value={formName}
+                  onChange={(e) => setFormName(e.target.value)}
+                  placeholder="e.g. ADT_to_EPR"
+                  className="mt-1 w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">Priority</label>
+                  <input
+                    type="number"
+                    min={1}
+                    max={999}
+                    value={formPriority}
+                    onChange={(e) => setFormPriority(Number(e.target.value))}
+                    className="mt-1 w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                  />
+                  <p className="mt-1 text-xs text-gray-400">Lower = evaluated first</p>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">Action *</label>
+                  <select
+                    value={formAction}
+                    onChange={(e) => setFormAction(e.target.value as typeof formAction)}
+                    className="mt-1 w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="send">Send</option>
+                    <option value="transform">Transform</option>
+                    <option value="stop">Stop (discard)</option>
+                    <option value="delete">Delete</option>
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700">Condition Expression</label>
+                <textarea
+                  value={formCondition}
+                  onChange={(e) => setFormCondition(e.target.value)}
+                  placeholder='e.g. HL7.MSH:MessageType.MessageCode = "ADT" AND HL7.MSH:MessageType.TriggerEvent IN ("A01","A02","A03")'
+                  rows={3}
+                  className="mt-1 w-full px-3 py-2 text-sm font-mono border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                />
+                <p className="mt-1 text-xs text-gray-400">HL7 field-based condition. Leave empty to match all messages.</p>
+              </div>
+
+              {(formAction === 'send' || formAction === 'transform') && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">Target Items</label>
+                  <div className="mt-1 space-y-1 max-h-40 overflow-y-auto border border-gray-300 rounded-lg p-2">
+                    {items.filter(i => i.item_type === 'process' || i.item_type === 'operation').map((item) => (
+                      <label key={item.id} className="flex items-center gap-2 px-2 py-1 hover:bg-gray-50 rounded cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={formTargets.includes(item.name)}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              setFormTargets([...formTargets, item.name]);
+                            } else {
+                              setFormTargets(formTargets.filter(t => t !== item.name));
+                            }
+                          }}
+                          className="h-4 w-4 text-blue-600 border-gray-300 rounded"
+                        />
+                        <span className="text-sm text-gray-700">{item.name}</span>
+                        <span className="text-xs text-gray-400 capitalize">({item.item_type})</span>
+                      </label>
+                    ))}
+                    {items.filter(i => i.item_type === 'process' || i.item_type === 'operation').length === 0 && (
+                      <p className="text-xs text-gray-400 px-2 py-1">No process or operation items available</p>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {formAction === 'transform' && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">Transform Name</label>
+                  <input
+                    type="text"
+                    value={formTransform}
+                    onChange={(e) => setFormTransform(e.target.value)}
+                    placeholder="e.g. custom.sth.v23_to_v251_RIS"
+                    className="mt-1 w-full px-3 py-2 text-sm font-mono border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+              )}
+
+              <div className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  id="rule-enabled"
+                  checked={formEnabled}
+                  onChange={(e) => setFormEnabled(e.target.checked)}
+                  className="h-4 w-4 text-blue-600 border-gray-300 rounded"
+                />
+                <label htmlFor="rule-enabled" className="text-sm text-gray-700">Enabled</label>
+              </div>
+            </div>
+
+            <div className="px-6 py-4 border-t bg-gray-50 flex justify-end gap-3">
+              <button
+                onClick={() => { setShowForm(false); resetForm(); }}
+                className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSubmit}
+                disabled={isSaving || !formName.trim()}
+                className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50"
+              >
+                {isSaving ? 'Saving...' : editingRule ? 'Update Rule' : 'Create Rule'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

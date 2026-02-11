@@ -501,17 +501,13 @@ export default function ConfigurePage() {
         <div className="space-y-4">
           <div className="flex items-center justify-between">
             <h2 className="text-lg font-semibold text-gray-900">Routing Rules</h2>
-            <button className="inline-flex items-center gap-2 rounded-lg bg-nhs-blue px-4 py-2 text-sm font-medium text-white hover:bg-nhs-dark-blue">
-              <Plus className="h-4 w-4" />
-              New Rule
-            </button>
           </div>
 
           <div className="rounded-xl border border-gray-200 bg-white p-8 text-center shadow-sm">
             <GitBranch className="mx-auto h-12 w-12 text-gray-300" />
-            <p className="mt-4 text-sm font-medium text-gray-900">Routing Rules</p>
+            <p className="mt-4 text-sm font-medium text-gray-900">Project-Level Routing Rules</p>
             <p className="mt-1 text-xs text-gray-500">
-              Configure routing rules within individual projects. Navigate to a project to manage its routing configuration.
+              Routing rules are managed within each project. Open a project and go to the <strong>Routing Rules</strong> tab to create, edit, and manage rules.
             </p>
             <Link
               href="/projects"
