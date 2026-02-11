@@ -5,6 +5,71 @@ All notable changes to OpenLI HIE (Healthcare Integration Engine) will be docume
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.7.3] - 2026-02-11
+
+### Added - Data-Driven Seed System, Hooks Config API, UI/UX Fixes
+
+**Data-Driven Seed System** (replaces hardcoded Python templates):
+- `prompt-manager/seeds/templates.json`: 10 healthcare integration templates (HL7 ADT/ORM/ORU routes, FHIR UK Core Patient Bundle, Clinical Safety Review DCB0129, NHS Compliance Audit, Integration Test Plan, Weekly Status Report, API Design Specification, FHIR Resource Mapping)
+- `prompt-manager/seeds/skills.json`: 5 platform skills (hl7-route-builder, fhir-mapper, clinical-safety-review, nhs-compliance-check, integration-test)
+- `POST /seed/templates` endpoint: Loads templates from JSON, idempotent (skips existing by name)
+- `POST /seed/skills` endpoint: Loads skills from JSON, idempotent (skips existing by slug)
+- Removed all hardcoded `SEED_TEMPLATES` from `prompt-manager/app/main.py`
+- Updated `prompt-manager/Dockerfile` to `COPY seeds/` directory into container
+
+**Hooks Configuration API** (fixes browser save error):
+- `GET /hooks/config` on agent-runner: Returns current hooks configuration with sensible defaults
+- `POST /hooks/config` on agent-runner: Saves hooks configuration to persistent JSON file
+- Default config includes: security (blocked patterns, HL7 validation, TLS), audit (agent actions, message access, config changes), NHS compliance (NHS number detection, PII, data retention), clinical safety (message integrity, ACK confirmation, message loss alerts)
+- Persistent storage at `/app/hooks_config.json` inside container
+
+**Portal UI Enhancements**:
+- **Prompts page**: "Load Samples" button in header + "Load Sample Templates" / "Create from Scratch" in empty state
+- **Skills page**: "Load Samples" button in header + "Load Sample Skills" in empty state
+- **Agents page**: Thread creation now sends workspace metadata (`workspaceId`, `workspaceName`, `projectId`, `runnerType`, `skipGitRepoCheck`) instead of filesystem paths
+- **Agents page**: Error handler supports both codex (`parsed.message`) and claude (`parsed.payload?.message`) runner formats
+- **Portal proxy**: POST handler gracefully handles no-body requests for seed endpoints
+
+### Fixed
+
+- **Platform data visibility**: `list_latest` in both `template_repo.py` and `skill_repo.py` now includes platform items (`tenant_id=NULL`) alongside tenant-specific items using `OR` filter. Previously, seeded templates/skills with no tenant were invisible to authenticated users.
+- **Hooks save error**: Browser error when saving hooks configuration resolved by adding `GET`/`POST /hooks/config` endpoints to agent-runner.
+- **Agents page crash**: Thread creation no longer sends filesystem paths; uses HIE workspace metadata instead.
+- **Import ordering**: Cleaned up stdlib imports in `agent-runner/app/main.py`.
+
+### Version Bumps
+
+All services bumped to **1.7.3**:
+- `agent-runner` FastAPI app + `/health` endpoint
+- `prompt-manager` FastAPI app + `/health` endpoint
+- `codex-runner` Express app + `/health` endpoint
+- `Portal/package.json`
+- `AboutModal.tsx` VERSION constant + version history entry
+- Sidebar footer auto-updates via `VERSION` import
+
+### Files Changed (11 files, ~500 insertions, ~216 deletions)
+
+**New Files (2):**
+- `prompt-manager/seeds/templates.json` (277 lines)
+- `prompt-manager/seeds/skills.json` (267 lines)
+
+**Modified Files (9):**
+- `agent-runner/app/main.py` — Hooks config endpoints, version bump, import cleanup
+- `prompt-manager/app/main.py` — Remove hardcoded seeds, add seed API, version bump
+- `prompt-manager/app/repositories/template_repo.py` — Platform data visibility fix
+- `prompt-manager/app/repositories/skill_repo.py` — Platform data visibility fix
+- `prompt-manager/Dockerfile` — COPY seeds directory
+- `Portal/src/app/(app)/prompts/page.tsx` — Load Samples button
+- `Portal/src/app/(app)/admin/skills/page.tsx` — Load Sample Skills button
+- `Portal/src/app/(app)/agents/page.tsx` — Workspace metadata + error handler fix
+- `Portal/src/app/api/prompt-manager/[...path]/route.ts` — No-body POST support
+
+### Breaking Changes
+
+None - 100% backward compatible.
+
+---
+
 ## [1.7.2] - 2026-02-11
 
 ### Added - E2E & Unit Test Suite (ported from saas-codex)

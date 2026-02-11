@@ -8,12 +8,25 @@ interface VersionHistory {
   features: string[];
 }
 
-const VERSION = "1.7.2";
+const VERSION = "1.7.3";
 const BUILD_DATE = "Feb 11, 2026";
 const PLATFORM_NAME = "OpenLI HIE";
 const PRODUCT_NAME = "OpenLI Healthcare Integration Engine";
 
 const versionHistory: VersionHistory[] = [
+  {
+    version: "1.7.3",
+    date: "Feb 11, 2026",
+    features: [
+      "Data-driven seed system: JSON-based sample templates (10) and skills (5)",
+      "Load Samples buttons on Prompts and Skills pages (header + empty state)",
+      "Hooks config API: GET/POST /hooks/config on agent-runner (fixes browser save error)",
+      "Agents page: workspace metadata for /threads, dual-format error handling",
+      "Platform data visibility: list_latest includes tenant_id=NULL items",
+      "Portal proxy: POST handler supports no-body requests for seed endpoints",
+      "Version bump across all services to 1.7.3",
+    ],
+  },
   {
     version: "1.7.2",
     date: "Feb 11, 2026",
