@@ -507,6 +507,17 @@ class HL7TCPOperation(BusinessOperation):
             elif action == "W":
                 self._log.warning("hl7_ack_warning", ack_code=ack_code)
             
+            # Store outbound message in portal_messages
+            project_id = getattr(self, 'project_id', None)
+            if project_id:
+                import asyncio as _asyncio
+                _asyncio.create_task(self._store_outbound_message(
+                    project_id=project_id,
+                    raw_content=data,
+                    ack_content=ack_bytes,
+                    status="sent",
+                ))
+            
             return SendResult(
                 success=True,
                 ack_code=ack_code,
@@ -515,12 +526,62 @@ class HL7TCPOperation(BusinessOperation):
                 action=action,
             )
         
-        except (HL7SendError, HL7RetryError):
+        except (HL7SendError, HL7RetryError) as e:
+            # Store failed message
+            project_id = getattr(self, 'project_id', None)
+            if project_id:
+                import asyncio as _asyncio
+                _asyncio.create_task(self._store_outbound_message(
+                    project_id=project_id,
+                    raw_content=data,
+                    ack_content=None,
+                    status="failed",
+                    error_message=str(e),
+                ))
             raise
         
         except Exception as e:
             self._log.error("hl7_send_error", error=str(e))
+            # Store failed message
+            project_id = getattr(self, 'project_id', None)
+            if project_id:
+                import asyncio as _asyncio
+                _asyncio.create_task(self._store_outbound_message(
+                    project_id=project_id,
+                    raw_content=data,
+                    ack_content=None,
+                    status="failed",
+                    error_message=str(e),
+                ))
             raise HL7SendError(f"Send failed: {e}")
+    
+    async def _store_outbound_message(
+        self,
+        project_id: UUID,
+        raw_content: bytes,
+        ack_content: bytes | None,
+        status: str,
+        error_message: str | None = None,
+    ) -> None:
+        """Store outbound message in portal_messages for UI visibility."""
+        try:
+            from Engine.api.services.message_store import store_and_complete_message
+            remote_host = self.get_setting("Adapter", "IPAddress")
+            remote_port = self.get_setting("Adapter", "Port")
+            await store_and_complete_message(
+                project_id=project_id,
+                item_name=self.name,
+                item_type="operation",
+                direction="outbound",
+                raw_content=raw_content,
+                status=status,
+                ack_content=ack_content,
+                error_message=error_message,
+                remote_host=str(remote_host) if remote_host else None,
+                remote_port=int(remote_port) if remote_port else None,
+            )
+        except Exception as e:
+            self._log.warning("outbound_message_storage_failed", error=str(e))
 
 
 class HL7Message:
