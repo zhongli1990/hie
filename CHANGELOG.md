@@ -5,6 +5,45 @@ All notable changes to OpenLI HIE (Healthcare Integration Engine) will be docume
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.7.5] - 2026-02-11
+
+### Added - End-to-End Message Routing Pipeline
+
+**Message Routing Implementation:**
+- `Host._production` reference for inter-host message forwarding via `ProductionEngine`
+- `BusinessService.send_to_targets()` forwards messages from inbound services to configured targets
+- `HL7TCPService._process_message()` calls `send_to_targets()` after ACK
+- `HL7RoutingEngine._route_to_target()` submits routed messages to target hosts
+- `EngineManager.deploy()` wires connections (UUID→name resolution) and routing rules into engine
+- `ConditionEvaluator._translate_iris_paths()` converts IRIS virtual property paths to field references
+- All-match rule evaluation: collects targets from ALL matching rules (not first-match-wins)
+
+**Message Storage for All Host Types:**
+- `HL7RoutingEngine._store_routing_message()` — process hosts now visible in Portal Messages tab
+- `HL7TCPOperation._store_outbound_message()` — outbound operations now visible in Portal Messages tab
+- `ManagedQueue.put_nowait()` and `join()` methods for queue interface completeness
+
+**Portal — Routing Rules UI:**
+- Routing Rules tab on project page with full CRUD (create, edit, delete, list)
+- Condition expression editor, target item selection, priority ordering
+- Rule count badge on tab header
+
+**Documentation:**
+- `docs/MESSAGE_ROUTING_WORKFLOW.md` — complete workflow implementation details
+- `docs/RELEASE_NOTES_v1.7.5.md` — detailed release notes
+
+### Fixed
+
+- Connection UUID resolution in `EngineManager.deploy()` (source_item_id/target_item_id → names)
+- IRIS condition syntax not recognized by `ConditionEvaluator` (HL7.MSH:MessageType → {MSH-9.1})
+- First-match-wins routing prevented multi-target delivery for ADT^A01
+- Routing rules API rejected item names (changed `target_items` from `list[UUID]` to `list[str]`)
+- JSONB parsing for `target_items` in `get_full_config` and `RoutingRuleRepository`
+- `ManagedQueue` missing `put_nowait` and `join` methods
+- Extra closing parenthesis in Portal configure page
+
+---
+
 ## [1.8.0] - 2026-02-11
 
 ### Added - Developer Platform, Agent HIE Skills, Class Namespace Enforcement
