@@ -1,800 +1,1181 @@
-# LI HIE Developer & Administrator Guide
-## NHS Trust Integration Scenario - Complete Configuration Guide
+# OpenLI HIE — Developer & User Guide
+
+**Version:** 1.7.3  
+**Date:** February 11, 2026  
+**Status:** Production-Ready Enterprise Integration Engine  
+
+---
+
+## Part 1: User Guide — Portal Configuration (Zero Code)
+
+> *This section is for **Integration Configurators** — NHS integration engineers who configure message flows entirely through the Portal UI, identical to configuring productions in IRIS Management Portal or channels in Mirth Administrator.*
+
+---
 
 ## Overview
 
-**LI HIE (IRIS-compatible Healthcare Integration Engine)** is a fully configurable, enterprise-grade integration orchestrator for NHS acute trusts. Like InterSystems IRIS, Orion Rhapsody, and Mirth Connect, **all integrations are configured through the Portal UI and Manager API** - no coding required for standard workflows.
+**OpenLI HIE** is a fully configurable, enterprise-grade healthcare integration engine for NHS acute trusts. Like InterSystems IRIS, Orion Rhapsody, and Mirth Connect, **all standard integrations are configured through the Portal UI** — zero coding required.
 
-This guide demonstrates how to configure a complete production-ready NHS integration using **100% configuration** through the Portal.
+This guide walks through a complete, production-ready NHS integration scenario with:
 
-## Enterprise Integration Engine Capabilities
+- **3 Inbound Services** — HL7 v2.3 MLLP, FHIR R4 REST, HL7 File Reader
+- **2 Business Processes** — Validation/Transformation, Content-Based Routing
+- **3 Outbound Operations** — RIS HL7 v2.5.1, Lab HL7 v2.4, File Writer
 
-### Comparison with Leading Platforms
+### Platform Comparison
 
-| Capability | IRIS | Rhapsody | Mirth | **LI HIE** |
-|------------|------|----------|-------|------------|
-| Visual configuration | ✅ | ✅ | ✅ | ✅ Portal UI |
-| Zero-code workflows | ✅ | ✅ | ✅ | ✅ 100% config |
-| HL7 v2.x support | ✅ | ✅ | ✅ | ✅ v2.3-v2.8 |
-| MLLP TCP/IP | ✅ | ✅ | ✅ | ✅ Native |
-| File I/O | ✅ | ✅ | ✅ | ✅ Watch/Write |
-| Business processes | ✅ | ✅ | ✅ | ✅ Rule engine |
-| Message transformation | ✅ | ✅ | ✅ | ✅ DTL-style |
-| Production orchestration | ✅ | ✅ | ✅ | ✅ Manager API |
-| Auto-restart | ✅ | ✅ | ✅ | ✅ Phase 2 |
-| Multi-process execution | ✅ | ✅ | ❌ | ✅ Phase 1 |
-| Priority queues | ✅ | ✅ | ❌ | ✅ Phase 2 |
-| Hot configuration reload | ✅ | ❌ | ❌ | ✅ Phase 3 |
+| Capability | IRIS | Rhapsody | Mirth | **OpenLI HIE** |
+|------------|------|----------|-------|----------------|
+| Configuration method | Management Portal | Rhapsody IDE | Admin Console | **Portal UI (web)** |
+| Zero-code workflows | Yes | Yes | Yes | **Yes — 100% config** |
+| HL7 v2.x (MLLP) | Yes | Yes | Yes | **Yes — v2.3 to v2.8** |
+| FHIR R4 (REST/JSON) | Yes | Yes | Yes | **Yes — native** |
+| File I/O | Yes | Yes | Yes | **Yes — watch/write** |
+| Visual workflow | BPL Editor | Route Designer | Channel view | **Visual Designer** |
+| Hot reload | Partial | No | No | **Yes — zero downtime** |
+| True multiprocessing | No (JVM) | No (JVM) | No (JVM) | **Yes — OS processes** |
+| AI-assisted config | No | No | No | **Yes — GenAI Agent** |
+| License cost | $$$$$ | $$$$ | Free/$$ | **Free (AGPL/Commercial)** |
+
+### IRIS Naming Convention Alignment
+
+OpenLI HIE follows IRIS conventions so that IRIS developers feel immediately at home:
+
+| IRIS Concept | OpenLI HIE Equivalent | Notes |
+|-------------|----------------------|-------|
+| Namespace | Workspace | Organizational container |
+| Production | Project | Deployable unit of integration |
+| Business Service | Service (Inbound) | Receives messages from external systems |
+| Business Process | Process | Validates, transforms, routes messages |
+| Business Operation | Operation (Outbound) | Sends messages to external systems |
+| Adapter | Adapter | Protocol-specific I/O (MLLP, HTTP, File) |
+| Host Settings | Host Settings | Business logic configuration |
+| Adapter Settings | Adapter Settings | Transport/protocol configuration |
+| TargetConfigNames | TargetConfigNames | Downstream item routing (identical) |
+| ReplyCodeActions | ReplyCodeActions | ACK/NACK handling (identical syntax) |
+| Production Config | Project Config | JSON (HIE) vs XML (IRIS) |
+| Class Registry | Class Registry | Dynamic class lookup (identical pattern) |
+| `EnsLib.HL7.Service.TCPService` | `li.hosts.hl7.HL7TCPService` | Auto-aliased — IRIS names work too |
+
+---
 
 ## Clinical Scenario: St. Thomas' Hospital
 
-**Integration Requirement:**
-Connect Cerner Millennium PAS with downstream clinical systems (RIS, ICE Lab) with full audit trail and NHS compliance.
+**Integration Requirement:**  
+Connect Cerner Millennium PAS, a GP FHIR endpoint, and batch HL7 file drops with downstream clinical systems (RIS, ICE Lab) and a local file archive — with full audit trail and NHS compliance.
 
-**All configuration done through Portal UI** - no code writing required.
+### Architecture Diagram
 
-## Step 1: Create Workspace (via Portal UI)
-
-**Navigation:** Portal → Workspaces → Create New
-
-```yaml
-# Configuration Form in Portal UI
-Workspace Name: "St. Thomas' Hospital"
-Workspace ID: "st-thomas-hospital"
-Description: "Main acute trust integration hub"
-Tags: ["NHS", "Acute Trust", "South London"]
-Region: "London"
-Contact: "integration.team@sthospital.nhs.uk"
+```
+┌──────────────────────────────────────────────────────────────────────────────┐
+│                     St. Thomas' Hospital — ADT Production                    │
+├──────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│  INBOUND SERVICES (3)                                                        │
+│  ┌─────────────────────┐ ┌─────────────────────┐ ┌─────────────────────┐   │
+│  │ Cerner.PAS.Receiver  │ │ GP.FHIR.Receiver    │ │ Batch.File.Reader   │   │
+│  │ HL7 v2.3 MLLP       │ │ FHIR R4 JSON/REST   │ │ HL7 File Watcher    │   │
+│  │ Port: 2575           │ │ Port: 8443 (HTTPS)  │ │ /data/inbound/*.hl7 │   │
+│  │ (BusinessService)    │ │ (BusinessService)    │ │ (BusinessService)    │   │
+│  └──────────┬──────────┘ └──────────┬──────────┘ └──────────┬──────────┘   │
+│             │                        │                        │              │
+│             └────────────┬───────────┴────────────────────────┘              │
+│                          ▼                                                    │
+│  BUSINESS PROCESSES (2)                                                      │
+│  ┌──────────────────────────────────────────────────────────────────────┐   │
+│  │ NHS.Validation.Process  (BusinessProcess)                             │   │
+│  │ • NHS Number validation (Modulus 11)                                  │   │
+│  │ • PDS demographic lookup & enrichment                                 │   │
+│  │ • Duplicate admission detection                                       │   │
+│  │ • UK postcode validation                                              │   │
+│  │ • FHIR→HL7 normalisation (converts FHIR Patient to HL7 ADT)         │   │
+│  └──────────────────────────┬───────────────────────────────────────────┘   │
+│                              ▼                                                │
+│  ┌──────────────────────────────────────────────────────────────────────┐   │
+│  │ ADT.Content.Router  (BusinessProcess — HL7 Routing Engine)            │   │
+│  │ • Rule 1: ADT A01/A02/A03/A08 → RIS (v2.5.1) + Lab (v2.4) + File  │   │
+│  │ • Rule 2: ORM O01 (Radiology)  → RIS (v2.5.1) + File               │   │
+│  │ • Rule 3: ORM O01 (Lab)        → Lab (v2.4) + File                  │   │
+│  │ • Rule 4: FHIR-origin msgs     → All targets + File                  │   │
+│  │ • Default: Archive to file only                                       │   │
+│  └───────┬──────────────────────┬──────────────────────┬────────────────┘   │
+│          ▼                      ▼                      ▼                     │
+│  OUTBOUND OPERATIONS (3)                                                     │
+│  ┌─────────────────────┐ ┌─────────────────────┐ ┌─────────────────────┐   │
+│  │ RIS.HL7.Sender       │ │ Lab.HL7.Sender      │ │ Archive.File.Writer │   │
+│  │ HL7 v2.5.1 MLLP     │ │ HL7 v2.4 MLLP       │ │ /data/outbound/     │   │
+│  │ ris.nhs:2576         │ │ lab.nhs:2577         │ │ Timestamped files   │   │
+│  │ (BusinessOperation)  │ │ (BusinessOperation)  │ │ (BusinessOperation) │   │
+│  └─────────────────────┘ └─────────────────────┘ └─────────────────────┘   │
+│                                                                              │
+└──────────────────────────────────────────────────────────────────────────────┘
 ```
 
-**Result:** Workspace created and activated
+**Total: 8 items** — 3 Services + 2 Processes + 3 Operations  
+**Comparable IRIS Production:** Would have identical item count and wiring.
 
-## Step 2: Create Project (via Portal UI)
+---
 
-**Navigation:** Portal → St. Thomas' Hospital → Projects → Create New
+## Step 1: Create Workspace & Project
 
-```yaml
-# Configuration Form
-Project Name: "ADT Integration Production"
-Project ID: "adt-integration-prod"
-Description: "Patient admission/discharge/transfer integration"
-Version: "1.0.0"
-Environment: "Production"
-Status: "Active"
+### 1.1 Create Workspace
+
+**Portal Navigation:** Sidebar → Projects → "Create Workspace"
+
+| Field | Value | IRIS Equivalent |
+|-------|-------|-----------------|
+| Name | `St_Thomas_Hospital` | Namespace name |
+| Display Name | St. Thomas' Hospital | Namespace description |
+| Description | Main acute trust integration hub | — |
+| Tags | NHS, Acute Trust, South London | — |
+
+**IRIS equivalent:** `zn "ST-THOMAS"` — switching to a namespace.
+
+### 1.2 Create Project (Production)
+
+**Portal Navigation:** Inside workspace → "Create Project"
+
+| Field | Value | IRIS Equivalent |
+|-------|-------|-----------------|
+| Name | `ADT_Integration` | Production name |
+| Display Name | ADT Integration Production | Production description |
+| Description | Patient ADT + Orders integration | — |
+| Version | 1.0.0 | — |
+
+**IRIS equivalent:** Creating a new Production class `STH.ADT.Production` in Studio.
+
+---
+
+## Step 2: Add Inbound Services (3)
+
+### 2.1 Cerner PAS HL7 v2.3 MLLP Receiver
+
+**Portal Navigation:** Project → Items → "Add Item" → Service
+
+This is the primary inbound — receives real-time ADT and Order messages from Cerner Millennium PAS over MLLP/TCP, exactly like `EnsLib.HL7.Service.TCPService` in IRIS.
+
+| Section | Setting | Value |
+|---------|---------|-------|
+| **Basic** | Name | `Cerner.PAS.Receiver` |
+| | Display Name | Cerner Millennium PAS — HL7 v2.3 |
+| | Class | HL7 TCP Service *(dropdown)* |
+| | Enabled | Yes |
+| | Pool Size | 4 |
+| | Category | Inbound \| PAS |
+| **Adapter** | Port | `2575` |
+| | IP Address | `0.0.0.0` |
+| | Job Per Connection | Yes |
+| | Read Timeout | `30` seconds |
+| | Stay Connected | `-1` (keep alive) |
+| **Host** | Message Schema Category | `2.3` |
+| | TargetConfigNames | `NHS.Validation.Process` |
+| | ACK Mode | `Application` |
+| | Archive IO | Yes |
+| **Enterprise** | Execution Mode | `Multiprocess` |
+| | Worker Count | `4` |
+| | Queue Type | `Priority` |
+| | Queue Size | `10000` |
+| | Overflow Strategy | `Drop Oldest` |
+| | Restart Policy | `Always` |
+| | Max Restarts | `100` |
+| | Restart Delay | `10` seconds |
+| | Messaging Pattern | `Async Reliable` |
+
+**Click:** Save → Deploy → Start  
+**Result:** Service listening on port 2575, accepting MLLP connections from Cerner PAS.
+
+**IRIS equivalent configuration:**
 ```
-
-**Result:** Empty production ready for item configuration
-
-## Step 3: Configure Items (via Portal UI)
-
-### 3.1 Add HL7 Inbound Service (MLLP from Cerner PAS)
-
-**Navigation:** Portal → Project → Items → Add New Item
-
-**Item Type Selection:**
-```
-Category: Services (Inbound)
-Type: HL7 TCP Service
-Template: Cerner Millennium PAS Receiver
-```
-
-**Basic Configuration:**
-```yaml
-Name: "HL7_PAS_Service"
-Display Name: "Cerner PAS HL7 Receiver"
-Enabled: ✅ Yes
-Pool Size: 4
-Category: "Inbound | PAS"
-Comment: "Receives ADT and Order messages from Cerner Millennium"
-```
-
-**Adapter Settings (TCP/MLLP):**
-```yaml
+// In IRIS Management Portal → Production → Add Business Service
+Class: EnsLib.HL7.Service.TCPService
+Name: Cerner.PAS.Receiver
 Port: 2575
-IP Address: 0.0.0.0 (Listen on all interfaces)
-Job Per Connection: ✅ Yes
-Read Timeout: 30 seconds
-Stay Connected: -1 (Keep alive)
-SSL Config: (none - internal network)
+TargetConfigNames: NHS.Validation.Process
+MessageSchemaCategory: 2.3
+AckMode: App
 ```
-
-**Host Settings (HL7 Processing):**
-```yaml
-Message Schema Category: HL7 v2.3
-Target Config Names: ["ADT_Router"] (select from dropdown)
-ACK Mode: App (Application ACK after processing)
-Archive IO: ✅ Yes (for audit)
-```
-
-**🆕 Phase 2 Enterprise Settings (Performance & Reliability):**
-```yaml
-# Execution Configuration
-Execution Mode: Multiprocess (4 OS processes)
-Worker Count: 4 (match CPU cores)
-
-# Queue Configuration
-Queue Type: Priority (urgent messages first)
-Queue Size: 10000
-Overflow Strategy: Drop Oldest (prevent memory overflow)
-
-# Auto-Restart Configuration
-Restart Policy: Always (mission-critical)
-Max Restarts: 100
-Restart Delay: 10 seconds
-
-# Messaging Configuration
-Messaging Pattern: Async Reliable (fire-and-forget)
-Message Timeout: 30 seconds
-```
-
-**Portal Actions:**
-- Click "Save" → Item saved to database
-- Click "Deploy" → Item configuration sent to Engine
-- Click "Start" → Service starts listening on port 2575
-
-**Result:** ✅ HL7 PAS Service **running** and **accepting connections**
 
 ---
 
-### 3.2 Add File Watcher Service
+### 2.2 GP FHIR R4 REST/JSON Receiver
 
-**Navigation:** Portal → Items → Add New Item → File Service
+**Portal Navigation:** Project → Items → "Add Item" → Service
 
-**Basic Configuration:**
-```yaml
-Name: "File_PAS_Service"
-Display Name: "PAS Batch File Watcher"
-Enabled: ✅ Yes
+This service receives FHIR R4 Patient/Encounter resources as JSON over HTTPS from GP systems. No IRIS equivalent exists natively — this is an HIE advantage.
+
+| Section | Setting | Value |
+|---------|---------|-------|
+| **Basic** | Name | `GP.FHIR.Receiver` |
+| | Display Name | GP Connect — FHIR R4 JSON/REST |
+| | Class | FHIR HTTP Service *(dropdown)* |
+| | Enabled | Yes |
+| | Pool Size | 2 |
+| | Category | Inbound \| FHIR |
+| **Adapter** | Port | `8443` |
+| | SSL/TLS | Yes (NHS Spine TLS) |
+| | Base Path | `/fhir/r4` |
+| | Accepted Resources | `Patient, Encounter, Bundle` |
+| | Authentication | `Bearer Token` (NHS Identity) |
+| **Host** | FHIR Version | `R4` |
+| | TargetConfigNames | `NHS.Validation.Process` |
+| | Normalise to HL7 | Yes *(converts FHIR→HL7 ADT before routing)* |
+| | Archive IO | Yes |
+| **Enterprise** | Execution Mode | `Async` |
+| | Queue Type | `FIFO` |
+| | Queue Size | `5000` |
+| | Restart Policy | `Always` |
+| | Max Restarts | `50` |
+
+**Click:** Save → Deploy → Start  
+**Result:** HTTPS endpoint live at `https://hie.sth.nhs.uk:8443/fhir/r4`
+
+**Sample inbound FHIR request:**
+```json
+POST /fhir/r4/Patient HTTP/1.1
+Host: hie.sth.nhs.uk:8443
+Content-Type: application/fhir+json
+Authorization: Bearer eyJhbGciOiJSUzI1NiIs...
+
+{
+  "resourceType": "Patient",
+  "identifier": [
+    {
+      "system": "https://fhir.nhs.uk/Id/nhs-number",
+      "value": "9876543210"
+    }
+  ],
+  "name": [
+    {
+      "family": "Smith",
+      "given": ["John", "Q"]
+    }
+  ],
+  "gender": "male",
+  "birthDate": "1980-01-01",
+  "address": [
+    {
+      "line": ["123 High St"],
+      "city": "London",
+      "postalCode": "SW1A 1AA",
+      "country": "UK"
+    }
+  ]
+}
 ```
 
-**Adapter Settings:**
-```yaml
-File Path: /data/inbound
-File Spec: *.hl7
-Polling Interval: 5 seconds
-Archive Path: /data/processed
-Recursive: ❌ No
-```
-
-**Host Settings:**
-```yaml
-Target Config Names: ["ADT_Router"]
-```
-
-**Phase 2 Settings:**
-```yaml
-Execution Mode: Async (single event loop sufficient)
-Queue Type: FIFO (process files in order)
-Queue Size: 1000
-Restart Policy: On Failure
-Max Restarts: 5
-```
-
-**Portal Actions:** Save → Deploy → Start
-
-**Result:** ✅ File watcher **running** and **monitoring** /data/inbound
+The service normalises this to an HL7 ADT A28 (add person information) before passing to the validation process, so downstream routing rules work uniformly on HL7 messages regardless of inbound protocol.
 
 ---
 
-### 3.3 Add Business Process (ADT Router with Rule Engine)
+### 2.3 Batch HL7 File Reader
 
-**Navigation:** Portal → Items → Add New Item → Business Process
+**Portal Navigation:** Project → Items → "Add Item" → Service
 
-**Item Type Selection:**
+This service watches a directory for HL7 files dropped by batch processes (e.g., overnight PAS extracts), exactly like `EnsLib.HL7.Service.FileService` in IRIS.
+
+| Section | Setting | Value |
+|---------|---------|-------|
+| **Basic** | Name | `Batch.File.Reader` |
+| | Display Name | PAS Batch File Reader |
+| | Class | HL7 File Service *(dropdown)* |
+| | Enabled | Yes |
+| | Pool Size | 1 |
+| | Category | Inbound \| File |
+| **Adapter** | File Path | `/data/inbound` |
+| | File Spec | `*.hl7` |
+| | Polling Interval | `5` seconds |
+| | Archive Path | `/data/inbound/processed` |
+| | Recursive | No |
+| | Delete After Read | No *(move to archive)* |
+| **Host** | Message Schema Category | `2.3` |
+| | TargetConfigNames | `NHS.Validation.Process` |
+| **Enterprise** | Execution Mode | `Async` |
+| | Queue Type | `FIFO` |
+| | Queue Size | `1000` |
+| | Restart Policy | `On Failure` |
+| | Max Restarts | `5` |
+
+**Click:** Save → Deploy → Start  
+**Result:** Watching `/data/inbound/` for `*.hl7` files every 5 seconds.
+
+**IRIS equivalent:**
 ```
-Type: HL7 Routing Engine
-Template: ADT Message Router
+Class: EnsLib.HL7.Service.FileService
+Name: Batch.File.Reader
+FilePath: /data/inbound
+FileSpec: *.hl7
+ArchivePath: /data/inbound/processed
+TargetConfigNames: NHS.Validation.Process
 ```
 
-**Basic Configuration:**
+---
+
+## Step 3: Add Business Processes (2)
+
+### 3.1 NHS Validation & Transformation Process
+
+**Portal Navigation:** Project → Items → "Add Item" → Process
+
+This process validates every inbound message (regardless of source) and enriches it with PDS data. It is the equivalent of a custom `Ens.BusinessProcessBPL` in IRIS that calls out to PDS.
+
+| Section | Setting | Value |
+|---------|---------|-------|
+| **Basic** | Name | `NHS.Validation.Process` |
+| | Display Name | NHS Validation, Enrichment & Normalisation |
+| | Class | NHS Validation Process *(from class library)* |
+| | Enabled | Yes |
+| | Pool Size | 4 |
+| | Category | Process \| Validation |
+| **Host** | Validate NHS Number | Yes *(Modulus 11 check digit)* |
+| | Enrich From PDS | Yes |
+| | PDS Endpoint | `https://pds.spine.nhs.uk/api` |
+| | PDS Timeout | `5` seconds |
+| | Check Duplicates | Yes |
+| | Duplicate Window | `60` seconds |
+| | Validate Postcode | Yes *(UK format)* |
+| | FHIR Normalisation | Yes *(FHIR→HL7 if not already HL7)* |
+| | TargetConfigNames | `ADT.Content.Router` |
+| | On Validation Fail | `NACK + route to Exception Queue` |
+| **Enterprise** | Execution Mode | `Thread Pool` |
+| | Worker Count | `4` |
+| | Queue Type | `Priority` |
+| | Queue Size | `5000` |
+| | Overflow Strategy | `Block` |
+| | Restart Policy | `Always` |
+| | Max Restarts | `1000` |
+| | Messaging Pattern | `Sync Reliable` |
+| | Message Timeout | `10` seconds |
+
+**Click:** Save → Deploy → Start
+
+**What this process does (step by step):**
+
+```
+1. RECEIVE message from any inbound service
+2. IF message is FHIR JSON:
+   → Convert FHIR Patient/Encounter to HL7 ADT A28/A01
+   → Set MSH.SendingApplication = original FHIR source
+3. VALIDATE NHS Number (PID-3):
+   → Modulus 11 check digit verification
+   → IF invalid → NACK to sender, route to Exception Queue, STOP
+4. ENRICH from PDS:
+   → Call NHS PDS API with NHS Number
+   → Merge demographics (name, address, GP) into PID segment
+   → Add ZPD segment with PDS trace metadata
+5. CHECK DUPLICATES:
+   → Query 60-second sliding window for same NHS Number + Event Type
+   → IF duplicate → Log warning, route to Exception Queue, STOP
+6. VALIDATE POSTCODE (PID-11):
+   → UK postcode regex validation
+   → IF invalid → Add ZVL|PostcodeValidation|WARN segment, CONTINUE
+7. FORWARD validated message to ADT.Content.Router
+```
+
+**IRIS equivalent:** A custom `Ens.BusinessProcessBPL` class with call activities to PDS lookup service and validation logic in ObjectScript.
+
+---
+
+### 3.2 ADT Content-Based Router
+
+**Portal Navigation:** Project → Items → "Add Item" → Process
+
+This is the core routing engine — it examines each validated message and routes it to the correct outbound operations with the appropriate HL7 version transformation. Directly equivalent to `EnsLib.HL7.MsgRouter.RoutingEngine` in IRIS.
+
+| Section | Setting | Value |
+|---------|---------|-------|
+| **Basic** | Name | `ADT.Content.Router` |
+| | Display Name | ADT Content-Based Routing Engine |
+| | Class | HL7 Routing Engine *(dropdown)* |
+| | Enabled | Yes |
+| | Pool Size | 2 |
+| | Category | Process \| Routing |
+| **Host** | Business Rule Name | `ADT_Routing_Rules` |
+| | Validation | `Error` |
+| | Rule Logging | `All Rules` |
+| **Enterprise** | Execution Mode | `Thread Pool` |
+| | Worker Count | `2` |
+| | Queue Type | `FIFO` |
+| | Queue Size | `5000` |
+| | Overflow Strategy | `Block` *(never drop clinical messages)* |
+| | Restart Policy | `Always` |
+| | Max Restarts | `1000` |
+| | Restart Delay | `30` seconds |
+| | Messaging Pattern | `Sync Reliable` |
+| | Message Timeout | `60` seconds |
+
+**Click:** Save → Deploy → Start
+
+#### Routing Rules (configured in Portal Rule Builder)
+
+**Rule 1 — ADT Events → RIS + Lab + File Archive**
+```
+Name:       Route ADT to RIS and Lab
+Priority:   1
+Condition:  MSH.MessageType.MessageCode = "ADT"
+            AND MSH.MessageType.TriggerEvent IN ("A01","A02","A03","A08")
+Actions:
+  1. Transform: HL7 v2.3 → v2.5.1  →  Send to: RIS.HL7.Sender
+  2. Transform: HL7 v2.3 → v2.4    →  Send to: Lab.HL7.Sender
+  3. Send original                  →  Send to: Archive.File.Writer
+```
+
+**Rule 2 — Radiology Orders → RIS + File Archive**
+```
+Name:       Route Radiology Orders to RIS
+Priority:   2
+Condition:  MSH.MessageType.MessageCode = "ORM"
+            AND MSH.MessageType.TriggerEvent = "O01"
+            AND OBR.UniversalServiceIdentifier CONTAINS "RAD"
+Actions:
+  1. Transform: HL7 v2.3 → v2.5.1  →  Send to: RIS.HL7.Sender
+  2. Send original                  →  Send to: Archive.File.Writer
+```
+
+**Rule 3 — Lab Orders → Lab + File Archive**
+```
+Name:       Route Lab Orders to Lab
+Priority:   3
+Condition:  MSH.MessageType.MessageCode = "ORM"
+            AND MSH.MessageType.TriggerEvent = "O01"
+            AND OBR.UniversalServiceIdentifier CONTAINS "LAB"
+Actions:
+  1. Transform: HL7 v2.3 → v2.4    →  Send to: Lab.HL7.Sender
+  2. Send original                  →  Send to: Archive.File.Writer
+```
+
+**Rule 4 — FHIR-Origin Messages → All Targets + File**
+```
+Name:       Route FHIR-normalised messages
+Priority:   4
+Condition:  MSH.SendingApplication CONTAINS "FHIR"
+Actions:
+  1. Transform: HL7 v2.3 → v2.5.1  →  Send to: RIS.HL7.Sender
+  2. Transform: HL7 v2.3 → v2.4    →  Send to: Lab.HL7.Sender
+  3. Send original                  →  Send to: Archive.File.Writer
+```
+
+**Default Rule — Archive Only**
+```
+Name:       Default Archive
+Priority:   99
+Condition:  (always)
+Actions:
+  1. Send original                  →  Send to: Archive.File.Writer
+```
+
+#### Transformation Definitions
+
+**Transform: HL7 v2.3 → v2.5.1 (for RIS)**
 ```yaml
-Name: "ADT_Router"
-Display Name: "ADT Routing & Transformation Process"
-Enabled: ✅ Yes
-Pool Size: 2
-Category: "Business Process | Routing"
-```
-
-**Host Settings (Rule Engine):**
-```yaml
-Business Rule Name: "ADT_Routing_Rules"
-Validation: Error (fail on invalid messages)
-Rule Logging: All Rules (full audit trail)
-```
-
-**Business Rules Configuration (Visual Rule Builder in Portal):**
-
-**Rule 1: ADT Messages → RIS + ICE Lab**
-```
-IF message.MSH.MessageType IN ["ADT^A01", "ADT^A02", "ADT^A03", "ADT^A08"]
-THEN:
-  1. Transform message to HL7 v2.4 → Send to "RIS_Operation"
-  2. Transform message to HL7 v2.5.1 → Send to "ICE_Operation"
-  3. Send original to "Audit_File_Writer"
-```
-
-**Rule 2: Radiology Orders → RIS Only**
-```
-IF message.MSH.MessageType = "ORM^O01"
-   AND message.ORC.OrderControl = "NW"
-   AND message.OBR.UniversalServiceID contains "RAD"
-THEN:
-  1. Transform to HL7 v2.4 → Send to "RIS_Operation"
-  2. Send original to "Audit_File_Writer"
-```
-
-**Rule 3: Lab Orders → ICE Lab Only**
-```
-IF message.MSH.MessageType = "ORM^O01"
-   AND message.ORC.OrderControl = "NW"
-   AND message.OBR.UniversalServiceID contains "LAB"
-THEN:
-  1. Transform to HL7 v2.5.1 → Send to "ICE_Operation"
-  2. Send original to "Audit_File_Writer"
-```
-
-**Transformation Configuration (Visual Mapper):**
-```yaml
-# HL7 v2.3 → v2.4 Transformation
-Source Schema: 2.3
-Target Schema: 2.4
-Mappings:
-  - MSH.SendingApplication: "HIE"
-  - MSH.VersionID: "2.4"
-  - PID.* → PID.* (copy all)
-  - PV1.* → PV1.* (copy all)
-  - Custom: Add Z-segment for audit trail
-
-# HL7 v2.3 → v2.5.1 Transformation
+Name: "v23_to_v251_RIS"
 Source Schema: 2.3
 Target Schema: 2.5.1
-Mappings:
-  - MSH.SendingApplication: "HIE"
-  - MSH.VersionID: "2.5.1"
-  - MSH.MessageStructure: "ADT_A01" (required in v2.5+)
-  - PID.* → PID.* (copy all)
-  - PV1.* → PV1.* (update delimiters for v2.5.1)
+Field Mappings:
+  MSH.SendingApplication:    "HIE"
+  MSH.SendingFacility:       source.MSH.SendingFacility
+  MSH.ReceivingApplication:  "RIS"
+  MSH.ReceivingFacility:     source.MSH.ReceivingFacility
+  MSH.VersionID:             "2.5.1"
+  MSH.MessageStructure:      "ADT_A01"  # Required in v2.5+
+  PID.*:                     source.PID.*  # Copy all patient data
+  PV1.*:                     source.PV1.*  # Copy all visit data
+  ZAU.1:                     source.MSH.MessageControlID  # Audit trail
+  ZAU.2:                     NOW()  # Transformation timestamp
 ```
 
-**Phase 2 Settings (Mission-Critical Process):**
+**Transform: HL7 v2.3 → v2.4 (for Lab)**
 ```yaml
-Execution Mode: Thread Pool (2 workers for blocking I/O)
-Worker Count: 2
-Queue Type: FIFO (ordered processing required)
-Queue Size: 5000
-Overflow Strategy: Block (never drop clinical messages)
-Restart Policy: Always (never stay down)
-Max Restarts: 1000 (extremely high tolerance)
-Restart Delay: 30 seconds (allow recovery)
-Messaging Pattern: Sync Reliable (wait for downstream ACKs)
-Message Timeout: 60 seconds
+Name: "v23_to_v24_Lab"
+Source Schema: 2.3
+Target Schema: 2.4
+Field Mappings:
+  MSH.SendingApplication:    "HIE"
+  MSH.ReceivingApplication:  "ICE-LAB"
+  MSH.VersionID:             "2.4"
+  PID.*:                     source.PID.*
+  PV1.*:                     source.PV1.*
+  OBR.*:                     source.OBR.*  # Preserve order details
+  ZAU.1:                     source.MSH.MessageControlID
+  ZAU.2:                     NOW()
 ```
 
-**Portal Actions:** Save → Deploy → Start
-
-**Result:** ✅ ADT Router **running** with **active rule engine**
+**IRIS equivalent:** Two DTL (Data Transformation Language) classes created in Studio's visual DTL editor, with field-by-field mapping.
 
 ---
 
-### 3.4 Add Custom Validation Process (NHS-Specific)
+## Step 4: Add Outbound Operations (3)
 
-**Navigation:** Portal → Items → Add New Item → Business Process → Custom
+### 4.1 RIS HL7 v2.5.1 MLLP Sender
 
-**Item Type Selection:**
-```
-Type: Custom Business Process
-Class: NHS Validation Process (from library)
-```
+**Portal Navigation:** Project → Items → "Add Item" → Operation
 
-**Basic Configuration:**
-```yaml
-Name: "Complex_Validation_Process"
-Display Name: "NHS Validation & Enrichment"
-Enabled: ✅ Yes
-Pool Size: 2
-```
+Sends transformed HL7 v2.5.1 messages to the Radiology Information System over MLLP. Equivalent to `EnsLib.HL7.Operation.TCPOperation` in IRIS.
 
-**Custom Host Settings (NHS-Specific):**
-```yaml
-Validate NHS Number: ✅ Yes (Modulus 11 check)
-Enrich From PDS: ✅ Yes (lookup patient demographics)
-Check Duplicates: ✅ Yes (prevent duplicate admissions)
-Validate Postcode: ✅ Yes (UK postcode format)
-PDS Endpoint: "https://pds.spine.nhs.uk/api"
-PDS Timeout: 5 seconds
-Duplicate Window: 60 seconds
-```
+| Section | Setting | Value |
+|---------|---------|-------|
+| **Basic** | Name | `RIS.HL7.Sender` |
+| | Display Name | RIS Radiology — HL7 v2.5.1 Sender |
+| | Class | HL7 TCP Operation *(dropdown)* |
+| | Enabled | Yes |
+| | Pool Size | 2 |
+| | Category | Outbound \| RIS |
+| **Adapter** | IP Address | `ris.sth.nhs.uk` |
+| | Port | `2576` |
+| | Connect Timeout | `30` seconds |
+| | Reconnect Retry | `5` |
+| | Reconnect Interval | `10` seconds |
+| | Stay Connected | `-1` (persistent) |
+| **Host** | ReplyCodeActions | `:?R=F,:?E=S,:~=S,:?A=C,:*=S` |
+| | Retry Interval | `5` seconds |
+| | Failure Timeout | `15` seconds |
+| | Archive IO | Yes |
+| **Enterprise** | Execution Mode | `Thread Pool` |
+| | Worker Count | `2` |
+| | Queue Type | `FIFO` |
+| | Queue Size | `5000` |
+| | Overflow Strategy | `Block` |
+| | Restart Policy | `Always` |
+| | Max Restarts | `100` |
 
-**Phase 2 Settings:**
-```yaml
-Execution Mode: Thread Pool (for PDS API calls)
-Worker Count: 4
-Queue Type: Priority
-Restart Policy: Always
-Messaging Pattern: Sync Reliable (wait for PDS response)
-Message Timeout: 10 seconds
-```
+**ReplyCodeActions explained** (identical to IRIS syntax):
+- `:?R=F` — If reply contains error code R → mark as **F**ailed
+- `:?E=S` — If reply contains error code E → **S**uspend message
+- `:~=S` — If reply is malformed → **S**uspend
+- `:?A=C` — If reply is ACK → mark **C**ompleted
+- `:*=S` — Anything else → **S**uspend
 
-**Portal Actions:** Save → Deploy → Start
-
-**Result:** ✅ NHS Validation **running** with **PDS integration**
-
----
-
-### 3.5 Add Outbound Operation (RIS - Radiology)
-
-**Navigation:** Portal → Items → Add New Item → Operations (Outbound)
-
-**Item Type Selection:**
-```
-Type: HL7 TCP Operation
-Template: RIS MLLP Sender
-```
-
-**Basic Configuration:**
-```yaml
-Name: "RIS_Operation"
-Display Name: "RIS Radiology System Sender"
-Enabled: ✅ Yes
-Pool Size: 2
-```
-
-**Adapter Settings (MLLP Client):**
-```yaml
-IP Address: ris.sthospital.nhs.uk
-Port: 2576
-Connect Timeout: 30 seconds
-Reconnect Retry: 5 attempts
-Reconnect Interval: 10 seconds
-Stay Connected: -1 (persistent connection)
-SSL Config: (none)
-```
-
-**Host Settings (Send Behavior):**
-```yaml
-Reply Code Actions: ":?R=F,:?E=S,:~=S,:?A=C,:*=S" (IRIS-style retry logic)
-Retry Interval: 5 seconds
-Failure Timeout: 15 seconds
-Archive IO: ✅ Yes
-```
-
-**Phase 2 Settings:**
-```yaml
-Execution Mode: Thread Pool
-Worker Count: 2
-Queue Type: FIFO
-Queue Size: 5000
-Overflow Strategy: Block
-Restart Policy: Always
-Max Restarts: 100
-```
-
-**Portal Actions:** Save → Deploy → Start
-
-**Result:** ✅ RIS Operation **running** and **connected** to RIS
+**Click:** Save → Deploy → Start  
+**Result:** Connected to `ris.sth.nhs.uk:2576`, ready to send.
 
 ---
 
-### 3.6 Add Outbound Operation (ICE Lab)
+### 4.2 Lab HL7 v2.4 MLLP Sender
 
-**Configuration:** (Similar to RIS, but different endpoint)
+**Portal Navigation:** Project → Items → "Add Item" → Operation
 
-```yaml
-Name: "ICE_Operation"
-IP Address: ice.sthospital.nhs.uk
-Port: 2577
-# Same Phase 2 settings as RIS
-```
+| Section | Setting | Value |
+|---------|---------|-------|
+| **Basic** | Name | `Lab.HL7.Sender` |
+| | Display Name | ICE Laboratory — HL7 v2.4 Sender |
+| | Class | HL7 TCP Operation *(dropdown)* |
+| | Enabled | Yes |
+| | Pool Size | 2 |
+| | Category | Outbound \| Lab |
+| **Adapter** | IP Address | `lab.sth.nhs.uk` |
+| | Port | `2577` |
+| | Connect Timeout | `30` seconds |
+| | Reconnect Retry | `5` |
+| | Stay Connected | `-1` |
+| **Host** | ReplyCodeActions | `:?R=F,:?E=S,:~=S,:?A=C,:*=S` |
+| | Retry Interval | `5` seconds |
+| | Failure Timeout | `15` seconds |
+| | Archive IO | Yes |
+| **Enterprise** | Execution Mode | `Thread Pool` |
+| | Worker Count | `2` |
+| | Queue Type | `FIFO` |
+| | Queue Size | `5000` |
+| | Overflow Strategy | `Block` |
+| | Restart Policy | `Always` |
+| | Max Restarts | `100` |
 
-**Result:** ✅ ICE Operation **running** and **connected** to Lab
-
----
-
-### 3.7 Add File Writer (Processed Messages)
-
-**Navigation:** Portal → Items → Add New Item → File Operation
-
-```yaml
-Name: "Output_File_Writer"
-File Path: /data/outbound
-File Name Pattern: %Y%m%d_%H%M%S_%f.hl7
-Overwrite: ❌ No (preserve all messages)
-```
-
-**Result:** ✅ File writer **active**
-
----
-
-### 3.8 Add Audit File Writer (Compliance)
-
-```yaml
-Name: "Audit_File_Writer"
-File Path: /data/audit
-File Name Pattern: audit_%Y%m%d_%H%M%S_%f.hl7
-Queue Size: 50000 (large buffer for audit trail)
-Overflow Strategy: Drop Oldest (audit not mission-critical)
-```
-
-**Result:** ✅ Audit writer **active**
+**Click:** Save → Deploy → Start  
+**Result:** Connected to `lab.sth.nhs.uk:2577`, ready to send.
 
 ---
 
-## Step 4: Configure Connections (via Portal UI)
+### 4.3 Archive File Writer
 
-**Navigation:** Portal → Project → Connections → Visual Designer
+**Portal Navigation:** Project → Items → "Add Item" → Operation
 
-**Connection 1: PAS Service → Validation Process**
-```
-Drag: HL7_PAS_Service → Complex_Validation_Process
-Type: Async Reliable
-Filter: (none - process all messages)
-```
+Writes all processed messages (original + transformed) to timestamped files for compliance audit. Equivalent to `EnsLib.HL7.Operation.FileOperation` in IRIS.
 
-**Connection 2: File Service → Validation Process**
-```
-Drag: File_PAS_Service → Complex_Validation_Process
-```
+| Section | Setting | Value |
+|---------|---------|-------|
+| **Basic** | Name | `Archive.File.Writer` |
+| | Display Name | Local Archive — File Writer |
+| | Class | File Operation *(dropdown)* |
+| | Enabled | Yes |
+| | Pool Size | 1 |
+| | Category | Outbound \| Archive |
+| **Adapter** | File Path | `/data/outbound` |
+| | File Name Pattern | `%Y%m%d/%H%M%S_%f.hl7` |
+| | Create Directories | Yes |
+| | Overwrite | No |
+| **Enterprise** | Queue Type | `FIFO` |
+| | Queue Size | `50000` |
+| | Overflow Strategy | `Drop Oldest` *(archive not mission-critical)* |
+| | Restart Policy | `Always` |
 
-**Connection 3: Validation → ADT Router**
-```
-Drag: Complex_Validation_Process → ADT_Router
-```
-
-**Connection 4: ADT Router → RIS**
-```
-Drag: ADT_Router → RIS_Operation
-Filter: IF transformation = "v2.4"
-```
-
-**Connection 5: ADT Router → ICE Lab**
-```
-Drag: ADT_Router → ICE_Operation
-Filter: IF transformation = "v2.5.1"
-```
-
-**Connection 6: ADT Router → Audit**
-```
-Drag: ADT_Router → Audit_File_Writer
-Filter: (all messages)
-```
-
-**Result:** Visual workflow diagram showing complete message flow
+**Click:** Save → Deploy → Start  
+**Result:** Writing to `/data/outbound/YYYYMMDD/HHMMSS_nnnnn.hl7`
 
 ---
 
-## Step 5: Deploy & Start Production (via Portal UI)
+## Step 5: Configure Connections (Visual Designer)
 
-**Navigation:** Portal → Project → Production Controls
+**Portal Navigation:** Project → Configure → Visual Designer
 
-### Deploy Production
+Wire the items together by dragging connections:
+
+| # | Source | Target | Type |
+|---|--------|--------|------|
+| 1 | `Cerner.PAS.Receiver` | `NHS.Validation.Process` | Async Reliable |
+| 2 | `GP.FHIR.Receiver` | `NHS.Validation.Process` | Async Reliable |
+| 3 | `Batch.File.Reader` | `NHS.Validation.Process` | Async Reliable |
+| 4 | `NHS.Validation.Process` | `ADT.Content.Router` | Sync Reliable |
+| 5 | `ADT.Content.Router` | `RIS.HL7.Sender` | Sync Reliable |
+| 6 | `ADT.Content.Router` | `Lab.HL7.Sender` | Sync Reliable |
+| 7 | `ADT.Content.Router` | `Archive.File.Writer` | Async Reliable |
+
+**Visual Designer shows:**
 ```
-Click: "Deploy Production"
-Status: Deploying... (sending config to Engine)
-Result: ✅ Production deployed to Engine
+Cerner.PAS.Receiver ──┐
+GP.FHIR.Receiver    ──┼──► NHS.Validation.Process ──► ADT.Content.Router ──┬──► RIS.HL7.Sender
+Batch.File.Reader   ──┘                                                     ├──► Lab.HL7.Sender
+                                                                             └──► Archive.File.Writer
 ```
 
-### Start Production
-```
-Click: "Start Production"
-Status: Starting all enabled items...
+**IRIS equivalent:** Identical wiring in the Production Configuration page, setting TargetConfigNames on each item.
 
-Starting:
-✅ HL7_PAS_Service (port 2575 listening)
-✅ File_PAS_Service (watching /data/inbound)
-✅ Complex_Validation_Process (2 workers active)
-✅ ADT_Router (rule engine initialized)
-✅ RIS_Operation (connected to ris.sthospital.nhs.uk:2576)
-✅ ICE_Operation (connected to ice.sthospital.nhs.uk:2577)
-✅ Output_File_Writer (ready)
-✅ Audit_File_Writer (ready)
+---
+
+## Step 6: Deploy & Start Production
+
+**Portal Navigation:** Project → "Deploy & Start"
+
+```
+Deploying ADT_Integration to Engine...
+
+Starting all enabled items:
+  ✅ Cerner.PAS.Receiver      — port 2575 listening (MLLP)
+  ✅ GP.FHIR.Receiver          — port 8443 listening (HTTPS/FHIR)
+  ✅ Batch.File.Reader         — watching /data/inbound/*.hl7
+  ✅ NHS.Validation.Process    — 4 workers active
+  ✅ ADT.Content.Router        — rule engine initialised, 5 rules loaded
+  ✅ RIS.HL7.Sender            — connected to ris.sth.nhs.uk:2576
+  ✅ Lab.HL7.Sender            — connected to lab.sth.nhs.uk:2577
+  ✅ Archive.File.Writer       — ready, writing to /data/outbound/
 
 Production Status: ✅ RUNNING (8/8 items active)
 ```
 
----
-
-## Step 6: Monitor Production (via Portal UI)
-
-**Navigation:** Portal → Project → Monitoring → Dashboard
-
-### Real-Time Metrics Display
-
-**Production Overview:**
-```
-Status: 🟢 RUNNING
-Uptime: 2 hours 15 minutes
-Messages Processed: 1,247
-Messages Failed: 3
-Success Rate: 99.76%
-```
-
-**Item Status:**
-```
-Item Name                      Status    Queue    Workers  Restarts  Throughput
-HL7_PAS_Service               🟢 RUN    45/10000    4/4      0       250 msg/hr
-File_PAS_Service              🟢 RUN     0/1000     1/1      0        12 msg/hr
-Complex_Validation_Process    🟢 RUN    12/5000     2/2      0       262 msg/hr
-ADT_Router                    🟢 RUN     8/5000     2/2      0       260 msg/hr
-RIS_Operation                 🟢 RUN    23/5000     2/2      1       180 msg/hr
-ICE_Operation                 🟢 RUN    18/5000     2/2      0       180 msg/hr
-Output_File_Writer            🟢 RUN     0/1000     1/1      0       260 msg/hr
-Audit_File_Writer             🟢 RUN   102/50000    1/1      0       260 msg/hr
-```
-
-**Message Flow Visualization:**
-```
-[Cerner PAS] ──250 msg/hr──> [HL7_PAS_Service]
-                                    │
-                                    ├──250 msg/hr──> [Validation]
-                                    │                      │
-                                    │                      ├──240 msg/hr──> [ADT_Router]
-                                    │                      │                      │
-                                    │                      │                      ├──120 msg/hr──> [RIS]
-                                    │                      │                      ├──120 msg/hr──> [ICE Lab]
-                                    │                      │                      └──240 msg/hr──> [Audit]
-                                    │                      │
-                                    │                      └──10 msg/hr──> [Validation Failed]
-```
-
-**Alerts:**
-```
-⚠️  RIS_Operation: Auto-restarted 1 time (connection timeout)
-ℹ️  Complex_Validation_Process: 10 messages rejected (invalid NHS Number)
-✅  All critical items running normally
-```
+**IRIS equivalent:** Production → "Start" button, or `do ##class(Ens.Director).StartProduction("STH.ADT.Production")`
 
 ---
 
-## Step 7: Test Message Flow (via Portal UI)
+## Step 7: Test Message Flow
 
-**Navigation:** Portal → Project → Testing → Send Test Message
+### Test 1: HL7 ADT A01 from Cerner PAS
 
-### Test 1: ADT^A01 (Patient Admission)
+**Portal Navigation:** Project → Testing → "Send Test Message"
 
-**Input Message (HL7 v2.3):**
+**Select target:** `Cerner.PAS.Receiver`
+
+**Input (HL7 v2.3):**
 ```
-MSH|^~\&|PAS|STH|HIE|STH|20260210120000||ADT^A01|MSG0001|P|2.3
-EVN|A01|20260210120000
+MSH|^~\&|PAS|STH|HIE|STH|20260211120000||ADT^A01|MSG0001|P|2.3
+EVN|A01|20260211120000
 PID|1||9876543210^^^NHS||Smith^John^Q||19800101|M|||123 High St^^London^^SW1A 1AA^UK
 PV1|1|I|WARD1^ROOM1^BED1||||12345^Jones^Sarah|||MED||||||||V123456
 ```
 
-**Click:** "Send Test Message" → Select "HL7_PAS_Service"
-
-**Portal Shows Message Journey:**
+**Message Journey (shown in Portal):**
 ```
-1. ✅ Received by HL7_PAS_Service (100ms)
-2. ✅ Validated by Complex_Validation_Process (250ms)
-   - NHS Number valid: 9876543210
-   - PDS lookup: VERIFIED
-   - No duplicate found
-   - Postcode valid: SW1A 1AA
-3. ✅ Routed by ADT_Router (50ms)
-   - Rule matched: ADT admission
-   - Transformed to v2.4 → RIS_Operation
-   - Transformed to v2.5.1 → ICE_Operation
-   - Archived → Audit_File_Writer
-4. ✅ Sent to RIS (120ms) - ACK received
-5. ✅ Sent to ICE Lab (130ms) - ACK received
-6. ✅ Written to audit file
+1. ✅ Received by Cerner.PAS.Receiver              [  0ms]
+2. ✅ Validated by NHS.Validation.Process           [250ms]
+     • NHS Number 9876543210: VALID (Modulus 11 ✓)
+     • PDS Lookup: VERIFIED — demographics enriched
+     • Duplicate check: PASSED (no prior A01 in 60s window)
+     • Postcode SW1A 1AA: VALID
+3. ✅ Routed by ADT.Content.Router                  [ 50ms]
+     • Rule 1 matched: ADT A01 → RIS + Lab + Archive
+     • Transform v2.3→v2.5.1 applied for RIS
+     • Transform v2.3→v2.4 applied for Lab
+4. ✅ Sent to RIS.HL7.Sender                        [120ms]
+     • ACK received: MSA|AA|MSG0001-RIS
+5. ✅ Sent to Lab.HL7.Sender                        [130ms]
+     • ACK received: MSA|AA|MSG0001-LAB
+6. ✅ Written by Archive.File.Writer                [  5ms]
+     • File: /data/outbound/20260211/120000_00001.hl7
 
-Total Journey: 650ms
-Status: ✅ SUCCESS
+Total Journey: 555ms  |  Status: ✅ SUCCESS
 ```
 
-**View Message Trace:**
-- Click message ID → Full audit trail with all transformations
-- Download original message
-- Download transformed messages (v2.4, v2.5.1)
-- View ACKs from downstream systems
+**Outbound to RIS (HL7 v2.5.1):**
+```
+MSH|^~\&|HIE|STH|RIS|STH|20260211120000||ADT^A01^ADT_A01|MSG0001-RIS|P|2.5.1
+EVN|A01|20260211120000|||
+PID|1||9876543210^^^NHS||Smith^John^Q||19800101|M|||123 High St^^London^^SW1A 1AA^UK
+PV1|1|I|WARD1^ROOM1^BED1^^^^STH||||12345^Jones^Sarah|||MED||||||||V123456
+ZAU|MSG0001|20260211120000|v23_to_v251_RIS
+```
+
+**Outbound to Lab (HL7 v2.4):**
+```
+MSH|^~\&|HIE|STH|ICE-LAB|STH|20260211120000||ADT^A01|MSG0001-LAB|P|2.4
+EVN|A01|20260211120000
+PID|1||9876543210^^^NHS||Smith^John^Q||19800101|M|||123 High St^^London^^SW1A 1AA^UK
+PV1|1|I|WARD1^ROOM1^BED1||||12345^Jones^Sarah|||MED||||||||V123456
+ZAU|MSG0001|20260211120000|v23_to_v24_Lab
+```
+
+### Test 2: FHIR Patient from GP System
+
+**Select target:** `GP.FHIR.Receiver`
+
+**Input (FHIR R4 JSON):**
+```json
+{
+  "resourceType": "Patient",
+  "identifier": [{"system": "https://fhir.nhs.uk/Id/nhs-number", "value": "9876543210"}],
+  "name": [{"family": "Smith", "given": ["John"]}],
+  "gender": "male",
+  "birthDate": "1980-01-01"
+}
+```
+
+**Message Journey:**
+```
+1. ✅ Received by GP.FHIR.Receiver                 [  0ms]
+     • Parsed as FHIR R4 Patient resource
+     • Normalised to HL7 ADT A28 (add person information)
+2. ✅ Validated by NHS.Validation.Process           [200ms]
+     • NHS Number: VALID
+     • PDS enrichment applied
+3. ✅ Routed by ADT.Content.Router                  [ 40ms]
+     • Rule 4 matched: FHIR-origin → All targets + Archive
+4. ✅ Sent to RIS (v2.5.1), Lab (v2.4), Archive    [250ms]
+
+Total Journey: 490ms  |  Status: ✅ SUCCESS
+```
+
+### Test 3: Batch HL7 File
+
+**Drop file:** `/data/inbound/overnight_extract_20260211.hl7`
+
+```
+1. ✅ Picked up by Batch.File.Reader               [  0ms]
+     • File moved to /data/inbound/processed/
+2. ✅ Validated → Routed → Delivered                [600ms]
+     • Same journey as Test 1
+```
 
 ---
 
-## Step 8: Hot Reload Configuration (No Downtime)
+## Step 8: Monitor Production
 
-**Scenario:** Need to increase RIS operation pool size due to high load
+**Portal Navigation:** Sidebar → Dashboard / Monitoring
 
-**Navigation:** Portal → Items → RIS_Operation → Edit
+### Real-Time Dashboard
 
-**Change:**
-```yaml
-Pool Size: 2 → 4 (increase workers)
-Queue Size: 5000 → 10000 (increase buffer)
 ```
-
-**Click:** "Save & Reload"
-
-**Portal Shows:**
+┌─────────────────────────────────────────────────────────────────┐
+│  ADT Integration Production          Status: 🟢 RUNNING         │
+│  Uptime: 4h 32m    Messages: 2,847   Failed: 7   Rate: 99.75% │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│  Item                        Status  Queue     Workers  msg/hr  │
+│  ─────────────────────────────────────────────────────────────  │
+│  Cerner.PAS.Receiver         🟢 RUN   45/10000   4/4     380   │
+│  GP.FHIR.Receiver            🟢 RUN    2/5000    2/2      45   │
+│  Batch.File.Reader           🟢 RUN    0/1000    1/1      12   │
+│  NHS.Validation.Process      🟢 RUN   18/5000    4/4     437   │
+│  ADT.Content.Router          🟢 RUN   12/5000    2/2     430   │
+│  RIS.HL7.Sender              🟢 RUN   28/5000    2/2     290   │
+│  Lab.HL7.Sender              🟢 RUN   22/5000    2/2     285   │
+│  Archive.File.Writer         🟢 RUN  156/50000   1/1     430   │
+│                                                                  │
+├─────────────────────────────────────────────────────────────────┤
+│  Alerts:                                                         │
+│  ⚠️  RIS.HL7.Sender: Auto-restarted 1× (connection timeout)    │
+│  ℹ️  NHS.Validation.Process: 7 messages rejected (invalid NHS#) │
+│  ✅  All critical items running normally                         │
+└─────────────────────────────────────────────────────────────────┘
 ```
-🔄 Hot reloading RIS_Operation...
-✅ Configuration updated (messages in queue preserved)
-✅ New workers spawned (2 → 4)
-✅ No messages lost
-✅ No downtime
-
-RIS_Operation Status: 🟢 RUNNING (4/4 workers active)
-```
-
-**Result:** Configuration changed **without stopping production**
 
 ---
 
-## Step 9: Handle Failures (Auto-Restart Demonstration)
+## Step 9: Hot Reload & Failure Recovery
 
-**Scenario:** RIS system becomes unavailable
+### Hot Reload (Zero Downtime)
 
-**What Happens Automatically:**
+**Scenario:** Increase RIS sender pool size under load.
 
 ```
-Time    Event                               Engine Action
-───────────────────────────────────────────────────────────────────
-12:00   RIS_Operation: Connection failed    Queues messages (5000 buffer)
-12:00   RIS_Operation: State → ERROR        Auto-restart policy: ALWAYS
-12:00   Engine: Scheduling restart...       Delay: 10 seconds
-12:00   RIS_Operation: Restart attempt 1    Connection failed
-12:00   Engine: Scheduling restart...       Delay: 10 seconds
-12:01   RIS_Operation: Restart attempt 2    Connection failed
-12:01   Engine: Scheduling restart...       Delay: 10 seconds
+Portal → RIS.HL7.Sender → Edit → Pool Size: 2 → 4 → "Save & Reload"
+
+🔄 Hot reloading RIS.HL7.Sender...
+✅ Configuration updated (queue preserved)
+✅ Workers scaled: 2 → 4
+✅ Zero messages lost, zero downtime
+```
+
+**IRIS equivalent:** Changing pool size in Management Portal and clicking "Apply" — but IRIS requires a production restart for most changes. HIE does not.
+
+### Auto-Restart Recovery
+
+**Scenario:** RIS system goes down for maintenance.
+
+```
+14:00  RIS.HL7.Sender: Connection refused → State: ERROR
+14:00  Engine: Auto-restart scheduled (delay: 10s, policy: Always)
+14:00  Attempt 1: Connection refused
+14:00  Attempt 2: Connection refused
 ...
-12:15   RIS system: Back online
-12:15   RIS_Operation: Restart attempt 15   ✅ Connection successful
-12:15   RIS_Operation: State → RUNNING      Processing queued messages
-12:16   RIS_Operation: Queue draining...    5000 → 4500 → 4000 → ...
-12:20   RIS_Operation: Queue empty          Back to normal operation
+14:15  RIS comes back online
+14:15  Attempt 15: ✅ Connected
+14:15  State: RUNNING → Draining 847 queued messages
+14:19  Queue empty → Normal operation resumed
 
-Restart count: 15
-Max restarts: 100 (still within limit)
-Messages lost: 0 (all preserved in queue)
+Messages lost: 0  |  Manual intervention: None
 ```
 
-**Portal Alert:**
+---
+
+## Part 2: Developer Guide — Custom Extensions (Python)
+
+> *This section is for **Platform Engineers** who need to extend HIE with custom Python classes, equivalent to writing ObjectScript classes in IRIS Studio.*
+
+---
+
+## Writing Custom Host Classes
+
+### Custom Business Process Example
+
+**Equivalent to:** Creating a custom `Ens.BusinessProcessBPL` subclass in IRIS Studio.
+
+```python
+# File: custom/nhs/validation_process.py
+
+from Engine.li.hosts.base import BusinessProcess
+from Engine.li.registry.class_registry import register_host
+
+@register_host("custom.nhs.NHSValidationProcess")
+class NHSValidationProcess(BusinessProcess):
+    """
+    NHS-specific validation and enrichment process.
+    
+    Equivalent to a custom Ens.BusinessProcessBPL in IRIS that:
+    - Validates NHS Numbers (Modulus 11)
+    - Calls PDS for demographic enrichment
+    - Detects duplicate admissions
+    - Validates UK postcodes
+    
+    All settings are configurable via Portal UI — no code changes
+    needed to adjust validation behaviour.
+    """
+    
+    # Configurable settings (appear as form fields in Portal)
+    SETTINGS = {
+        "ValidateNHSNumber": {"type": "bool", "default": True, "category": "Validation"},
+        "EnrichFromPDS": {"type": "bool", "default": True, "category": "Enrichment"},
+        "PDSEndpoint": {"type": "str", "default": "https://pds.spine.nhs.uk/api", "category": "Enrichment"},
+        "PDSTimeout": {"type": "float", "default": 5.0, "category": "Enrichment"},
+        "CheckDuplicates": {"type": "bool", "default": True, "category": "Validation"},
+        "DuplicateWindow": {"type": "int", "default": 60, "category": "Validation"},
+        "ValidatePostcode": {"type": "bool", "default": True, "category": "Validation"},
+    }
+    
+    async def on_process_input(self, request):
+        """
+        Main processing method — called for every inbound message.
+        
+        IRIS equivalent: OnRequest() method in a BusinessProcess class.
+        """
+        message = request.body
+        
+        # 1. Validate NHS Number
+        if self.get_setting("ValidateNHSNumber"):
+            nhs_number = self._extract_nhs_number(message)
+            if not self._validate_nhs_modulus11(nhs_number):
+                self._log.error("invalid_nhs_number", nhs_number=nhs_number)
+                return self._generate_nack(message, "AE", "Invalid NHS Number")
+        
+        # 2. Enrich from PDS
+        if self.get_setting("EnrichFromPDS"):
+            pds_data = await self._call_pds(nhs_number)
+            if pds_data:
+                message = self._enrich_demographics(message, pds_data)
+        
+        # 3. Check duplicates
+        if self.get_setting("CheckDuplicates"):
+            window = self.get_setting("DuplicateWindow")
+            if await self._is_duplicate(message, window_seconds=window):
+                self._log.warning("duplicate_detected", nhs_number=nhs_number)
+                return self._generate_nack(message, "AR", "Duplicate admission")
+        
+        # 4. Validate postcode
+        if self.get_setting("ValidatePostcode"):
+            postcode = self._extract_postcode(message)
+            if postcode and not self._validate_uk_postcode(postcode):
+                self._log.warning("invalid_postcode", postcode=postcode)
+                # Continue but flag — don't reject for bad postcode
+                message = self._add_z_segment(message, "ZVL", ["PostcodeValidation", "WARN"])
+        
+        # 5. Forward to routing engine
+        await self.send_request_async(
+            self.get_setting("TargetConfigNames", "ADT.Content.Router"),
+            message
+        )
+        
+        return self._generate_ack(message)
+    
+    def _validate_nhs_modulus11(self, nhs_number: str) -> bool:
+        """NHS Number check digit validation (Modulus 11 algorithm)."""
+        if not nhs_number or len(nhs_number) != 10 or not nhs_number.isdigit():
+            return False
+        weights = [10, 9, 8, 7, 6, 5, 4, 3, 2]
+        total = sum(int(nhs_number[i]) * weights[i] for i in range(9))
+        remainder = total % 11
+        check_digit = 11 - remainder
+        if check_digit == 11:
+            check_digit = 0
+        if check_digit == 10:
+            return False  # Invalid — no valid check digit
+        return check_digit == int(nhs_number[9])
+    
+    def _validate_uk_postcode(self, postcode: str) -> bool:
+        """UK postcode format validation."""
+        import re
+        pattern = r'^[A-Z]{1,2}\d[A-Z\d]?\s*\d[A-Z]{2}$'
+        return bool(re.match(pattern, postcode.strip().upper()))
+    
+    async def _call_pds(self, nhs_number: str) -> dict | None:
+        """Call NHS PDS API for patient demographics."""
+        import aiohttp
+        endpoint = self.get_setting("PDSEndpoint")
+        timeout = self.get_setting("PDSTimeout")
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(
+                    f"{endpoint}/Patient/{nhs_number}",
+                    timeout=aiohttp.ClientTimeout(total=timeout),
+                    headers={"Accept": "application/fhir+json"}
+                ) as resp:
+                    if resp.status == 200:
+                        return await resp.json()
+        except Exception as e:
+            self._log.warning("pds_lookup_failed", error=str(e))
+        return None
+    
+    # ... helper methods for message manipulation
 ```
-ℹ️  RIS_Operation auto-restarted 15 times
-✅  Now running normally
-📊  Queue drained in 4 minutes
+
+### Custom Business Service Example
+
+**Equivalent to:** Creating a custom `Ens.BusinessService` subclass in IRIS.
+
+```python
+# File: custom/nhs/fhir_service.py
+
+from Engine.li.hosts.base import BusinessService
+from Engine.li.registry.class_registry import register_host
+
+@register_host("custom.nhs.FHIRHTTPService")
+class FHIRHTTPService(BusinessService):
+    """
+    FHIR R4 HTTP/REST inbound service.
+    
+    Accepts FHIR resources as JSON over HTTPS and normalises
+    them to HL7 v2 messages for uniform downstream processing.
+    
+    IRIS equivalent: Custom EnsLib.HTTP.Service subclass with
+    FHIR parsing logic in OnProcessInput().
+    """
+    
+    SETTINGS = {
+        "Port": {"type": "int", "default": 8443, "category": "Adapter"},
+        "BasePath": {"type": "str", "default": "/fhir/r4", "category": "Adapter"},
+        "FHIRVersion": {"type": "str", "default": "R4", "category": "Host"},
+        "AcceptedResources": {"type": "str", "default": "Patient,Encounter,Bundle", "category": "Host"},
+        "NormaliseToHL7": {"type": "bool", "default": True, "category": "Host"},
+        "SSLEnabled": {"type": "bool", "default": True, "category": "Adapter"},
+    }
+    
+    async def on_process_input(self, request):
+        """Process inbound FHIR resource."""
+        fhir_resource = request.body  # Parsed JSON
+        resource_type = fhir_resource.get("resourceType")
+        
+        # Validate resource type
+        accepted = self.get_setting("AcceptedResources").split(",")
+        if resource_type not in accepted:
+            return {"status": 400, "error": f"Resource type {resource_type} not accepted"}
+        
+        # Normalise to HL7 if configured
+        if self.get_setting("NormaliseToHL7"):
+            hl7_message = self._fhir_to_hl7(fhir_resource)
+        else:
+            hl7_message = fhir_resource  # Pass through as-is
+        
+        # Forward to target
+        await self.send_request_async(
+            self.get_setting("TargetConfigNames"),
+            hl7_message
+        )
+        
+        return {"status": 200, "message": "Accepted"}
+    
+    def _fhir_to_hl7(self, fhir_resource: dict) -> bytes:
+        """Convert FHIR Patient/Encounter to HL7 ADT message."""
+        resource_type = fhir_resource.get("resourceType")
+        
+        if resource_type == "Patient":
+            return self._patient_to_adt_a28(fhir_resource)
+        elif resource_type == "Encounter":
+            return self._encounter_to_adt_a01(fhir_resource)
+        else:
+            return self._bundle_to_hl7(fhir_resource)
+    
+    # ... FHIR→HL7 conversion methods
 ```
 
-**Result:** ✅ **Zero message loss**, **zero manual intervention**, **automatic recovery**
+### Deploying Custom Classes
+
+**Option A: Docker Volume Mount (recommended for development)**
+```yaml
+# docker-compose.yml
+services:
+  hie-engine:
+    volumes:
+      - ./custom:/app/custom:ro
+```
+
+**Option B: Portal Upload (future — v1.8.0)**
+```
+Portal → Admin → Extensions → Upload Python Class → Select file → Register
+```
+
+**Option C: Build into Docker Image (recommended for production)**
+```dockerfile
+FROM hie-engine:v1.7.3
+COPY custom/ /app/custom/
+```
+
+After deployment, the custom class appears in the Portal's class dropdown when adding new items, just like a custom ObjectScript class appears in IRIS Management Portal after compilation.
 
 ---
 
-## Enterprise-Grade Features Demonstrated
+## Part 3: GenAI Agent Guide — AI-Assisted Configuration
 
-### ✅ 100% Configuration-Driven
-- **Zero code** written for entire integration
-- All configuration via Portal UI
-- Visual workflow designer
-- Hot reload without downtime
-
-### ✅ Production Orchestration
-- Centralized management of all services
-- Start/Stop entire production with one click
-- Individual item control
-- Health monitoring and alerting
-
-### ✅ High Availability (Phase 2)
-- **Auto-restart:** Services automatically recover from failures
-- **Queue buffering:** Messages preserved during outages
-- **Multi-process:** True parallel processing
-- **Priority queues:** Critical messages processed first
-
-### ✅ Performance & Scalability
-- **Multiprocess execution:** Bypass Python GIL for CPU-bound tasks
-- **Configurable workers:** Scale per service
-- **Large queues:** Handle burst traffic (10,000+ messages)
-- **Overflow strategies:** Prevent memory exhaustion
-
-### ✅ Clinical Safety & Compliance
-- **Message validation:** NHS Number, postcode, duplicates
-- **Audit trail:** All messages archived (7 years retention)
-- **Transformation verification:** HL7 version mapping
-- **Error handling:** NACK generation, exception queues
-
-### ✅ Real-Time Monitoring
-- **Live dashboards:** Message flow visualization
-- **Metrics:** Throughput, queue depth, worker utilization
-- **Alerts:** Failures, restarts, threshold breaches
-- **Message tracing:** Full journey audit trail
+> *This section is for developers who want to use the **GenAI Agent** to accelerate configuration — a capability no other integration engine offers.*
 
 ---
 
-## Comparison with IRIS/Rhapsody/Mirth
+### Using the Agent to Build Integrations
 
-| Feature | IRIS | Rhapsody | Mirth | **LI HIE** | Notes |
-|---------|------|----------|-------|------------|-------|
-| **Configuration** | Management Portal | IDE | Administrator | Portal UI | ✅ Equal |
-| **Zero-code workflows** | ✅ Yes | ✅ Yes | ✅ Yes | ✅ Yes | ✅ Equal |
-| **Visual workflow** | ✅ Yes | ✅ Yes | ❌ No | ✅ Yes | Better than Mirth |
-| **Hot reload** | ✅ Yes | ❌ No | ❌ No | ✅ Yes | **Better** |
-| **Auto-restart** | ✅ Yes | ✅ Yes | ✅ Yes | ✅ Yes | ✅ Equal |
-| **Multi-process** | ✅ Yes | ✅ Yes | ❌ Single JVM | ✅ Yes | Better than Mirth |
-| **Priority queues** | ✅ Yes | ✅ Yes | ❌ No | ✅ Yes | Better than Mirth |
-| **Message transformation** | DTL | Mapper | JavaScript | DTL-style | ✅ Equal |
-| **Rule engine** | BPL | Rules | JavaScript | Rules | ✅ Equal |
-| **API-first** | ❌ Legacy | ❌ SOAP | ❌ Limited | ✅ REST API | **Better** |
-| **Docker-native** | ❌ No | ❌ No | ⚠️ Partial | ✅ Yes | **Better** |
-| **License cost** | $$$$$ | $$$$ | Free/$$$ | **Free** | **Better** |
+**Portal Navigation:** Sidebar → Agents
 
-**Verdict:** LI HIE matches or exceeds IRIS/Rhapsody/Mirth in key areas, with **modern architecture** and **zero licensing costs**.
+**Example conversation:**
 
----
+```
+You:    Create an HL7 ADT receiver on port 2575 that validates NHS numbers,
+        transforms to v2.5.1 for RIS at ris.sth.nhs.uk:2576, transforms to
+        v2.4 for Lab at lab.sth.nhs.uk:2577, and archives everything to
+        /data/outbound.
 
-## Next Steps
+Agent:  I'll create that integration. Setting up project "ADT Integration"
+        with 3 inbound services, 2 processes, and 3 outbound operations...
 
-### For Developers
-1. **Deploy demo:** Use this guide to configure the St. Thomas' demo
-2. **Test end-to-end:** Send real HL7 messages through the workflow
-3. **Customize:** Adapt for your trust's specific systems
-4. **Extend:** Add custom validation logic if needed
+        ✅ Created project: ADT Integration
+        ✅ Cerner.PAS.Receiver — HL7 TCP Service, port 2575
+        ✅ NHS.Validation.Process — NHS validation + PDS enrichment
+        ✅ ADT.Content.Router — 4 routing rules configured
+        ✅ RIS.HL7.Sender — HL7 v2.5.1 to ris.sth.nhs.uk:2576
+        ✅ Lab.HL7.Sender — HL7 v2.4 to lab.sth.nhs.uk:2577
+        ✅ Archive.File.Writer — /data/outbound
+        ✅ All connections wired
+        ✅ Production deployed and running (8/8 items active)
 
-### For Administrators
-1. **Monitor production:** Use Portal dashboards
-2. **Configure alerts:** Set thresholds for your environment
-3. **Scale workers:** Adjust based on load
-4. **Review audit trail:** Ensure compliance
+        Shall I send a test ADT A01 message?
 
-### For Integration Team
-1. **Document endpoints:** Map your actual systems (PAS, RIS, Lab, etc.)
-2. **Test connectivity:** Verify MLLP/File access
-3. **Define rules:** Business logic for your workflows
-4. **Performance test:** Load test with realistic message volumes
+You:    Yes, and also add a FHIR inbound on port 8443.
 
----
+Agent:  ✅ Test message sent — ACK received from RIS and Lab.
+        ✅ Added GP.FHIR.Receiver on port 8443 with FHIR→HL7 normalisation.
+        Production hot-reloaded — now 9/9 items active.
+```
 
-## Conclusion
+### Using Prompt Templates
 
-### LI HIE = Enterprise Integration Engine
+**Portal Navigation:** Sidebar → Prompts
 
-LI HIE is a **100% configurable, enterprise-grade healthcare integration engine** that achieves feature parity with InterSystems IRIS, Orion Rhapsody, and Mirth Connect. The configuration workflow is identical:
+Pre-built templates for common healthcare integration tasks:
 
-| Product | Configuration Workflow |
-|---------|------------------------|
-| **InterSystems IRIS** | Management Portal → Productions → Add Item → Configure → Apply → Start |
-| **Orion Rhapsody** | Rhapsody IDE → Add Route → Add Communication Points → Configure → Deploy |
-| **Mirth Connect** | Administrator Console → Channels → Add Connector → Configure → Deploy |
-| **LI HIE** | Portal UI → Projects → Add Item → Configure → Deploy & Start |
-
-**Result:** Identical user experience - zero code required for standard healthcare integrations.
-
-### Competitive Advantages
-
-LI HIE matches commercial products' core capabilities while providing:
-
-| Feature | LI HIE | IRIS/Rhapsody/Mirth |
-|---------|--------|---------------------|
-| **Configuration-driven** | ✅ Portal UI forms | ✅ Portal/Console UI |
-| **Zero-code workflows** | ✅ HL7, File, HTTP | ✅ HL7, File, HTTP |
-| **Visual workflow designer** | ✅ Drag-and-drop | ✅ Visual designers |
-| **Item-based architecture** | ✅ Services/Processes/Ops | ✅ Same model |
-| **Custom extensions** | ✅ Python classes | ✅ ObjectScript/Java/JS |
-| **Hot reload** | ✅ Yes | ❌ Requires restart |
-| **True multiprocessing** | ✅ OS processes (GIL bypass) | ❌ JVM/single mode |
-| **API-first design** | ✅ REST + JSON | ❌ SOAP/legacy APIs |
-| **Docker-native** | ✅ First-class | ❌ Complex setup |
-| **License cost** | ✅ **FREE (MIT)** | ❌ **$$$$** (high) |
-
-### Enterprise-Ready Status
-
-**Phase 1-3 Complete (v1.4.0):**
-- ✅ Core engine with HL7 v2.x, File, HTTP protocols
-- ✅ Phase 2 enterprise features (multiprocess, priority queues, auto-restart)
-- ✅ Phase 3 Manager API exposes all settings to Portal UI
-- ✅ Production orchestration (deploy, start, stop, reload)
-- ✅ Service registry for item-to-item communication
-- ✅ Real-time monitoring and health checks
-
-**Verdict:** LI HIE is **production-ready** for NHS acute trust deployments and competitive with leading commercial integration engines.
-
-### Key Takeaway
-
-**Everything is configured through the Portal UI** - creating workspaces, defining message flows, monitoring productions. Zero Python code required for standard healthcare integrations.
-
-This is **exactly how IRIS, Rhapsody, and Mirth work** - and LI HIE does it better with modern architecture, hot reload, true multiprocessing, and zero licensing costs.
+| Template | Purpose |
+|----------|---------|
+| HL7 Message Transformation | Generate field mappings between HL7 versions |
+| FHIR Resource Mapping | Map FHIR resources to HL7 segments |
+| NHS Validation Rules | Generate NHS-specific validation logic |
+| Integration Route Design | Design message flow for a clinical scenario |
+| Error Handling Strategy | Configure retry/failover for an operation |
 
 ---
 
-**See also:**
-- [Product Vision](../PRODUCT_VISION.md) - Strategic positioning and competitive analysis
-- [Requirements Specification](../REQUIREMENTS_SPEC.md) - Detailed enterprise requirements and comparison table
-- [Core Principles](../architecture/CORE_PRINCIPLES.md) - Architectural understanding
-- [UI Configuration Guide](../UI_CONFIGURATION_GUIDE.md) - Portal UI implementation guide
+## Appendix A: Complete API Reference for This Scenario
+
+All Portal actions map to REST API calls. For CI/CD automation:
+
+```bash
+# Create workspace
+curl -X POST $HIE_URL/api/workspaces \
+  -H "Content-Type: application/json" \
+  -d '{"name": "St_Thomas_Hospital", "display_name": "St. Thomas Hospital"}'
+
+# Create project
+curl -X POST $HIE_URL/api/workspaces/$WS_ID/projects \
+  -d '{"name": "ADT_Integration", "description": "ADT Integration Production"}'
+
+# Add inbound service
+curl -X POST $HIE_URL/api/workspaces/$WS_ID/projects/$PROJ_ID/items \
+  -d '{
+    "name": "Cerner.PAS.Receiver",
+    "item_type": "service",
+    "class_name": "li.hosts.hl7.HL7TCPService",
+    "enabled": true,
+    "pool_size": 4,
+    "adapter_settings": {"Port": "2575", "IPAddress": "0.0.0.0"},
+    "host_settings": {"MessageSchemaCategory": "2.3", "TargetConfigNames": "NHS.Validation.Process", "AckMode": "App"}
+  }'
+
+# Deploy & start
+curl -X POST $HIE_URL/api/workspaces/$WS_ID/projects/$PROJ_ID/deploy
+curl -X POST $HIE_URL/api/workspaces/$WS_ID/projects/$PROJ_ID/start
+
+# Send test message
+curl -X POST $HIE_URL/api/workspaces/$WS_ID/projects/$PROJ_ID/items/RIS.HL7.Sender/test \
+  -d '{"message": "MSH|^~\\&|PAS|STH|HIE|STH|20260211||ADT^A01|TEST001|P|2.3\rPID|1||9876543210^^^NHS||Smith^John||19800101|M"}'
+```
+
+---
+
+## Appendix B: IRIS Migration Quick Reference
+
+| IRIS Action | HIE Equivalent |
+|-------------|---------------|
+| `zn "NAMESPACE"` | Select Workspace in Portal |
+| Studio → New Production | Portal → Create Project |
+| Studio → Add Business Service | Portal → Add Item → Service |
+| Studio → Add Business Process | Portal → Add Item → Process |
+| Studio → Add Business Operation | Portal → Add Item → Operation |
+| Studio → New DTL Class | Portal → Add Transformation (or Agent) |
+| Studio → New BPL Class | Portal → Add Process with Rules |
+| Portal → Production → Apply | Portal → Deploy & Start |
+| Portal → Production → Start | Portal → Start |
+| Terminal → `do ##class(Ens.Director).StartProduction()` | `curl -X POST .../deploy` |
+| Terminal → `zwrite ^Ens.MessageHeader` | Portal → Messages tab |
+| Terminal → `zwrite ^Ens.Util.Log` | Portal → Logs tab |
+| Portal → Message Viewer | Portal → Messages tab |
+| Portal → Event Log | Portal → Errors tab |
+| Export Production XML | `GET /api/.../projects/.../export` |
+| Import Production XML | `POST /api/.../projects/import` (IRIS XML supported) |
+
+---
+
+## See Also
+
+- [Developer Workflow Scenarios](../DEVELOPER_WORKFLOW_SCENARIOS.md) — 8 detailed workflow scenarios with competitive analysis
+- [NHS Trust Demo](./NHS_TRUST_DEMO.md) — Technical implementation reference
+- [Product Vision](../PRODUCT_VISION.md) — Strategic positioning
+- [Configuration Reference](../CONFIGURATION_REFERENCE.md) — All settings reference
+- [UI Configuration Guide](../UI_CONFIGURATION_GUIDE.md) — Portal UI implementation
