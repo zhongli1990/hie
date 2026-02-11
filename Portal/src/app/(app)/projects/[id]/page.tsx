@@ -1112,23 +1112,51 @@ function AddItemModal({ projectId, itemTypes, existingItems, onClose, onCreated 
         {step === 'select' ? (
           <div className="p-6 overflow-y-auto">
             <div className="grid grid-cols-1 gap-3">
-              {(['service', 'process', 'operation'] as const).map((category) => (
+              {(['service', 'process', 'operation'] as const).map((category) => {
+                const catTypes = itemTypes.filter(t => t.category === category);
+                const builtIn = catTypes.filter(t => !t.li_class_name.startsWith('custom.'));
+                const custom = catTypes.filter(t => t.li_class_name.startsWith('custom.'));
+                return (
                 <div key={category}>
                   <h3 className="text-sm font-medium text-gray-500 uppercase mb-2">{category}s</h3>
                   <div className="space-y-2">
-                    {itemTypes.filter(t => t.category === category).map((type) => (
+                    {builtIn.map((type) => (
                       <button
                         key={type.type}
                         onClick={() => handleSelectType(type)}
                         className="w-full text-left p-4 border rounded-lg hover:border-blue-300 hover:bg-blue-50"
                       >
-                        <p className="font-medium text-gray-900">{type.name}</p>
+                        <div className="flex items-center gap-2">
+                          <p className="font-medium text-gray-900">{type.name}</p>
+                          <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-gray-100 text-gray-600">core</span>
+                        </div>
                         <p className="text-sm text-gray-500 mt-1">{type.description}</p>
+                        <code className="text-[11px] text-gray-400 mt-1 block">{type.li_class_name}</code>
+                      </button>
+                    ))}
+                    {custom.length > 0 && builtIn.length > 0 && (
+                      <div className="border-t border-dashed border-gray-200 my-2 pt-1">
+                        <span className="text-[10px] font-medium text-emerald-600 uppercase">Custom Extensions</span>
+                      </div>
+                    )}
+                    {custom.map((type) => (
+                      <button
+                        key={type.type}
+                        onClick={() => handleSelectType(type)}
+                        className="w-full text-left p-4 border border-emerald-200 rounded-lg hover:border-emerald-400 hover:bg-emerald-50"
+                      >
+                        <div className="flex items-center gap-2">
+                          <p className="font-medium text-gray-900">{type.name}</p>
+                          <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-emerald-100 text-emerald-700">custom</span>
+                        </div>
+                        <p className="text-sm text-gray-500 mt-1">{type.description}</p>
+                        <code className="text-[11px] text-emerald-600 mt-1 block">{type.li_class_name}</code>
                       </button>
                     ))}
                   </div>
                 </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         ) : (

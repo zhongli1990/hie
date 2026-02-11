@@ -404,10 +404,17 @@ export default function ConfigurePage() {
                     </tr>
                   ))
                 ) : itemTypes.length > 0 ? (
-                  itemTypes.map((itemType) => (
-                    <tr key={itemType.type} className="hover:bg-gray-50">
+                  itemTypes.map((itemType) => {
+                    const isCustom = itemType.li_class_name.startsWith('custom.');
+                    return (
+                    <tr key={itemType.type} className={`hover:bg-gray-50 ${isCustom ? 'bg-emerald-50/30' : ''}`}>
                       <td className="px-4 py-3">
-                        <p className="text-sm font-medium text-gray-900">{itemType.name}</p>
+                        <div className="flex items-center gap-2">
+                          <p className="text-sm font-medium text-gray-900">{itemType.name}</p>
+                          <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium ${isCustom ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-500'}`}>
+                            {isCustom ? 'custom' : 'core'}
+                          </span>
+                        </div>
                       </td>
                       <td className="px-4 py-3">
                         <span className={`rounded-full px-2 py-0.5 text-xs font-medium capitalize ${getItemTypeIcon(itemType.category)}`}>
@@ -415,13 +422,14 @@ export default function ConfigurePage() {
                         </span>
                       </td>
                       <td className="px-4 py-3">
-                        <code className="text-xs text-gray-600">{itemType.li_class_name}</code>
+                        <code className={`text-xs ${isCustom ? 'text-emerald-600' : 'text-gray-600'}`}>{itemType.li_class_name}</code>
                       </td>
                       <td className="px-4 py-3">
                         <p className="text-xs text-gray-500 truncate max-w-xs">{itemType.description || "-"}</p>
                       </td>
                     </tr>
-                  ))
+                    );
+                  }))
                 ) : (
                   <tr>
                     <td colSpan={4} className="px-4 py-8 text-center text-sm text-gray-500">
