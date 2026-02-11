@@ -133,6 +133,7 @@ export default function ChatPage() {
   const [currentIteration, setCurrentIteration] = useState<{ current: number; max: number } | null>(null);
   const [activeToolName, setActiveToolName] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<"messages" | "files">("messages");
+  const [threadId, setThreadId] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const eventSourceRef = useRef<EventSource | null>(null);
@@ -159,6 +160,9 @@ export default function ChatPage() {
   useEffect(() => {
     if (selectedSessionId) {
       fetchChatMessages(selectedSessionId);
+      setThreadId(null); // Clear thread when switching sessions
+      setStreamingContent("");
+      setActiveToolName(null);
     }
   }, [selectedSessionId, fetchChatMessages]);
 
@@ -208,6 +212,7 @@ export default function ChatPage() {
 
     if (sessionId) {
       setSelectedSessionId(sessionId);
+      setThreadId(null);
       setStreamingContent("");
       setStatus("idle");
       setChatStatus("idle");
@@ -236,10 +241,33 @@ export default function ChatPage() {
       const session = sessions.find((s) => s.session_id === selectedSessionId);
       const apiBase = getRunnerApiBase(session?.runner_type || runnerType);
 
+      // Create thread if needed (first message in session)
+      let currentThreadId = threadId;
+      if (!currentThreadId) {
+        const threadRes = await fetch(`${apiBase}/threads`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            workspaceId: currentWorkspace!.id,
+            workspaceName: currentWorkspace!.name || "default",
+            projectId: selectedProjectId || undefined,
+            runnerType: session?.runner_type || runnerType,
+            skipGitRepoCheck: true,
+          }),
+        });
+        if (!threadRes.ok) {
+          throw new Error(`Failed to create thread: ${threadRes.statusText}`);
+        }
+        const threadData = await threadRes.json();
+        currentThreadId = threadData.threadId;
+        setThreadId(currentThreadId);
+      }
+
+      // Create run
       const runRes = await fetch(`${apiBase}/runs`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ threadId: selectedSessionId, prompt: userMessage }),
+        body: JSON.stringify({ threadId: currentThreadId, prompt: userMessage }),
       });
       if (!runRes.ok) {
         const errBody = await runRes.json().catch(() => ({}));
