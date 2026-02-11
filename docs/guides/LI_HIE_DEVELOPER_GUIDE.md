@@ -1,6 +1,6 @@
 # OpenLI HIE — Developer & User Guide
 
-**Version:** 1.7.3  
+**Version:** 1.7.5  
 **Date:** February 11, 2026  
 **Status:** Production-Ready Enterprise Integration Engine  
 
@@ -56,6 +56,272 @@ OpenLI HIE follows IRIS conventions so that IRIS developers feel immediately at 
 | Production Config | Project Config | JSON (HIE) vs XML (IRIS) |
 | Class Registry | Class Registry | Dynamic class lookup (identical pattern) |
 | `EnsLib.HL7.Service.TCPService` | `li.hosts.hl7.HL7TCPService` | Auto-aliased — IRIS names work too |
+
+---
+
+## Quickstart: Create Your First Workflow Route (10 Minutes)
+
+> *This walkthrough creates a minimal but fully functional HL7 message route — verified end-to-end in v1.7.5. It mirrors the simplest possible IRIS production: one inbound service, one routing engine, and two outbound operations.*
+
+### What You'll Build
+
+```
+External PAS ──MLLP──▶ PAS-In ──▶ ADT_Router ──▶ EPR_Out ──MLLP──▶ EPR System
+                       (Service)   (Process)   └──▶ RIS_Out ──MLLP──▶ RIS System
+```
+
+- **PAS-In** receives ADT messages on port 10001
+- **ADT_Router** evaluates routing rules and forwards to the right targets
+- **EPR_Out** sends ADT A01/A02/A03 to the EPR system
+- **RIS_Out** sends only ADT A01 to the RIS system
+
+---
+
+### Step 1: Create Workspace & Project
+
+1. Open Portal → Sidebar → **Projects**
+2. Click **"Create Workspace"**
+   - Name: `My_Hospital`
+   - Display Name: My Hospital
+3. Inside the workspace, click **"Create Project"**
+   - Name: `ADT_Route`
+   - Display Name: ADT Message Route
+
+---
+
+### Step 2: Add the Inbound Service (PAS-In)
+
+1. Project page → Items tab → **"Add Item"**
+2. Select **HL7 TCP Service** from the class dropdown
+3. Fill in:
+
+| Field | Value |
+|-------|-------|
+| Name | `PAS-In` |
+| Class | `HL7 TCP Service` (li.hosts.hl7.HL7TCPService) |
+| Enabled | Yes |
+| Pool Size | 1 |
+
+**Adapter Settings:**
+
+| Setting | Value |
+|---------|-------|
+| Port | `10001` |
+
+**Host Settings:**
+
+| Setting | Value |
+|---------|-------|
+| MessageSchemaCategory | `2.4` |
+| AckMode | `Immediate` |
+
+4. Click **Save**
+
+---
+
+### Step 3: Add the Routing Engine (ADT_Router)
+
+1. Items tab → **"Add Item"**
+2. Select **HL7 Routing Engine** from the class dropdown
+3. Fill in:
+
+| Field | Value |
+|-------|-------|
+| Name | `ADT_Router` |
+| Class | `HL7 Routing Engine` (li.hosts.routing.HL7RoutingEngine) |
+| Enabled | Yes |
+| Pool Size | 1 |
+
+4. Click **Save**
+
+---
+
+### Step 4: Add Outbound Operations (EPR_Out, RIS_Out)
+
+**EPR_Out:**
+
+1. Items tab → **"Add Item"**
+2. Select **HL7 TCP Operation**
+3. Fill in:
+
+| Field | Value |
+|-------|-------|
+| Name | `EPR_Out` |
+| Class | `HL7 TCP Operation` (li.hosts.hl7.HL7TCPOperation) |
+| Enabled | Yes |
+
+**Adapter Settings:**
+
+| Setting | Value |
+|---------|-------|
+| IPAddress | `192.168.0.17` *(your EPR system IP)* |
+| Port | `35001` |
+
+**Host Settings:**
+
+| Setting | Value |
+|---------|-------|
+| ReplyCodeActions | `:?R=F,:?E=S,:*=S` |
+
+4. Click **Save**
+
+**RIS_Out:** Repeat with:
+
+| Field | Value |
+|-------|-------|
+| Name | `RIS_Out` |
+| IPAddress | `192.168.0.17` *(your RIS system IP)* |
+| Port | `35002` |
+| ReplyCodeActions | `:?R=F,:?E=S,:*=S` |
+
+---
+
+### Step 5: Create Connections
+
+Wire the items together so messages flow in the right direction.
+
+1. Project page → Connections tab → **"Add Connection"**
+
+| # | Source | Target |
+|---|--------|--------|
+| 1 | `PAS-In` | `ADT_Router` |
+| 2 | `ADT_Router` | `EPR_Out` |
+| 3 | `ADT_Router` | `RIS_Out` |
+
+These connections tell the engine: PAS-In forwards to ADT_Router, and ADT_Router can forward to EPR_Out and RIS_Out.
+
+---
+
+### Step 6: Create Routing Rules
+
+Routing rules control *which* messages go to *which* targets based on message content.
+
+1. Project page → **Routing Rules** tab → **"New Rule"**
+
+**Rule 1 — ADT A01/A02/A03 → EPR:**
+
+| Field | Value |
+|-------|-------|
+| Name | `ADT_to_EPR` |
+| Condition | `HL7.MSH:MessageType.MessageCode = "ADT" AND HL7.MSH:MessageType.TriggerEvent IN ("A01","A02","A03")` |
+| Action | `send` |
+| Target Items | `EPR_Out` |
+| Priority | `1` |
+| Enabled | Yes |
+
+**Rule 2 — ADT A01 only → RIS:**
+
+| Field | Value |
+|-------|-------|
+| Name | `ADT_A01_to_RIS` |
+| Condition | `HL7.MSH:MessageType.MessageCode = "ADT" AND HL7.MSH:MessageType.TriggerEvent = "A01"` |
+| Action | `send` |
+| Target Items | `RIS_Out` |
+| Priority | `2` |
+| Enabled | Yes |
+
+> **Note:** The engine evaluates ALL rules (not first-match-wins). An ADT^A01 message will match both rules and route to both EPR_Out and RIS_Out. An ADT^A02 only matches Rule 1 and routes to EPR_Out only.
+
+---
+
+### Step 7: Deploy & Start
+
+1. Click **"Deploy & Start"** on the project page
+2. The engine will:
+   - Create all host instances
+   - Wire connections (set TargetConfigNames from your connections)
+   - Load routing rules into ADT_Router
+   - Start all items
+
+You should see:
+```
+✅ PAS-In         — listening on port 10001 (MLLP)
+✅ ADT_Router     — routing engine started, 2 rules loaded
+✅ EPR_Out        — ready to send to 192.168.0.17:35001
+✅ RIS_Out        — ready to send to 192.168.0.17:35002
+
+Production Status: RUNNING (4/4 items active)
+```
+
+---
+
+### Step 8: Send a Test Message
+
+Send an ADT^A01 message to PAS-In on port 10001 using any MLLP client, or use the Portal test feature on an outbound operation.
+
+**Sample ADT^A01:**
+```
+MSH|^~\&|PAS|HOSPITAL|HIE|HIE|20260211120000||ADT^A01|MSG00001|P|2.4
+EVN|A01|20260211120000
+PID|1||PAT123^^^MRN||Smith^John^Q||19800101|M|||123 Main St^^London^^SW1A 1AA^UK
+PV1|1|I|WARD1^ROOM1^BED1||||12345^Jones^Sarah|||MED||||||||V123456
+```
+
+**Expected result:**
+
+| Step | Item | What Happens |
+|------|------|-------------|
+| 1 | PAS-In | Receives message, parses HL7, returns ACK to sender |
+| 2 | ADT_Router | Evaluates rules — Rule 1 matches (A01) → EPR_Out, Rule 2 matches (A01) → RIS_Out |
+| 3 | EPR_Out | Sends via MLLP to 192.168.0.17:35001, receives ACK |
+| 4 | RIS_Out | Sends via MLLP to 192.168.0.17:35002, receives ACK |
+
+**Check the Messages tab** — you should see 4 records:
+
+| Item | Type | Direction | Status |
+|------|------|-----------|--------|
+| PAS-In | service | inbound | completed |
+| ADT_Router | process | inbound | completed |
+| EPR_Out | operation | outbound | sent |
+| RIS_Out | operation | outbound | sent |
+
+**Now send an ADT^A02 (transfer):**
+```
+MSH|^~\&|PAS|HOSPITAL|HIE|HIE|20260211130000||ADT^A02|MSG00002|P|2.4
+EVN|A02|20260211130000
+PID|1||PAT456^^^MRN||Smith^Jane^A||19750315|F|||456 Oak Ave^^London^^EC1A 1BB^UK
+PV1|1|I|WARD2^ROOM3^BED2|U|||67890^Jones^Robert|||SUR||||||||V789012
+```
+
+**Expected:** Routes to EPR_Out only (Rule 1 matches A02, Rule 2 does not — it only matches A01). RIS_Out should **not** receive this message.
+
+---
+
+### Step 9: Verify Routing Logic
+
+| Message Type | Rules Matched | Routed To |
+|-------------|--------------|-----------|
+| ADT^A01 | ADT_to_EPR + ADT_A01_to_RIS | EPR_Out + RIS_Out |
+| ADT^A02 | ADT_to_EPR only | EPR_Out only |
+| ADT^A03 | ADT_to_EPR only | EPR_Out only |
+| ORM^O01 | None | Default targets (if set) or no routing |
+
+### Condition Syntax Reference
+
+You can write conditions in either format:
+
+**IRIS-style (recommended for IRIS developers):**
+```
+HL7.MSH:MessageType.MessageCode = "ADT"
+HL7.MSH:MessageType.TriggerEvent IN ("A01","A02","A03")
+HL7.PID:PatientName.FamilyName = "Smith"
+```
+
+**Field reference style:**
+```
+{MSH-9.1} = "ADT"
+{MSH-9.2} IN ("A01","A02","A03")
+{PID-5.1} = "Smith"
+```
+
+**Operators:** `=`, `!=`, `<`, `>`, `<=`, `>=`, `Contains`, `StartsWith`, `EndsWith`, `IN`
+**Logic:** `AND`, `OR`, `NOT`, parentheses `( )`
+
+For the complete IRIS path translation map and implementation details, see [Message Routing Workflow](../MESSAGE_ROUTING_WORKFLOW.md).
+
+---
+
+> *Now that you've built your first route, the next section walks through a full NHS production scenario with 8 items, validation, transformation, and multi-protocol inbound.*
 
 ---
 

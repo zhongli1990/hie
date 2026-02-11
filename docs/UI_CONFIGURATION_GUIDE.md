@@ -43,6 +43,128 @@ interface SettingDefinition {
 }
 ```
 
+## Quickstart: Your First Workflow Route via the Portal UI
+
+> *This section walks through creating a minimal but fully functional HL7 message route using only the Portal UI — no code required. Verified end-to-end in v1.7.5.*
+
+### What You'll Build
+
+```
+External PAS ──MLLP──▶ PAS-In ──▶ ADT_Router ──▶ EPR_Out ──MLLP──▶ EPR System
+                       (Service)   (Process)   └──▶ RIS_Out ──MLLP──▶ RIS System
+```
+
+### Step 1: Create Workspace & Project
+
+1. **Sidebar → Projects** → Click **"Create Workspace"**
+   - Name: `My_Hospital`, Display Name: My Hospital
+2. Inside workspace → Click **"Create Project"**
+   - Name: `ADT_Route`, Display Name: ADT Message Route
+
+### Step 2: Add Items (4 total)
+
+Navigate to the project page → **Items** tab → **"Add Item"** for each:
+
+**PAS-In (Inbound Service):**
+
+| Field | Value |
+|-------|-------|
+| Name | `PAS-In` |
+| Class | HL7 TCP Service |
+| Adapter → Port | `10001` |
+| Host → MessageSchemaCategory | `2.4` |
+| Host → AckMode | `Immediate` |
+
+**ADT_Router (Routing Process):**
+
+| Field | Value |
+|-------|-------|
+| Name | `ADT_Router` |
+| Class | HL7 Routing Engine |
+
+**EPR_Out (Outbound Operation):**
+
+| Field | Value |
+|-------|-------|
+| Name | `EPR_Out` |
+| Class | HL7 TCP Operation |
+| Adapter → IPAddress | `192.168.0.17` |
+| Adapter → Port | `35001` |
+| Host → ReplyCodeActions | `:?R=F,:?E=S,:*=S` |
+
+**RIS_Out (Outbound Operation):**
+
+| Field | Value |
+|-------|-------|
+| Name | `RIS_Out` |
+| Class | HL7 TCP Operation |
+| Adapter → IPAddress | `192.168.0.17` |
+| Adapter → Port | `35002` |
+| Host → ReplyCodeActions | `:?R=F,:?E=S,:*=S` |
+
+### Step 3: Create Connections
+
+**Connections** tab → **"Add Connection"** for each:
+
+| Source | Target |
+|--------|--------|
+| `PAS-In` | `ADT_Router` |
+| `ADT_Router` | `EPR_Out` |
+| `ADT_Router` | `RIS_Out` |
+
+### Step 4: Create Routing Rules
+
+**Routing Rules** tab → **"New Rule"** for each:
+
+**Rule 1 — ADT A01/A02/A03 → EPR:**
+
+| Field | Value |
+|-------|-------|
+| Name | `ADT_to_EPR` |
+| Condition | `HL7.MSH:MessageType.MessageCode = "ADT" AND HL7.MSH:MessageType.TriggerEvent IN ("A01","A02","A03")` |
+| Action | `send` |
+| Target Items | `EPR_Out` |
+| Priority | `1` |
+
+**Rule 2 — ADT A01 only → RIS:**
+
+| Field | Value |
+|-------|-------|
+| Name | `ADT_A01_to_RIS` |
+| Condition | `HL7.MSH:MessageType.MessageCode = "ADT" AND HL7.MSH:MessageType.TriggerEvent = "A01"` |
+| Action | `send` |
+| Target Items | `RIS_Out` |
+| Priority | `2` |
+
+> **Note:** The engine evaluates ALL rules. ADT^A01 matches both rules → routes to EPR_Out + RIS_Out. ADT^A02 matches only Rule 1 → routes to EPR_Out only.
+
+### Step 5: Deploy & Start
+
+Click **"Deploy & Start"** on the project page. The engine will:
+- Create all host instances
+- Wire connections (TargetConfigNames from your connections)
+- Load routing rules into ADT_Router
+- Start all items
+
+### Step 6: Test
+
+Send an ADT^A01 to port 10001 via any MLLP client. Check the **Messages** tab — you should see 4 records:
+
+| Item | Type | Direction | Status |
+|------|------|-----------|--------|
+| PAS-In | service | inbound | completed |
+| ADT_Router | process | inbound | completed |
+| EPR_Out | operation | outbound | sent |
+| RIS_Out | operation | outbound | sent |
+
+Send an ADT^A02 — only EPR_Out should receive it (not RIS_Out).
+
+For the complete walkthrough with sample messages, condition syntax reference, and IRIS path translation map, see:
+- [Developer Guide — Quickstart](guides/LI_HIE_DEVELOPER_GUIDE.md#quickstart-create-your-first-workflow-route-10-minutes)
+- [Message Routing Workflow](MESSAGE_ROUTING_WORKFLOW.md)
+
+---
+
 ## Phase 2 Settings Reference
 
 ### 1. Execution Configuration
