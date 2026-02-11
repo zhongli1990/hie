@@ -169,7 +169,6 @@ HIE_TOOLS = [
         "input_schema": {
             "type": "object",
             "properties": {
-                "workspace_id": {"type": "string", "description": "The workspace UUID"},
                 "project_id": {"type": "string", "description": "The project UUID"},
                 "name": {"type": "string", "description": "Item name using dot notation (e.g. 'Cerner.PAS.Receiver')"},
                 "item_type": {"type": "string", "enum": ["service", "process", "operation"], "description": "Item type"},
@@ -197,7 +196,7 @@ HIE_TOOLS = [
                     )
                 }
             },
-            "required": ["workspace_id", "project_id", "name", "item_type", "class_name"]
+            "required": ["project_id", "name", "item_type", "class_name"]
         }
     },
     # ── Connection Management ──
@@ -207,17 +206,16 @@ HIE_TOOLS = [
         "input_schema": {
             "type": "object",
             "properties": {
-                "workspace_id": {"type": "string", "description": "The workspace UUID"},
                 "project_id": {"type": "string", "description": "The project UUID"},
-                "source_item_id": {"type": "string", "description": "Source item UUID or name"},
-                "target_item_id": {"type": "string", "description": "Target item UUID or name"},
+                "source_item_id": {"type": "string", "description": "Source item UUID"},
+                "target_item_id": {"type": "string", "description": "Target item UUID"},
                 "connection_type": {
                     "type": "string",
                     "enum": ["standard", "error", "async"],
                     "description": "Connection type (default: standard)"
                 }
             },
-            "required": ["workspace_id", "project_id", "source_item_id", "target_item_id"]
+            "required": ["project_id", "source_item_id", "target_item_id"]
         }
     },
     # ── Routing Rules ──
@@ -231,11 +229,10 @@ HIE_TOOLS = [
         "input_schema": {
             "type": "object",
             "properties": {
-                "workspace_id": {"type": "string"},
-                "project_id": {"type": "string"},
+                "project_id": {"type": "string", "description": "The project UUID"},
                 "name": {"type": "string", "description": "Rule name (e.g. 'Route ADT to RIS and Lab')"},
-                "priority": {"type": "integer", "description": "Rule priority (lower = higher priority)"},
-                "enabled": {"type": "boolean", "description": "Whether the rule is active"},
+                "priority": {"type": "integer", "description": "Rule priority (lower = higher priority, default: 10)"},
+                "enabled": {"type": "boolean", "description": "Whether the rule is active (default: true)"},
                 "condition_expression": {
                     "type": "string",
                     "description": (
@@ -250,9 +247,9 @@ HIE_TOOLS = [
                     "items": {"type": "string"},
                     "description": "Target item names to send to"
                 },
-                "transform_name": {"type": "string", "description": "Transform to apply before sending"}
+                "transform_name": {"type": "string", "description": "Transform to apply before sending (optional)"}
             },
-            "required": ["workspace_id", "project_id", "name", "condition_expression", "action", "target_items"]
+            "required": ["project_id", "name", "condition_expression", "action", "target_items"]
         }
     },
     # ── Production Lifecycle ──
@@ -456,7 +453,6 @@ def execute_tool(
 
         # ── HIE Item tools ──
         elif tool_name == "hie_create_item":
-            ws_id = tool_input["workspace_id"]
             proj_id = tool_input["project_id"]
             body = {
                 "name": tool_input["name"],
@@ -467,22 +463,20 @@ def execute_tool(
                 "adapter_settings": tool_input.get("adapter_settings", {}),
                 "host_settings": tool_input.get("host_settings", {}),
             }
-            return _hie_api_call("POST", f"/api/workspaces/{ws_id}/projects/{proj_id}/items", body)
+            return _hie_api_call("POST", f"/api/projects/{proj_id}/items", body)
 
         # ── HIE Connection tools ──
         elif tool_name == "hie_create_connection":
-            ws_id = tool_input["workspace_id"]
             proj_id = tool_input["project_id"]
             body = {
                 "source_item_id": tool_input["source_item_id"],
                 "target_item_id": tool_input["target_item_id"],
                 "connection_type": tool_input.get("connection_type", "standard"),
             }
-            return _hie_api_call("POST", f"/api/workspaces/{ws_id}/projects/{proj_id}/connections", body)
+            return _hie_api_call("POST", f"/api/projects/{proj_id}/connections", body)
 
         # ── HIE Routing Rule tools ──
         elif tool_name == "hie_create_routing_rule":
-            ws_id = tool_input["workspace_id"]
             proj_id = tool_input["project_id"]
             body = {
                 "name": tool_input["name"],
@@ -493,7 +487,7 @@ def execute_tool(
                 "target_items": tool_input["target_items"],
                 "transform_name": tool_input.get("transform_name"),
             }
-            return _hie_api_call("POST", f"/api/workspaces/{ws_id}/projects/{proj_id}/routing-rules", body)
+            return _hie_api_call("POST", f"/api/projects/{proj_id}/routing-rules", body)
 
         # ── HIE Production Lifecycle tools ──
         elif tool_name == "hie_deploy_project":

@@ -74,7 +74,7 @@ export default function AgentsPage() {
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
   const [prompt, setPrompt] = useState("");
   const [events, setEvents] = useState<EventLine[]>([]);
-  const [viewMode, setViewMode] = useState<"transcript" | "raw">("transcript");
+  const [viewMode, setViewMode] = useState<"transcript" | "raw" | "files">("transcript");
   const [streamingText, setStreamingText] = useState("");
   const [activeToolCall, setActiveToolCall] = useState<{ name: string; input?: any } | null>(null);
   const transcriptEndRef = useRef<HTMLDivElement>(null);
@@ -105,6 +105,8 @@ export default function AgentsPage() {
     if (selectedSessionId) {
       fetchAgentMessages(selectedSessionId);
       setEvents([]); // Clear local events when loading from session
+      setStreamingText("");
+      setActiveToolCall(null);
     }
   }, [selectedSessionId, fetchAgentMessages]);
 
@@ -129,11 +131,38 @@ export default function AgentsPage() {
     return () => { cancelled = true; };
   }, [currentWorkspace?.id]);
 
-  // Build transcript from events
+  // Build transcript from agentMessages (DB) + events (current run)
   const transcript = useMemo(() => {
     const messages: TranscriptMessage[] = [];
-    let currentAssistantText = "";
 
+    // First, add messages from database (historical messages)
+    for (const msg of agentMessages) {
+      if (msg.role === "user" || msg.role === "assistant") {
+        messages.push({
+          role: msg.role,
+          content: msg.content,
+          timestamp: new Date(msg.created_at).getTime(),
+        });
+      } else if (msg.role === "tool" && msg.metadata) {
+        messages.push({
+          role: "tool",
+          content: `Tool: ${msg.metadata.tool_name || "tool"}`,
+          toolName: msg.metadata.tool_name,
+          toolInput: msg.metadata.tool_input,
+          toolOutput: msg.metadata.tool_output,
+          timestamp: new Date(msg.created_at).getTime(),
+        });
+      } else if (msg.role === "system") {
+        messages.push({
+          role: "system",
+          content: msg.content,
+          timestamp: new Date(msg.created_at).getTime(),
+        });
+      }
+    }
+
+    // Then, add events from current run (if any)
+    let currentAssistantText = "";
     for (const event of events) {
       const data = event.data;
       if (!data || typeof data !== "object") continue;
@@ -188,7 +217,7 @@ export default function AgentsPage() {
     }
 
     return messages;
-  }, [events]);
+  }, [agentMessages, events]);
 
   useEffect(() => {
     transcriptEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -486,40 +515,6 @@ export default function AgentsPage() {
               )}
             </div>
           </div>
-
-          {/* Prompt Manager */}
-          <div className="rounded-lg border border-gray-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 p-4 shadow-sm">
-            <a
-              href="/prompts"
-              className="flex items-center gap-2 text-sm text-nhs-blue dark:text-nhs-light-blue hover:underline"
-            >
-              <Sparkles className="h-4 w-4" />
-              Prompt Manager
-            </a>
-          </div>
-
-          {/* Upload/Download */}
-          <div className="rounded-lg border border-gray-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 p-4 shadow-sm">
-            <h3 className="text-sm font-medium text-gray-900 dark:text-white mb-3">Project Files</h3>
-            <div className="space-y-2">
-              <button
-                disabled
-                className="w-full flex items-center gap-2 px-3 py-2 text-xs border border-gray-200 dark:border-zinc-600 rounded-md text-gray-400 dark:text-gray-500 cursor-not-allowed"
-                title="Coming soon"
-              >
-                <Upload className="h-4 w-4" />
-                Upload Folder/Files
-              </button>
-              <button
-                disabled
-                className="w-full flex items-center gap-2 px-3 py-2 text-xs border border-gray-200 dark:border-zinc-600 rounded-md text-gray-400 dark:text-gray-500 cursor-not-allowed"
-                title="Coming soon"
-              >
-                <Download className="h-4 w-4" />
-                Download Project Files
-              </button>
-            </div>
-          </div>
         </div>
 
         {/* Main Panel */}
@@ -546,6 +541,16 @@ export default function AgentsPage() {
                 }`}
               >
                 Raw Events
+              </button>
+              <button
+                onClick={() => setViewMode("files")}
+                className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
+                  viewMode === "files"
+                    ? "bg-nhs-blue text-white"
+                    : "text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-zinc-700"
+                }`}
+              >
+                Project Files
               </button>
             </div>
             <div className="flex items-center gap-2">
@@ -643,15 +648,61 @@ export default function AgentsPage() {
                 )}
                 <div ref={transcriptEndRef} />
               </div>
-            ) : (
+            ) : viewMode === "raw" ? (
               <pre className="text-xs font-mono text-gray-700 dark:text-gray-300 whitespace-pre-wrap">
                 {events.map((e) => `${new Date(e.at).toISOString()} ${JSON.stringify(e.data, null, 2)}`).join("\n\n")}
               </pre>
+            ) : (
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-sm font-medium text-gray-900 dark:text-white">Project Files</h3>
+                  {selectedProject && (
+                    <span className="text-xs text-gray-500 dark:text-gray-400">
+                      Project: {selectedProject.name}
+                    </span>
+                  )}
+                </div>
+                <div className="space-y-3">
+                  <button
+                    disabled
+                    className="w-full flex items-center gap-2 px-4 py-3 text-sm border border-gray-200 dark:border-zinc-600 rounded-lg text-gray-400 dark:text-gray-500 cursor-not-allowed hover:bg-gray-50 dark:hover:bg-zinc-700/50"
+                    title="Coming soon"
+                  >
+                    <Upload className="h-4 w-4" />
+                    Upload Folder/Files
+                  </button>
+                  <button
+                    disabled
+                    className="w-full flex items-center gap-2 px-4 py-3 text-sm border border-gray-200 dark:border-zinc-600 rounded-lg text-gray-400 dark:text-gray-500 cursor-not-allowed hover:bg-gray-50 dark:hover:bg-zinc-700/50"
+                    title="Coming soon"
+                  >
+                    <Download className="h-4 w-4" />
+                    Download Project Files
+                  </button>
+                </div>
+                <div className="mt-6 p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
+                  <p className="text-xs text-blue-800 dark:text-blue-200">
+                    File management will allow you to upload code, configuration files, and download generated outputs from the agent workspace.
+                  </p>
+                </div>
+              </div>
             )}
           </div>
 
           {/* Prompt Input */}
-          <div className="border-t border-gray-200 dark:border-zinc-700 p-4">
+          <div className="border-t border-gray-200 dark:border-zinc-700 p-4 space-y-3">
+            {/* Prompt Manager Link */}
+            <div className="flex items-center justify-between">
+              <a
+                href="/prompts"
+                className="flex items-center gap-2 text-xs text-nhs-blue dark:text-nhs-light-blue hover:underline"
+              >
+                <Sparkles className="h-3.5 w-3.5" />
+                Open Prompt Manager
+              </a>
+            </div>
+
+            {/* Input Area */}
             <div className="flex gap-3">
               <textarea
                 value={prompt}

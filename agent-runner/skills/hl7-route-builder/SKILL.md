@@ -57,7 +57,7 @@ For each inbound source, call `hie_create_item`:
 **HL7 MLLP Receiver:**
 ```
 hie_create_item(
-  workspace_id, project_id,
+  project_id=project_id,
   name="Cerner.PAS.Receiver",
   item_type="service",
   class_name="li.hosts.hl7.HL7TCPService",
@@ -74,7 +74,7 @@ hie_create_item(
 **HL7 File Watcher:**
 ```
 hie_create_item(
-  workspace_id, project_id,
+  project_id=project_id,
   name="Batch.File.Reader",
   item_type="service",
   class_name="li.hosts.hl7.HL7FileService",
@@ -88,7 +88,7 @@ hie_create_item(
 **Custom Validation (developer class):**
 ```
 hie_create_item(
-  workspace_id, project_id,
+  project_id=project_id,
   name="NHS.Validation.Process",
   item_type="process",
   class_name="custom.nhs.NHSValidationProcess",
@@ -104,7 +104,7 @@ hie_create_item(
 **Content-Based Router (core class):**
 ```
 hie_create_item(
-  workspace_id, project_id,
+  project_id=project_id,
   name="ADT.Content.Router",
   item_type="process",
   class_name="li.hosts.routing.HL7RoutingEngine",
@@ -118,7 +118,7 @@ hie_create_item(
 **HL7 MLLP Sender:**
 ```
 hie_create_item(
-  workspace_id, project_id,
+  project_id=project_id,
   name="RIS.HL7.Sender",
   item_type="operation",
   class_name="li.hosts.hl7.HL7TCPOperation",
@@ -131,7 +131,7 @@ hie_create_item(
 **File Writer:**
 ```
 hie_create_item(
-  workspace_id, project_id,
+  project_id=project_id,
   name="Archive.File.Writer",
   item_type="operation",
   class_name="li.hosts.file.FileOperation",
@@ -141,16 +141,16 @@ hie_create_item(
 
 ### Step 6: Wire Connections
 ```
-hie_create_connection(workspace_id, project_id, source="Cerner.PAS.Receiver", target="NHS.Validation.Process")
-hie_create_connection(workspace_id, project_id, source="NHS.Validation.Process", target="ADT.Content.Router")
-hie_create_connection(workspace_id, project_id, source="ADT.Content.Router", target="RIS.HL7.Sender")
-hie_create_connection(workspace_id, project_id, source="ADT.Content.Router", target="Archive.File.Writer")
+hie_create_connection(project_id=project_id, source_item_id=cerner_id, target_item_id=validation_id)
+hie_create_connection(project_id=project_id, source_item_id=validation_id, target_item_id=router_id)
+hie_create_connection(project_id=project_id, source_item_id=router_id, target_item_id=ris_id)
+hie_create_connection(project_id=project_id, source_item_id=router_id, target_item_id=archive_id)
 ```
 
 ### Step 7: Add Routing Rules
 ```
 hie_create_routing_rule(
-  workspace_id, project_id,
+  project_id=project_id,
   name="Route ADT to RIS and Lab",
   priority=1,
   condition_expression='{MSH-9.1} = "ADT" AND {MSH-9.2} IN ("A01","A02","A03","A08")',

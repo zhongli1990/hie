@@ -1,13 +1,112 @@
 # HIE Implementation Progress Report
-**Feature Branch: multiprocess-concurrency-implementation**
+**Current Branch: main**
 
-**Date:** February 10, 2026
-**Sprint:** Phase 1 & Phase 2 - Critical Gaps & Advanced Features
-**Status:** 🟢 **95% COMPLETE** (All P0 + P1 gaps resolved)
+**Date:** February 11, 2026
+**Sprint:** v1.8.0 - GenAI Session Persistence & UI Fixes
+**Status:** 🟢 **COMPLETE** (All critical UX issues resolved)
 
 ---
 
-## Executive Summary
+## Executive Summary - v1.8.0
+
+Successfully resolved **4 critical UX issues** in GenAI Agents and Chat pages identified post-release v1.7.3. All sessions now persist to database, UI layout follows saas-codex reference pattern, and session history loads correctly.
+
+**What Was Fixed:**
+- ✅ Session history not loading when clicked
+- ✅ Prompt Manager moved to console top (from sidebar)
+- ✅ Project Files added as tab (more discoverable)
+- ✅ Sessions synced between Agents and Chat pages
+
+**Files Changed:** 2 Portal pages (agents/page.tsx, chat/page.tsx)
+**Build Status:** ✅ Clean build - no TypeScript errors
+
+---
+
+## v1.8.0 Implementation Details
+
+### ✅ Fix #1: Session History Not Loading (COMPLETED)
+
+**Issue:** Clicking a session from history list didn't populate Agent Console with messages from database.
+
+**Root Cause:** Agents page transcript was built from local `events` state only, not from `agentMessages` context (which loads from DB).
+
+**Solution:** Updated transcript builder (lines 134-219) to merge both data sources:
+```typescript
+const transcript = useMemo(() => {
+  const messages: TranscriptMessage[] = [];
+
+  // First, load historical messages from database
+  for (const msg of agentMessages) {
+    messages.push({ role: msg.role, content: msg.content, ... });
+  }
+
+  // Then, add current run events (streaming)
+  for (const event of events) {
+    // Process ui.message.user, ui.message.assistant.final, etc.
+  }
+
+  return messages;
+}, [agentMessages, events]);
+```
+
+**Files Changed:**
+- `Portal/src/app/(app)/agents/page.tsx:134-219`
+
+---
+
+### ✅ Fix #2: Prompt Manager Wrong Location (COMPLETED)
+
+**Issue:** Prompt Manager link was in sidebar instead of on console (not matching saas-codex pattern).
+
+**Solution:**
+- Removed Prompt Manager from sidebar (lines 490-499)
+- Added Prompt Manager link above input area (lines 732-739)
+
+**Result:** Both Agents and Chat pages now show "Open Prompt Manager" link at top of input area.
+
+**Files Changed:**
+- `Portal/src/app/(app)/agents/page.tsx:490-499,732-739`
+- `Portal/src/app/(app)/chat/page.tsx:522-531,713-720`
+
+---
+
+### ✅ Fix #3: Project Files as Tab (COMPLETED)
+
+**Issue:** Project Files was sidebar section instead of tab alongside Transcript/Raw Events.
+
+**Solution:**
+- Added "files" to viewMode type (line 76)
+- Added "Project Files" tab button (lines 559-567)
+- Added Project Files tab content with upload/download buttons (lines 685-722)
+- Removed Project Files from sidebar
+
+**Result:**
+- **Agents page:** 3 tabs (Transcript | Raw Events | **Project Files**)
+- **Chat page:** 2 tabs (Messages | **Project Files**)
+
+**Files Changed:**
+- `Portal/src/app/(app)/agents/page.tsx:76,559-567,685-722`
+- `Portal/src/app/(app)/chat/page.tsx:135,562-583,645-678`
+
+---
+
+### ✅ Fix #4: Sessions Shared (ALREADY WORKING)
+
+**Status:** Already implemented via AppContext - both pages use same `sessions` state.
+
+**Verification:**
+- Both pages call `fetchSessions()` from AppContext
+- Sessions stored in `genai_sessions` table
+- Any session created in Agents appears in Chat sidebar
+- Any session created in Chat appears in Agents sidebar
+
+**Files:**
+- `Portal/src/contexts/AppContext.tsx` (provides shared session state)
+- Both pages consume from same context
+
+---
+
+## Previous Sprint Summary (v1.4.0 - Multiprocessing)
 
 Successfully completed **Phase 1 and Phase 2 implementations**, bringing HIE from **59% → 95% compliance** with mandatory requirements. Fully implemented multiprocessing, service messaging, configurable queues, and auto-restart capabilities in Docker-first environment with comprehensive message patterns.
 

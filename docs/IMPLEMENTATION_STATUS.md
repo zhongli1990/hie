@@ -1,6 +1,94 @@
 # HIE Implementation Status
 
-**Version:** v1.4.0 (Enterprise Concurrency & UI Exposure)
+**Version:** v1.8.0 (GenAI Session Persistence & UI Fixes)
+**Last Updated:** February 11, 2026
+**Status:** 🚀 **Complete** - GenAI Agents & Chat with Full Session Persistence
+**Branch:** `main`
+**Release:** v1.8.0
+
+---
+
+## 🎯 v1.8.0 Update - GenAI Session Persistence & UI Fixes
+
+### Critical Fixes ✅ COMPLETE
+
+Post-release v1.7.3 identified 4 critical UX issues in GenAI Agents and Chat pages. All resolved in v1.8.0.
+
+| Issue | Status | Fix Summary |
+|-------|--------|-------------|
+| **Session History Not Loading** | ✅ Complete | Changed transcript builder to use `agentMessages` from context + events |
+| **Prompt Manager Wrong Location** | ✅ Complete | Moved from sidebar to top of console (above input) |
+| **Project Files Not a Tab** | ✅ Complete | Added as tab alongside Transcript/Raw Events/Messages |
+| **Sessions Not Shared** | ✅ Complete | Both pages use same AppContext.sessions state |
+
+### Implementation Details
+
+**Files Modified (2):**
+1. **`Portal/src/app/(app)/agents/page.tsx`**
+   - Line 76: Added "files" to viewMode type
+   - Lines 134-219: Transcript now uses `agentMessages` (DB) + `events` (current run)
+   - Lines 103-108: Clear streaming state when session changes
+   - Removed Prompt Manager and Project Files from sidebar
+   - Added "Project Files" tab (3 tabs: Transcript | Raw Events | Project Files)
+   - Added Prompt Manager link above input area
+
+2. **`Portal/src/app/(app)/chat/page.tsx`**
+   - Line 135: Added viewMode state for "messages" | "files"
+   - Removed Prompt Manager and Project Files from sidebar
+   - Added tabs structure (2 tabs: Messages | Project Files)
+   - Added Prompt Manager link above input area
+
+**Root Cause:** Agents page was building transcript from local `events` state only, ignoring `agentMessages` from database context.
+
+**Solution:** Updated transcript builder to merge both data sources:
+```typescript
+// First, add messages from database (historical)
+for (const msg of agentMessages) {
+  messages.push({ role: msg.role, content: msg.content, ... });
+}
+
+// Then, add events from current run (streaming)
+for (const event of events) {
+  // Handle ui.message.user, ui.message.assistant.final, etc.
+}
+```
+
+### User Experience Improvements
+
+**Before v1.8.0:**
+- ❌ Clicking session history → console stays empty
+- ❌ Prompt Manager buried in sidebar
+- ❌ Project Files not discoverable (sidebar only)
+- ✅ Sessions already shared via AppContext
+
+**After v1.8.0:**
+- ✅ Click session → all messages load from database
+- ✅ Prompt Manager visible above input on both pages
+- ✅ Project Files accessible via tab (more discoverable)
+- ✅ Sessions synced between Agents and Chat pages
+
+### Files Overview
+
+| Page | Tabs | Sidebar Sections | Input Area |
+|------|------|------------------|------------|
+| **Agents** | Transcript, Raw Events, Project Files | Project Selector, Runner Type, HIE Context, Session History | Prompt Manager link + Input |
+| **Chat** | Messages, Project Files | Session History, Runner Type Selector | Prompt Manager link + Input |
+
+**Session List Behavior:**
+- Both pages show same sessions from `AppContext.sessions`
+- Sessions stored in database via `genai_sessions` table
+- Clicking session loads messages via `fetchAgentMessages()` / `fetchChatMessages()`
+- Messages rendered from `agentMessages` / `chatMessages` context state
+
+### Build Status
+
+✅ TypeScript build passed - no errors or warnings
+
+---
+
+## Previous Releases
+
+### v1.4.0 (Enterprise Concurrency & UI Exposure)
 **Last Updated:** February 10, 2026
 **Status:** 🚀 **Phase 1, 2 & 3 Complete** - Full Stack Enterprise Integration Ready
 **Branch:** `feature/multiprocess-concurrency-implementation`

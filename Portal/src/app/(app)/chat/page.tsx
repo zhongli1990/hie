@@ -132,6 +132,7 @@ export default function ChatPage() {
   const [streamingContent, setStreamingContent] = useState("");
   const [currentIteration, setCurrentIteration] = useState<{ current: number; max: number } | null>(null);
   const [activeToolName, setActiveToolName] = useState<string | null>(null);
+  const [viewMode, setViewMode] = useState<"messages" | "files">("messages");
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const eventSourceRef = useRef<EventSource | null>(null);
@@ -518,88 +519,81 @@ export default function ChatPage() {
             </div>
           )}
         </div>
-
-        {/* Prompt Manager */}
-        <div className="border-t border-gray-200 dark:border-zinc-700 p-4">
-          <a
-            href="/prompts"
-            className="flex items-center gap-2 text-sm text-nhs-blue dark:text-nhs-light-blue hover:underline"
-          >
-            <Sparkles className="h-4 w-4" />
-            Prompt Manager
-          </a>
-        </div>
-
-        {/* Upload/Download */}
-        <div className="border-t border-gray-200 dark:border-zinc-700 p-4">
-          <h3 className="text-sm font-medium text-gray-900 dark:text-white mb-3">Project Files</h3>
-          <div className="space-y-2">
-            <button
-              disabled
-              className="w-full flex items-center gap-2 px-3 py-2 text-xs border border-gray-200 dark:border-zinc-600 rounded-md text-gray-400 dark:text-gray-500 cursor-not-allowed"
-              title="Coming soon"
-            >
-              <Upload className="h-4 w-4" />
-              Upload Folder/Files
-            </button>
-            <button
-              disabled
-              className="w-full flex items-center gap-2 px-3 py-2 text-xs border border-gray-200 dark:border-zinc-600 rounded-md text-gray-400 dark:text-gray-500 cursor-not-allowed"
-              title="Coming soon"
-            >
-              <Download className="h-4 w-4" />
-              Download Project Files
-            </button>
-          </div>
-        </div>
       </div>
 
       {/* Main Chat Area */}
       <div className="flex-1 flex flex-col">
-        {/* Header */}
-        <div className="h-14 border-b border-gray-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 px-6 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <MessagesSquare className="h-5 w-5 text-nhs-blue" />
-            <h1 className="text-lg font-semibold text-gray-900 dark:text-white">Chat</h1>
-            {wsName && <span className="text-sm text-gray-500 dark:text-gray-400">{wsName}</span>}
-            {selectedProject && (
-              <span className="text-xs px-2 py-0.5 rounded-full bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300">
-                {selectedProject.display_name || selectedProject.name}
-              </span>
-            )}
+        {/* Header with Tabs */}
+        <div className="border-b border-gray-200 dark:border-zinc-700 bg-white dark:bg-zinc-800">
+          <div className="h-14 px-6 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <MessagesSquare className="h-5 w-5 text-nhs-blue" />
+              <h1 className="text-lg font-semibold text-gray-900 dark:text-white">Chat</h1>
+              {wsName && <span className="text-sm text-gray-500 dark:text-gray-400">{wsName}</span>}
+              {selectedProject && (
+                <span className="text-xs px-2 py-0.5 rounded-full bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300">
+                  {selectedProject.display_name || selectedProject.name}
+                </span>
+              )}
+            </div>
+            {/* Status Indicator */}
+            <div className="flex items-center gap-2">
+              {status === "connecting" && (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin text-gray-400" />
+                  <span className="text-xs text-gray-400">Connecting...</span>
+                </>
+              )}
+              {status === "thinking" && (
+                <>
+                  <Sparkles className="h-4 w-4 text-nhs-blue animate-pulse" />
+                  <span className="text-xs text-nhs-blue">Thinking<BouncingDots /></span>
+                </>
+              )}
+              {status === "streaming" && (
+                <>
+                  <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
+                  <span className="text-xs text-green-600 dark:text-green-400">Streaming</span>
+                </>
+              )}
+              {status === "tool_running" && (
+                <>
+                  <Wrench className="h-4 w-4 text-amber-500 animate-spin" />
+                  <span className="text-xs text-amber-600 dark:text-amber-400">Running {activeToolName || "tool"}</span>
+                </>
+              )}
+            </div>
           </div>
-          {/* Status Indicator */}
-          <div className="flex items-center gap-2">
-            {status === "connecting" && (
-              <>
-                <Loader2 className="h-4 w-4 animate-spin text-gray-400" />
-                <span className="text-xs text-gray-400">Connecting...</span>
-              </>
-            )}
-            {status === "thinking" && (
-              <>
-                <Sparkles className="h-4 w-4 text-nhs-blue animate-pulse" />
-                <span className="text-xs text-nhs-blue">Thinking<BouncingDots /></span>
-              </>
-            )}
-            {status === "streaming" && (
-              <>
-                <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
-                <span className="text-xs text-green-600 dark:text-green-400">Streaming</span>
-              </>
-            )}
-            {status === "tool_running" && (
-              <>
-                <Wrench className="h-4 w-4 text-amber-500 animate-spin" />
-                <span className="text-xs text-amber-600 dark:text-amber-400">Running {activeToolName || "tool"}</span>
-              </>
-            )}
+
+          {/* Tabs */}
+          <div className="flex gap-2 px-6 pb-2">
+            <button
+              onClick={() => setViewMode("messages")}
+              className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
+                viewMode === "messages"
+                  ? "bg-nhs-blue text-white"
+                  : "text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-zinc-700"
+              }`}
+            >
+              Messages
+            </button>
+            <button
+              onClick={() => setViewMode("files")}
+              className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
+                viewMode === "files"
+                  ? "bg-nhs-blue text-white"
+                  : "text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-zinc-700"
+              }`}
+            >
+              Project Files
+            </button>
           </div>
         </div>
 
-        {/* Messages */}
+        {/* Content Area */}
         <div className="flex-1 overflow-y-auto p-6">
-          {!selectedSessionId ? (
+          {viewMode === "messages" ? (
+            !selectedSessionId ? (
             <div className="h-full flex items-center justify-center">
               <div className="text-center">
                 <MessagesSquare className="h-16 w-16 mx-auto text-gray-300 dark:text-zinc-600 mb-4" />
@@ -679,13 +673,60 @@ export default function ChatPage() {
               )}
               <div ref={messagesEndRef} />
             </div>
+          )
+          ) : (
+            <div className="max-w-2xl mx-auto space-y-4">
+              <div className="flex items-center justify-between">
+                <h3 className="text-sm font-medium text-gray-900 dark:text-white">Project Files</h3>
+                {selectedProject && (
+                  <span className="text-xs text-gray-500 dark:text-gray-400">
+                    Project: {selectedProject.display_name || selectedProject.name}
+                  </span>
+                )}
+              </div>
+              <div className="space-y-3">
+                <button
+                  disabled
+                  className="w-full flex items-center gap-2 px-4 py-3 text-sm border border-gray-200 dark:border-zinc-600 rounded-lg text-gray-400 dark:text-gray-500 cursor-not-allowed hover:bg-gray-50 dark:hover:bg-zinc-700/50"
+                  title="Coming soon"
+                >
+                  <Upload className="h-4 w-4" />
+                  Upload Folder/Files
+                </button>
+                <button
+                  disabled
+                  className="w-full flex items-center gap-2 px-4 py-3 text-sm border border-gray-200 dark:border-zinc-600 rounded-lg text-gray-400 dark:text-gray-500 cursor-not-allowed hover:bg-gray-50 dark:hover:bg-zinc-700/50"
+                  title="Coming soon"
+                >
+                  <Download className="h-4 w-4" />
+                  Download Project Files
+                </button>
+              </div>
+              <div className="mt-6 p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
+                <p className="text-xs text-blue-800 dark:text-blue-200">
+                  File management will allow you to upload code, configuration files, and download generated outputs from the chat workspace.
+                </p>
+              </div>
+            </div>
           )}
         </div>
 
         {/* Input Area */}
         {selectedSessionId && (
           <div className="border-t border-gray-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 p-4">
-            <div className="max-w-3xl mx-auto">
+            <div className="max-w-3xl mx-auto space-y-3">
+              {/* Prompt Manager Link */}
+              <div className="flex items-center justify-between">
+                <a
+                  href="/prompts"
+                  className="flex items-center gap-2 text-xs text-nhs-blue dark:text-nhs-light-blue hover:underline"
+                >
+                  <Sparkles className="h-3.5 w-3.5" />
+                  Open Prompt Manager
+                </a>
+              </div>
+
+              {/* Input */}
               <div className="flex gap-3">
                 <textarea
                   ref={inputRef}
