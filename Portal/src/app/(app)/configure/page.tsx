@@ -447,7 +447,7 @@ export default function ConfigurePage() {
                       </td>
                     </tr>
                     );
-                  }))
+                  })
                 ) : (
                   <tr>
                     <td colSpan={4} className="px-4 py-8 text-center text-sm text-gray-500">
