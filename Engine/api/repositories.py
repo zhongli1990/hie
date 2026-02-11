@@ -265,7 +265,7 @@ class ProjectRepository:
         
         project['items'] = [_parse_jsonb_fields(dict(r), ['adapter_settings', 'host_settings']) for r in items]
         project['connections'] = [_parse_jsonb_fields(dict(r), ['settings']) for r in connections]
-        project['routing_rules'] = [_parse_jsonb_fields(dict(r), ['condition']) for r in rules]
+        project['routing_rules'] = [_parse_jsonb_fields(dict(r), ['target_items']) for r in rules]
         
         return project
 
@@ -502,13 +502,13 @@ class RoutingRuleRepository:
         """List all routing rules in a project."""
         query = "SELECT * FROM project_routing_rules WHERE project_id = $1 ORDER BY priority"
         rows = await self._pool.fetch(query, project_id)
-        return [dict(r) for r in rows]
+        return [_parse_jsonb_fields(dict(r), ['target_items']) for r in rows]
     
     async def get_by_id(self, rule_id: UUID) -> Optional[dict]:
         """Get routing rule by ID."""
         query = "SELECT * FROM project_routing_rules WHERE id = $1"
         row = await self._pool.fetchrow(query, rule_id)
-        return dict(row) if row else None
+        return _parse_jsonb_fields(dict(row), ['target_items']) if row else None
     
     async def create(
         self,
@@ -536,7 +536,7 @@ class RoutingRuleRepository:
             json.dumps(target_items or []),
             transform_name
         )
-        return dict(row)
+        return _parse_jsonb_fields(dict(row), ['target_items'])
     
     async def update(self, rule_id: UUID, **kwargs) -> Optional[dict]:
         """Update routing rule fields."""
@@ -567,7 +567,7 @@ class RoutingRuleRepository:
             RETURNING *
         """
         row = await self._pool.fetchrow(query, *values)
-        return dict(row) if row else None
+        return _parse_jsonb_fields(dict(row), ['target_items']) if row else None
     
     async def delete(self, rule_id: UUID) -> bool:
         """Delete routing rule."""

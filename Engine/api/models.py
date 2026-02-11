@@ -238,7 +238,7 @@ class RoutingRuleCreate(BaseModel):
     priority: int = Field(default=0, ge=0, le=1000)
     condition_expression: Optional[str] = None
     action: RuleAction = RuleAction.SEND
-    target_items: list[UUID] = Field(default_factory=list)
+    target_items: list[str] = Field(default_factory=list)
     transform_name: Optional[str] = None
 
 
@@ -248,7 +248,7 @@ class RoutingRuleUpdate(BaseModel):
     priority: Optional[int] = Field(None, ge=0, le=1000)
     condition_expression: Optional[str] = None
     action: Optional[RuleAction] = None
-    target_items: Optional[list[UUID]] = None
+    target_items: Optional[list[str]] = None
     transform_name: Optional[str] = None
 
 
@@ -262,7 +262,7 @@ class RoutingRuleResponse(TimestampMixin):
     priority: int = 0
     condition_expression: Optional[str] = None
     action: RuleAction = RuleAction.SEND
-    target_items: list[UUID] = Field(default_factory=list)
+    target_items: list[str] = Field(default_factory=list)
     transform_name: Optional[str] = None
 
 
