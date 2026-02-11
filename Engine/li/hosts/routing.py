@@ -91,8 +91,71 @@ class ConditionEvaluator:
     # Pattern to extract field references
     FIELD_PATTERN = re.compile(r'\{([A-Z]{2,3}(?:\(\d+\))?-\d+(?:\.\d+)*)\}')
     
+    # IRIS-style field path pattern: HL7.SEG:FieldName.ComponentName
+    IRIS_FIELD_PATTERN = re.compile(r'HL7\.([A-Z]{2,3}):([A-Za-z0-9_.]+)')
+    
+    # Mapping of IRIS virtual property paths to HL7 field positions
+    # Format: (segment, dotted_property) -> "SEG-field.component"
+    IRIS_FIELD_MAP: dict[tuple[str, str], str] = {
+        # MSH segment
+        ("MSH", "SendingApplication"): "MSH-3",
+        ("MSH", "SendingFacility"): "MSH-4",
+        ("MSH", "ReceivingApplication"): "MSH-5",
+        ("MSH", "ReceivingFacility"): "MSH-6",
+        ("MSH", "MessageType"): "MSH-9",
+        ("MSH", "MessageType.MessageCode"): "MSH-9.1",
+        ("MSH", "MessageType.TriggerEvent"): "MSH-9.2",
+        ("MSH", "MessageType.MessageStructure"): "MSH-9.3",
+        ("MSH", "MessageControlID"): "MSH-10",
+        ("MSH", "ProcessingID"): "MSH-11",
+        ("MSH", "VersionID"): "MSH-12",
+        # PID segment
+        ("PID", "PatientID"): "PID-3.1",
+        ("PID", "PatientName"): "PID-5",
+        ("PID", "PatientName.FamilyName"): "PID-5.1",
+        ("PID", "PatientName.GivenName"): "PID-5.2",
+        ("PID", "DateOfBirth"): "PID-7",
+        ("PID", "Sex"): "PID-8",
+        # PV1 segment
+        ("PV1", "PatientClass"): "PV1-2",
+        ("PV1", "AssignedPatientLocation"): "PV1-3",
+        ("PV1", "AdmissionType"): "PV1-4",
+        ("PV1", "AttendingDoctor"): "PV1-7",
+        # EVN segment
+        ("EVN", "EventTypeCode"): "EVN-1",
+        ("EVN", "RecordedDateTime"): "EVN-2",
+    }
+    
     def __init__(self):
         self._cache: dict[str, Callable] = {}
+    
+    def _translate_iris_paths(self, condition: str) -> str:
+        """
+        Translate IRIS-style field paths to curly-brace field references.
+        
+        Converts: HL7.MSH:MessageType.MessageCode = "ADT"
+        To:       {MSH-9.1} = "ADT"
+        """
+        def replace_iris_path(match):
+            segment = match.group(1)
+            property_path = match.group(2)
+            
+            # Look up in the IRIS field map
+            key = (segment, property_path)
+            field_ref = self.IRIS_FIELD_MAP.get(key)
+            
+            if field_ref:
+                return f"{{{field_ref}}}"
+            
+            # Fallback: log warning and return original
+            logger.warning(
+                "unknown_iris_field_path",
+                segment=segment,
+                property=property_path,
+            )
+            return match.group(0)
+        
+        return self.IRIS_FIELD_PATTERN.sub(replace_iris_path, condition)
     
     def evaluate(self, condition: str, message: HL7Message | HL7ParsedView) -> bool:
         """
@@ -107,6 +170,9 @@ class ConditionEvaluator:
         """
         if not condition or condition.strip() == "":
             return True  # Empty condition always matches
+        
+        # Translate IRIS-style paths to field references
+        condition = self._translate_iris_paths(condition)
         
         # Get parsed view
         if isinstance(message, HL7Message):
@@ -483,25 +549,27 @@ class HL7RoutingEngine(BusinessProcess):
 
     def _evaluate_rules(self, message: HL7Message) -> RoutingResult:
         """
-        Evaluate routing rules against a message.
+        Evaluate all routing rules against a message.
         
-        Returns the first matching rule's result.
+        Collects targets from ALL matching rules (not first-match-wins).
         """
+        matched_targets: list[str] = []
+        matched_rules: list[str] = []
+        last_action = RuleAction.SEND
+        last_transform = None
+        
         for rule in self._rules:
             if not rule.enabled:
                 continue
             
             try:
                 if self._evaluator.evaluate(rule.condition, message):
-                    targets = [rule.target] if rule.target else []
-                    
-                    return RoutingResult(
-                        matched=True,
-                        rule_name=rule.name,
-                        action=rule.action,
-                        targets=targets,
-                        transform=rule.transform,
-                    )
+                    if rule.target:
+                        matched_targets.append(rule.target)
+                    matched_rules.append(rule.name)
+                    last_action = rule.action
+                    if rule.transform:
+                        last_transform = rule.transform
             
             except Exception as e:
                 self._log.error(
@@ -509,6 +577,15 @@ class HL7RoutingEngine(BusinessProcess):
                     rule=rule.name,
                     error=str(e),
                 )
+        
+        if matched_targets:
+            return RoutingResult(
+                matched=True,
+                rule_name=",".join(matched_rules),
+                action=last_action,
+                targets=matched_targets,
+                transform=last_transform,
+            )
         
         # No rule matched - check for default target
         default_targets = self.target_config_names
