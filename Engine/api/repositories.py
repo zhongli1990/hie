@@ -751,3 +751,89 @@ class PortalMessageRepository:
         """
         row = await self._pool.fetchrow(query, project_id)
         return dict(row) if row else {}
+
+
+class GenAISessionRepository:
+    """Repository for GenAI session and message operations."""
+
+    def __init__(self, pool: asyncpg.Pool):
+        self._pool = pool
+
+    async def list_sessions(self, workspace_id: UUID) -> list[dict]:
+        """List all sessions for a workspace."""
+        query = """
+            SELECT s.*,
+                   (SELECT COUNT(*) FROM genai_messages m WHERE m.session_id = s.session_id) as run_count
+            FROM genai_sessions s
+            WHERE s.workspace_id = $1
+            ORDER BY s.created_at DESC
+        """
+        rows = await self._pool.fetch(query, workspace_id)
+        return [dict(r) for r in rows]
+
+    async def get_session(self, session_id: UUID) -> Optional[dict]:
+        """Get session by ID."""
+        query = """
+            SELECT s.*,
+                   (SELECT COUNT(*) FROM genai_messages m WHERE m.session_id = s.session_id) as run_count
+            FROM genai_sessions s
+            WHERE s.session_id = $1
+        """
+        row = await self._pool.fetchrow(query, session_id)
+        return dict(row) if row else None
+
+    async def create_session(
+        self,
+        workspace_id: UUID,
+        project_id: Optional[UUID],
+        runner_type: str,
+        title: str,
+    ) -> dict:
+        """Create a new GenAI session."""
+        query = """
+            INSERT INTO genai_sessions (workspace_id, project_id, runner_type, title)
+            VALUES ($1, $2, $3, $4)
+            RETURNING *, 0 as run_count
+        """
+        row = await self._pool.fetchrow(query, workspace_id, project_id, runner_type, title)
+        return dict(row)
+
+    async def update_session_title(self, session_id: UUID, title: str) -> None:
+        """Update session title."""
+        query = """
+            UPDATE genai_sessions
+            SET title = $1, updated_at = NOW()
+            WHERE session_id = $2
+        """
+        await self._pool.execute(query, title, session_id)
+
+    async def list_messages(self, session_id: UUID) -> list[dict]:
+        """List all messages in a session."""
+        query = """
+            SELECT *
+            FROM genai_messages
+            WHERE session_id = $1
+            ORDER BY created_at ASC
+        """
+        rows = await self._pool.fetch(query, session_id)
+        return [_parse_jsonb_fields(dict(r), ['metadata']) for r in rows]
+
+    async def create_message(
+        self,
+        session_id: UUID,
+        role: str,
+        content: str,
+        run_id: Optional[str] = None,
+        metadata: Optional[dict] = None,
+    ) -> dict:
+        """Create a new message in a session."""
+        query = """
+            INSERT INTO genai_messages (session_id, role, content, run_id, metadata)
+            VALUES ($1, $2, $3, $4, $5)
+            RETURNING *
+        """
+        row = await self._pool.fetchrow(
+            query, session_id, role, content, run_id,
+            json.dumps(metadata) if metadata else None
+        )
+        return _parse_jsonb_fields(dict(row), ['metadata'])

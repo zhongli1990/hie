@@ -12,7 +12,8 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Bot, Play, Square, RotateCcw, ChevronDown, ChevronRight, Terminal, FileCode, Loader2, Send, Sparkles } from "lucide-react";
+import { Bot, Play, Square, RotateCcw, ChevronDown, ChevronRight, Terminal, FileCode, Loader2, Send, Sparkles, Upload, Download } from "lucide-react";
+import { useAppContext } from "@/contexts/AppContext";
 import { useWorkspace } from "@/contexts/WorkspaceContext";
 import { listProjects, type Project } from "@/lib/api-v2";
 
@@ -49,14 +50,29 @@ type EventLine = {
 };
 
 export default function AgentsPage() {
-  // Use the existing WorkspaceContext (provided by (app)/layout.tsx)
-  const { workspaces, currentWorkspace } = useWorkspace();
-  const [selectedWorkspaceId, setSelectedWorkspaceId] = useState<string | null>(null);
+  // Get workspace from global WorkspaceContext
+  const { currentWorkspace } = useWorkspace();
+
+  // Use AppContext for session persistence
+  const {
+    sessions,
+    selectedSessionId,
+    setSelectedSessionId,
+    runnerType,
+    setRunnerType,
+    agentMessages,
+    setAgentMessages,
+    agentStatus,
+    setAgentStatus,
+    fetchSessions,
+    fetchAgentMessages,
+    createSession,
+    persistMessage,
+  } = useAppContext();
+
   const [projects, setProjects] = useState<Project[]>([]);
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
-  const [runnerType, setRunnerType] = useState<RunnerType>("claude");
   const [prompt, setPrompt] = useState("");
-  const [status, setStatus] = useState<string>("idle");
   const [events, setEvents] = useState<EventLine[]>([]);
   const [viewMode, setViewMode] = useState<"transcript" | "raw">("transcript");
   const [streamingText, setStreamingText] = useState("");
@@ -64,6 +80,9 @@ export default function AgentsPage() {
   const transcriptEndRef = useRef<HTMLDivElement>(null);
   const [threadId, setThreadId] = useState<string | null>(null);
   const eventSourceRef = useRef<EventSource | null>(null);
+
+  // Use agentStatus from context as primary status
+  const status = agentStatus;
 
   // Pick up prefilled prompt from Prompts page
   useEffect(() => {
@@ -74,23 +93,31 @@ export default function AgentsPage() {
     }
   }, []);
 
-  // Auto-select current workspace from context
+  // Load sessions when workspace changes
   useEffect(() => {
-    if (currentWorkspace && !selectedWorkspaceId) {
-      setSelectedWorkspaceId(currentWorkspace.id);
+    if (currentWorkspace) {
+      fetchSessions();
     }
-  }, [currentWorkspace, selectedWorkspaceId]);
+  }, [currentWorkspace, fetchSessions]);
+
+  // Load messages when session changes
+  useEffect(() => {
+    if (selectedSessionId) {
+      fetchAgentMessages(selectedSessionId);
+      setEvents([]); // Clear local events when loading from session
+    }
+  }, [selectedSessionId, fetchAgentMessages]);
 
   // Fetch projects for selected workspace using api-v2
   useEffect(() => {
-    if (!selectedWorkspaceId) {
+    if (!currentWorkspace?.id) {
       setProjects([]);
       return;
     }
     let cancelled = false;
     (async () => {
       try {
-        const data = await listProjects(selectedWorkspaceId);
+        const data = await listProjects(currentWorkspace.id);
         if (!cancelled) {
           setProjects(data.projects || []);
         }
@@ -100,7 +127,7 @@ export default function AgentsPage() {
       }
     })();
     return () => { cancelled = true; };
-  }, [selectedWorkspaceId]);
+  }, [currentWorkspace?.id]);
 
   // Build transcript from events
   const transcript = useMemo(() => {
@@ -167,16 +194,60 @@ export default function AgentsPage() {
     transcriptEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [transcript, streamingText]);
 
+  // Create a new session
+  async function handleNewSession() {
+    if (!currentWorkspace) {
+      alert("Please select a workspace first");
+      return;
+    }
+    const sessionId = await createSession(
+      selectedProjectId,
+      runnerType,
+      `${runnerType.charAt(0).toUpperCase() + runnerType.slice(1)} Session`
+    );
+    if (sessionId) {
+      setSelectedSessionId(sessionId);
+      setEvents([]);
+      setThreadId(null);
+      setStreamingText("");
+      setActiveToolCall(null);
+      setAgentStatus("idle");
+    }
+  }
+
   // Connect to agent-runner backend with SSE streaming
   async function onRunPrompt() {
     if (!prompt.trim()) return;
-    setStatus("running");
+
+    // Create session if none selected
+    let currentSessionId = selectedSessionId;
+    if (!currentSessionId) {
+      if (!currentWorkspace) {
+        alert("Please select a workspace first");
+        return;
+      }
+      currentSessionId = await createSession(
+        selectedProjectId,
+        runnerType,
+        `${runnerType.charAt(0).toUpperCase() + runnerType.slice(1)} Session`
+      );
+      if (!currentSessionId) {
+        alert("Failed to create session");
+        return;
+      }
+      setSelectedSessionId(currentSessionId);
+    }
+
+    setAgentStatus("running");
     setEvents([]);
     setStreamingText("");
     setActiveToolCall(null);
 
     const userPrompt = prompt;
     setPrompt("");
+
+    // Persist user message to database
+    await persistMessage(currentSessionId, "user", userPrompt);
 
     // Add user message to events immediately
     setEvents([{ at: Date.now(), data: { type: "ui.message.user", payload: { text: userPrompt } } }]);
@@ -187,13 +258,12 @@ export default function AgentsPage() {
       // Step 1: Create or reuse a thread
       let currentThreadId = threadId;
       if (!currentThreadId) {
-        const ws = workspaces.find((w) => w.id === selectedWorkspaceId);
         const threadRes = await fetch(`${apiBase}/threads`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            workspaceId: selectedWorkspaceId,
-            workspaceName: ws?.name || "default",
+            workspaceId: currentWorkspace!.id,
+            workspaceName: currentWorkspace!.name || "default",
             projectId: selectedProjectId || undefined,
             runnerType,
             skipGitRepoCheck: true,
@@ -235,7 +305,12 @@ export default function AgentsPage() {
           if (eventType === "ui.message.assistant.delta") {
             setStreamingText((prev) => prev + (parsed.payload?.textDelta || ""));
           } else if (eventType === "ui.message.assistant.final") {
+            const assistantText = parsed.payload?.text || "";
             setStreamingText("");
+            // Persist assistant message to database
+            if (currentSessionId && assistantText) {
+              persistMessage(currentSessionId, "assistant", assistantText, runId);
+            }
           }
 
           // Handle tool call indicators
@@ -247,16 +322,18 @@ export default function AgentsPage() {
 
           // Handle completion
           if (eventType === "run.completed" || eventType === "stream.closed") {
-            setStatus("completed");
+            setAgentStatus("completed");
             setStreamingText("");
             setActiveToolCall(null);
             evtSource.close();
             eventSourceRef.current = null;
+            // Refresh sessions to update run count
+            fetchSessions();
           }
 
           // Handle errors
           if (eventType === "error") {
-            setStatus(`error: ${parsed.message || parsed.payload?.message || "Unknown error"}`);
+            setAgentStatus(`error: ${parsed.message || parsed.payload?.message || "Unknown error"}`);
             setStreamingText("");
             setActiveToolCall(null);
             evtSource.close();
@@ -269,9 +346,9 @@ export default function AgentsPage() {
 
       evtSource.onerror = () => {
         if (evtSource.readyState === EventSource.CLOSED) {
-          if (status === "running") setStatus("completed");
+          if (status === "running") setAgentStatus("completed");
         } else {
-          setStatus("error: Connection lost");
+          setAgentStatus("error: Connection lost");
         }
         evtSource.close();
         eventSourceRef.current = null;
@@ -279,7 +356,7 @@ export default function AgentsPage() {
         setActiveToolCall(null);
       };
     } catch (e) {
-      setStatus(`error: ${e instanceof Error ? e.message : "Unknown error"}`);
+      setAgentStatus(`error: ${e instanceof Error ? e.message : "Unknown error"}`);
     }
   }
 
@@ -290,7 +367,7 @@ export default function AgentsPage() {
     };
   }, []);
 
-  const selectedWorkspace = workspaces.find((w) => w.id === selectedWorkspaceId) || null;
+  // selectedWorkspace is now currentWorkspace from WorkspaceContext
   const selectedProject = projects.find((p) => p.id === selectedProjectId) || null;
 
   return (
@@ -310,23 +387,8 @@ export default function AgentsPage() {
       <div className="flex flex-col lg:flex-row gap-4 lg:gap-6 h-auto lg:h-[calc(100vh-220px)] min-h-0 lg:min-h-[600px]">
         {/* Controls Panel */}
         <div className="lg:w-80 flex-shrink-0 space-y-4 overflow-y-auto">
-          {/* Workspace Selector */}
-          <div className="rounded-lg border border-gray-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 p-4 shadow-sm">
-            <label className="block text-sm font-medium text-gray-900 dark:text-white mb-2">Workspace</label>
-            <select
-              value={selectedWorkspaceId || ""}
-              onChange={(e) => setSelectedWorkspaceId(e.target.value || null)}
-              className="w-full rounded-md border border-gray-300 dark:border-zinc-600 bg-white dark:bg-zinc-700 px-3 py-2 text-sm text-gray-900 dark:text-white"
-            >
-              <option value="">Select workspace...</option>
-              {Array.isArray(workspaces) && workspaces.map((w) => (
-                <option key={w.id} value={w.id}>{w.display_name || w.name}</option>
-              ))}
-            </select>
-          </div>
-
           {/* Project Selector */}
-          {selectedWorkspaceId && (
+          {currentWorkspace && (
             <div className="rounded-lg border border-gray-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 p-4 shadow-sm">
               <label className="block text-sm font-medium text-gray-900 dark:text-white mb-2">Project</label>
               <select
@@ -358,7 +420,7 @@ export default function AgentsPage() {
                 // Clear thread when runner changes (different backend)
                 setThreadId(null);
                 setEvents([]);
-                setStatus("idle");
+                setAgentStatus("idle");
                 setStreamingText("");
                 setActiveToolCall(null);
                 eventSourceRef.current?.close();
@@ -379,7 +441,7 @@ export default function AgentsPage() {
             <div className="rounded-lg border border-nhs-light-blue/30 bg-blue-50 dark:bg-zinc-800 p-4 shadow-sm">
               <h3 className="text-sm font-medium text-nhs-blue dark:text-nhs-light-blue mb-2">HIE Context</h3>
               <div className="space-y-1 text-xs text-gray-600 dark:text-gray-400">
-                <div><span className="font-medium">Workspace:</span> {selectedWorkspace?.display_name}</div>
+                <div><span className="font-medium">Workspace:</span> {currentWorkspace?.display_name}</div>
                 <div><span className="font-medium">Project:</span> {selectedProject?.name}</div>
                 <div><span className="font-medium">Status:</span> {selectedProject?.state || "configured"}</div>
                 <div><span className="font-medium">Items:</span> {selectedProject?.items_count || 0}</div>
@@ -387,26 +449,75 @@ export default function AgentsPage() {
             </div>
           )}
 
-          {/* Quick Actions */}
+          {/* Session History */}
           <div className="rounded-lg border border-gray-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 p-4 shadow-sm">
-            <h3 className="text-sm font-medium text-gray-900 dark:text-white mb-3">Quick Prompts</h3>
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-sm font-medium text-gray-900 dark:text-white">Agent Sessions</h3>
+              <button
+                onClick={handleNewSession}
+                disabled={!currentWorkspace}
+                className="px-2 py-1 text-xs bg-nhs-blue text-white rounded hover:bg-nhs-dark-blue disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              >
+                + New
+              </button>
+            </div>
+            <div className="space-y-2 max-h-60 overflow-y-auto">
+              {sessions.length === 0 ? (
+                <p className="text-xs text-gray-500 dark:text-gray-400 text-center py-4">
+                  No sessions yet. Click &quot;+ New&quot; to start.
+                </p>
+              ) : (
+                sessions.map((session) => (
+                  <button
+                    key={session.session_id}
+                    onClick={() => setSelectedSessionId(session.session_id)}
+                    className={`w-full text-left px-3 py-2 rounded-md text-xs transition-colors ${
+                      selectedSessionId === session.session_id
+                        ? "bg-nhs-blue text-white"
+                        : "bg-gray-50 dark:bg-zinc-700 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-zinc-600"
+                    }`}
+                  >
+                    <div className="font-medium truncate">{session.title}</div>
+                    <div className="text-xs opacity-75 mt-0.5">
+                      {session.runner_type} · {session.run_count || 0} runs
+                    </div>
+                  </button>
+                ))
+              )}
+            </div>
+          </div>
+
+          {/* Prompt Manager */}
+          <div className="rounded-lg border border-gray-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 p-4 shadow-sm">
+            <a
+              href="/prompts"
+              className="flex items-center gap-2 text-sm text-nhs-blue dark:text-nhs-light-blue hover:underline"
+            >
+              <Sparkles className="h-4 w-4" />
+              Prompt Manager
+            </a>
+          </div>
+
+          {/* Upload/Download */}
+          <div className="rounded-lg border border-gray-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 p-4 shadow-sm">
+            <h3 className="text-sm font-medium text-gray-900 dark:text-white mb-3">Project Files</h3>
             <div className="space-y-2">
-              {[
-                "Create an HL7 ADT receiver on port 10001",
-                "Add an MLLP sender to PAS system",
-                "Route A01 messages to the EPR",
-                "Show me the current route configuration",
-                "Test the HL7 connectivity end-to-end",
-              ].map((q, i) => (
-                <button
-                  key={i}
-                  onClick={() => setPrompt(q)}
-                  className="w-full text-left text-xs px-3 py-2 rounded-md border border-gray-200 dark:border-zinc-600 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-zinc-700 transition-colors"
-                >
-                  <Sparkles className="h-3 w-3 inline mr-1.5 text-nhs-blue" />
-                  {q}
-                </button>
-              ))}
+              <button
+                disabled
+                className="w-full flex items-center gap-2 px-3 py-2 text-xs border border-gray-200 dark:border-zinc-600 rounded-md text-gray-400 dark:text-gray-500 cursor-not-allowed"
+                title="Coming soon"
+              >
+                <Upload className="h-4 w-4" />
+                Upload Folder/Files
+              </button>
+              <button
+                disabled
+                className="w-full flex items-center gap-2 px-3 py-2 text-xs border border-gray-200 dark:border-zinc-600 rounded-md text-gray-400 dark:text-gray-500 cursor-not-allowed"
+                title="Coming soon"
+              >
+                <Download className="h-4 w-4" />
+                Download Project Files
+              </button>
             </div>
           </div>
         </div>

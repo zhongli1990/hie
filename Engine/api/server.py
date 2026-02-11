@@ -87,6 +87,7 @@ class APIServer:
             from Engine.api.routes.messages import register_routes as register_message_routes
             from Engine.api.routes.dashboard import setup_dashboard_routes
             from Engine.api.routes.monitoring import setup_monitoring_routes
+            from Engine.api.routes.genai_sessions import setup_genai_session_routes
             from Engine.api.services.message_store import set_db_pool as set_message_store_pool
             setup_workspace_routes(self.app, self.db_pool)
             setup_project_routes(self.app, self.db_pool)
@@ -95,6 +96,7 @@ class APIServer:
             register_message_routes(self.app)
             setup_dashboard_routes(self.app, self.db_pool)
             setup_monitoring_routes(self.app, self.db_pool)
+            setup_genai_session_routes(self.app, self.db_pool)
             set_message_store_pool(self.db_pool)
             logger.info("workspace_project_routes_registered")
         

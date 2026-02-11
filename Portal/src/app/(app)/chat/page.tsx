@@ -12,7 +12,8 @@
 "use client";
 
 import { useEffect, useRef, useState, type ChangeEvent, type KeyboardEvent } from "react";
-import { MessagesSquare, Send, Loader2, Plus, Bot, User as UserIcon, Terminal, AlertCircle, Sparkles, Wrench, ShieldAlert } from "lucide-react";
+import { MessagesSquare, Send, Loader2, Plus, Bot, User as UserIcon, Terminal, AlertCircle, Sparkles, Wrench, ShieldAlert, Upload, Download } from "lucide-react";
+import { useAppContext } from "@/contexts/AppContext";
 import { useWorkspace } from "@/contexts/WorkspaceContext";
 import { listProjects, type Project } from "@/lib/api-v2";
 
@@ -36,7 +37,7 @@ function getRunnerLabel(runner: RunnerType): string {
   return labels[runner] || runner;
 }
 
-type ChatMessage = {
+type DisplayMessage = {
   id: string;
   role: "user" | "assistant" | "tool" | "system" | "thinking";
   content: string;
@@ -107,21 +108,58 @@ function ThinkingIndicator({ iteration }: { iteration?: { current: number; max: 
 // ─────────────────────────────────────────────────────────────────────────────
 
 export default function ChatPage() {
-  const { workspaces, currentWorkspace } = useWorkspace();
+  const {
+    sessions,
+    selectedSessionId,
+    setSelectedSessionId,
+    runnerType,
+    setRunnerType,
+    chatMessages,
+    setChatMessages,
+    chatStatus,
+    setChatStatus,
+    fetchSessions,
+    fetchChatMessages,
+    createSession,
+    persistMessage,
+  } = useAppContext();
+
+  const { currentWorkspace } = useWorkspace();
+
   const [projects, setProjects] = useState<Project[]>([]);
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
-  const [sessions, setSessions] = useState<ChatSession[]>([]);
-  const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
-  const [runnerType, setRunnerType] = useState<RunnerType>("claude");
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [inputValue, setInputValue] = useState("");
-  const [status, setStatus] = useState<"idle" | "connecting" | "thinking" | "streaming" | "tool_running">("idle");
   const [streamingContent, setStreamingContent] = useState("");
   const [currentIteration, setCurrentIteration] = useState<{ current: number; max: number } | null>(null);
   const [activeToolName, setActiveToolName] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const eventSourceRef = useRef<EventSource | null>(null);
+
+  // Use chatStatus from context, but maintain local status states for UI
+  const [status, setStatus] = useState<"idle" | "connecting" | "thinking" | "streaming" | "tool_running">("idle");
+  // Map chatMessages from context to local messages format
+  const messages: DisplayMessage[] = chatMessages.map((m) => ({
+    id: m.message_id,
+    role: m.role as "user" | "assistant" | "tool" | "system",
+    content: m.content,
+    metadata: m.metadata,
+    created_at: m.created_at,
+  }));
+
+  // Load sessions when workspace changes
+  useEffect(() => {
+    if (currentWorkspace) {
+      fetchSessions();
+    }
+  }, [currentWorkspace, fetchSessions]);
+
+  // Load messages when session changes
+  useEffect(() => {
+    if (selectedSessionId) {
+      fetchChatMessages(selectedSessionId);
+    }
+  }, [selectedSessionId, fetchChatMessages]);
 
   // Fetch projects when workspace changes
   useEffect(() => {
@@ -156,49 +194,25 @@ export default function ChatPage() {
   // ─── Create Session ──────────────────────────────────────────────────────
 
   async function onCreateSession() {
-    if (!currentWorkspace) return;
-    const apiBase = getRunnerApiBase(runnerType);
-    try {
-      const res = await fetch(`${apiBase}/threads`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          workspaceId: currentWorkspace.id,
-          workspaceName: currentWorkspace.name,
-          projectId: selectedProjectId || undefined,
-          runnerType,
-          skipGitRepoCheck: true,
-        }),
-      });
-      if (!res.ok) {
-        const errBody = await res.json().catch(() => ({}));
-        throw new Error(errBody.detail || errBody.error || res.statusText);
-      }
-      const data = await res.json();
-      const newSession: ChatSession = {
-        id: data.threadId,
-        workspace_id: currentWorkspace.id,
-        project_id: selectedProjectId,
-        runner_type: runnerType,
-        created_at: new Date().toISOString(),
-        message_count: 0,
-        title: `${getRunnerLabel(runnerType).split(" ")[0]} Chat ${sessions.length + 1}`,
-      };
-      setSessions((prev: ChatSession[]) => [newSession, ...prev]);
-      setSelectedSessionId(newSession.id);
-      setMessages([]);
+    if (!currentWorkspace) {
+      alert("Please select a workspace first");
+      return;
+    }
+
+    const sessionId = await createSession(
+      selectedProjectId,
+      runnerType,
+      `${getRunnerLabel(runnerType).split(" ")[0]} Chat`
+    );
+
+    if (sessionId) {
+      setSelectedSessionId(sessionId);
       setStreamingContent("");
       setStatus("idle");
+      setChatStatus("idle");
       setTimeout(() => inputRef.current?.focus(), 100);
-    } catch (err: unknown) {
-      console.error("Failed to create session:", err);
-      const errorMsg: ChatMessage = {
-        id: `msg-${Date.now()}-error`,
-        role: "system",
-        content: `Failed to create session: ${err instanceof Error ? err.message : "Unknown error"}`,
-        created_at: new Date().toISOString(),
-      };
-      setMessages((prev: ChatMessage[]) => [...prev, errorMsg]);
+    } else {
+      alert("Failed to create session");
     }
   }
 
@@ -214,16 +228,11 @@ export default function ChatPage() {
     setCurrentIteration(null);
     setActiveToolName(null);
 
-    const userMsg: ChatMessage = {
-      id: `msg-${Date.now()}`,
-      role: "user",
-      content: userMessage,
-      created_at: new Date().toISOString(),
-    };
-    setMessages((prev: ChatMessage[]) => [...prev, userMsg]);
+    // Persist user message to database
+    await persistMessage(selectedSessionId, "user", userMessage);
 
     try {
-      const session = sessions.find((s: ChatSession) => s.id === selectedSessionId);
+      const session = sessions.find((s) => s.session_id === selectedSessionId);
       const apiBase = getRunnerApiBase(session?.runner_type || runnerType);
 
       const runRes = await fetch(`${apiBase}/runs`, {
@@ -246,7 +255,7 @@ export default function ChatPage() {
       eventSourceRef.current = evtSource;
       let accumulatedText = "";
 
-      evtSource.onmessage = (event: MessageEvent) => {
+      evtSource.onmessage = async (event: MessageEvent) => {
         if (!event.data || event.data.trim() === "") return;
         try {
           const parsed = JSON.parse(event.data);
@@ -257,14 +266,14 @@ export default function ChatPage() {
             setCurrentIteration(parsed.payload);
             setStatus("thinking");
           } else if (eventType === "ui.skill.activated") {
-            const skillMsg: ChatMessage = {
+            const skillMsg: DisplayMessage = {
               id: `msg-${Date.now()}-skill-${parsed.payload?.skillName}`,
               role: "system",
               content: `Skill activated: ${parsed.payload?.skillName}`,
               metadata: { skill_name: parsed.payload?.skillName },
               created_at: new Date().toISOString(),
             };
-            setMessages((prev: ChatMessage[]) => [...prev, skillMsg]);
+            setChatMessages((prev: any) => [...prev, skillMsg as any]);
           } else if (eventType === "ui.message.assistant.delta") {
             accumulatedText += parsed.payload?.textDelta || "";
             setStreamingContent(accumulatedText);
@@ -273,46 +282,43 @@ export default function ChatPage() {
             const finalText = parsed.payload?.text || accumulatedText;
             setStreamingContent("");
             accumulatedText = "";
-            const assistantMsg: ChatMessage = {
-              id: `msg-${Date.now()}-assistant`,
-              role: "assistant",
-              content: finalText,
-              created_at: new Date().toISOString(),
-            };
-            setMessages((prev: ChatMessage[]) => [...prev, assistantMsg]);
+            // Persist assistant message to database
+            if (selectedSessionId && finalText) {
+              await persistMessage(selectedSessionId, "assistant", finalText, runId);
+            }
             setStatus("thinking");
           } else if (eventType === "ui.tool.call.start") {
             setActiveToolName(parsed.payload?.toolName || "tool");
             setStatus("tool_running");
           } else if (eventType === "ui.tool.call") {
-            const toolMsg: ChatMessage = {
+            const toolMsg: DisplayMessage = {
               id: `msg-${Date.now()}-tool-${parsed.payload?.toolId}`,
               role: "tool",
               content: `Calling ${parsed.payload?.toolName || "tool"}`,
               metadata: { tool_name: parsed.payload?.toolName, tool_input: parsed.payload?.input },
               created_at: new Date().toISOString(),
             };
-            setMessages((prev: ChatMessage[]) => [...prev, toolMsg]);
+            setChatMessages((prev: any) => [...prev, toolMsg as any]);
           } else if (eventType === "ui.tool.result") {
-            const toolResultMsg: ChatMessage = {
+            const toolResultMsg: DisplayMessage = {
               id: `msg-${Date.now()}-result-${parsed.payload?.toolId}`,
               role: "tool",
               content: `Result from ${parsed.payload?.toolName || "tool"}`,
               metadata: { tool_name: parsed.payload?.toolName, tool_output: parsed.payload?.output },
               created_at: new Date().toISOString(),
             };
-            setMessages((prev: ChatMessage[]) => [...prev, toolResultMsg]);
+            setChatMessages((prev: any) => [...prev, toolResultMsg as any]);
             setActiveToolName(null);
             setStatus("thinking");
           } else if (eventType === "ui.tool.blocked") {
-            const blockedMsg: ChatMessage = {
+            const blockedMsg: DisplayMessage = {
               id: `msg-${Date.now()}-blocked`,
               role: "system",
               content: `Tool blocked: ${parsed.payload?.toolName} - ${parsed.payload?.reason}`,
               metadata: { tool_name: parsed.payload?.toolName, blocked_reason: parsed.payload?.reason },
               created_at: new Date().toISOString(),
             };
-            setMessages((prev: ChatMessage[]) => [...prev, blockedMsg]);
+            setChatMessages((prev: any) => [...prev,blockedMsg]);
             setActiveToolName(null);
             setStatus("thinking");
 
@@ -322,35 +328,35 @@ export default function ChatPage() {
           } else if (eventType === "item.completed" && parsed.item) {
             const item = parsed.item;
             if (item.type === "command_execution") {
-              const toolMsg: ChatMessage = {
+              const toolMsg: DisplayMessage = {
                 id: `msg-${Date.now()}-codex-tool`,
                 role: "tool",
                 content: item.status === "completed" ? "Command executed" : "Command failed",
                 metadata: { tool_name: "shell", tool_input: item.command, tool_output: item.aggregated_output || `Exit code: ${item.exit_code}` },
                 created_at: new Date().toISOString(),
               };
-              setMessages((prev: ChatMessage[]) => [...prev, toolMsg]);
+              setChatMessages((prev: any) => [...prev, toolMsg as any]);
             } else if (item.type === "agent_message" || item.text) {
-              const assistantMsg: ChatMessage = {
+              const assistantMsg: DisplayMessage = {
                 id: `msg-${Date.now()}-codex-msg`,
                 role: "assistant",
                 content: item.text || "",
                 created_at: new Date().toISOString(),
               };
-              setMessages((prev: ChatMessage[]) => [...prev, assistantMsg]);
+              setChatMessages((prev: any) => [...prev, assistantMsg as any]);
             }
 
           // ── Common completion events ──────────────────────────────────
           } else if (eventType === "run.completed" || eventType === "stream.closed") {
             // Flush any remaining streamed content
             if (accumulatedText) {
-              const finalMsg: ChatMessage = {
+              const finalMsg: DisplayMessage = {
                 id: `msg-${Date.now()}-final`,
                 role: "assistant",
                 content: accumulatedText,
                 created_at: new Date().toISOString(),
               };
-              setMessages((prev: ChatMessage[]) => [...prev, finalMsg]);
+              setChatMessages((prev: any) => [...prev, finalMsg as any]);
               accumulatedText = "";
               setStreamingContent("");
             }
@@ -361,13 +367,13 @@ export default function ChatPage() {
             eventSourceRef.current = null;
             inputRef.current?.focus();
           } else if (eventType === "error") {
-            const errorMsg: ChatMessage = {
+            const errorMsg: DisplayMessage = {
               id: `msg-${Date.now()}-error`,
               role: "system",
               content: `Error: ${parsed.message || parsed.payload?.message || "Unknown error"}`,
               created_at: new Date().toISOString(),
             };
-            setMessages((prev: ChatMessage[]) => [...prev, errorMsg]);
+            setChatMessages((prev: any) => [...prev, errorMsg as any]);
             setStatus("idle");
             setStreamingContent("");
             setCurrentIteration(null);
@@ -383,13 +389,13 @@ export default function ChatPage() {
       evtSource.onerror = () => {
         // Flush any remaining streamed content
         if (accumulatedText) {
-          const finalMsg: ChatMessage = {
+          const finalMsg: DisplayMessage = {
             id: `msg-${Date.now()}-final`,
             role: "assistant",
             content: accumulatedText,
             created_at: new Date().toISOString(),
           };
-          setMessages((prev: ChatMessage[]) => [...prev, finalMsg]);
+          setChatMessages((prev: any) => [...prev, finalMsg as any]);
           accumulatedText = "";
         }
         setStatus("idle");
@@ -401,13 +407,13 @@ export default function ChatPage() {
         inputRef.current?.focus();
       };
     } catch (err: unknown) {
-      const errorMsg: ChatMessage = {
+      const errorMsg: DisplayMessage = {
         id: `msg-${Date.now()}-error`,
         role: "system",
         content: `Error: ${err instanceof Error ? err.message : "Unknown error"}`,
         created_at: new Date().toISOString(),
       };
-      setMessages((prev: ChatMessage[]) => [...prev, errorMsg]);
+      setChatMessages((prev: any) => [...prev, errorMsg as any]);
       setStatus("idle");
       inputRef.current?.focus();
     }
@@ -485,16 +491,15 @@ export default function ChatPage() {
             <p className="text-xs text-gray-400 dark:text-gray-500">No sessions yet. Click + New to start.</p>
           ) : (
             <div className="space-y-1">
-              {sessions.map((s: ChatSession) => (
+              {sessions.map((s) => (
                 <button
-                  key={s.id}
+                  key={s.session_id}
                   onClick={() => {
-                    setSelectedSessionId(s.id);
-                    setMessages([]);
+                    setSelectedSessionId(s.session_id);
                     setStreamingContent("");
                   }}
                   className={`w-full text-left px-3 py-2 rounded-md text-sm transition-colors ${
-                    selectedSessionId === s.id
+                    selectedSessionId === s.session_id
                       ? "bg-blue-100 dark:bg-blue-900/30 text-nhs-blue dark:text-nhs-light-blue border border-blue-200 dark:border-blue-800"
                       : "bg-gray-50 dark:bg-zinc-700 hover:bg-gray-100 dark:hover:bg-zinc-600 text-gray-700 dark:text-gray-300"
                   }`}
@@ -506,12 +511,46 @@ export default function ChatPage() {
                     <span className="font-medium truncate">{s.title}</span>
                   </div>
                   <div className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-                    {getRunnerLabel(s.runner_type).split("(")[0].trim()}
+                    {getRunnerLabel(s.runner_type as RunnerType).split("(")[0].trim()} · {s.run_count || 0} msgs
                   </div>
                 </button>
               ))}
             </div>
           )}
+        </div>
+
+        {/* Prompt Manager */}
+        <div className="border-t border-gray-200 dark:border-zinc-700 p-4">
+          <a
+            href="/prompts"
+            className="flex items-center gap-2 text-sm text-nhs-blue dark:text-nhs-light-blue hover:underline"
+          >
+            <Sparkles className="h-4 w-4" />
+            Prompt Manager
+          </a>
+        </div>
+
+        {/* Upload/Download */}
+        <div className="border-t border-gray-200 dark:border-zinc-700 p-4">
+          <h3 className="text-sm font-medium text-gray-900 dark:text-white mb-3">Project Files</h3>
+          <div className="space-y-2">
+            <button
+              disabled
+              className="w-full flex items-center gap-2 px-3 py-2 text-xs border border-gray-200 dark:border-zinc-600 rounded-md text-gray-400 dark:text-gray-500 cursor-not-allowed"
+              title="Coming soon"
+            >
+              <Upload className="h-4 w-4" />
+              Upload Folder/Files
+            </button>
+            <button
+              disabled
+              className="w-full flex items-center gap-2 px-3 py-2 text-xs border border-gray-200 dark:border-zinc-600 rounded-md text-gray-400 dark:text-gray-500 cursor-not-allowed"
+              title="Coming soon"
+            >
+              <Download className="h-4 w-4" />
+              Download Project Files
+            </button>
+          </div>
         </div>
       </div>
 
@@ -604,7 +643,7 @@ export default function ChatPage() {
             </div>
           ) : (
             <div className="max-w-3xl mx-auto space-y-4">
-              {messages.map((msg: ChatMessage) => (
+              {messages.map((msg: DisplayMessage) => (
                 <MessageBubble key={msg.id} message={msg} />
               ))}
               {/* Streaming content */}
@@ -682,7 +721,7 @@ export default function ChatPage() {
 // Message Bubble Component
 // ─────────────────────────────────────────────────────────────────────────────
 
-function MessageBubble({ message }: { message: ChatMessage }) {
+function MessageBubble({ message }: { message: DisplayMessage }) {
   const isUser = message.role === "user";
   const isTool = message.role === "tool";
   const isSystem = message.role === "system";

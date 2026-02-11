@@ -335,5 +335,54 @@ class ItemTypeRegistryResponse(BaseModel):
     item_types: list[ItemTypeDefinition]
 
 
+# GenAI Session Models
+
+class GenAISessionCreate(BaseModel):
+    workspace_id: UUID
+    project_id: Optional[UUID] = None
+    runner_type: str = Field(..., pattern=r'^(claude|codex|gemini|azure|bedrock|openli|custom)$')
+    title: Optional[str] = Field(None, max_length=500)
+
+
+class GenAISessionResponse(TimestampMixin):
+    model_config = ConfigDict(from_attributes=True)
+
+    session_id: UUID
+    workspace_id: UUID
+    project_id: Optional[UUID] = None
+    runner_type: str
+    thread_id: Optional[str] = None
+    title: str
+    run_count: int = 0
+
+
+class GenAISessionListResponse(BaseModel):
+    sessions: list[GenAISessionResponse]
+    total: int
+
+
+class GenAIMessageCreate(BaseModel):
+    role: str = Field(..., pattern=r'^(user|assistant|tool|system)$')
+    content: str
+    run_id: Optional[str] = None
+    metadata: Optional[dict[str, Any]] = None
+
+
+class GenAIMessageResponse(TimestampMixin):
+    model_config = ConfigDict(from_attributes=True)
+
+    message_id: UUID
+    session_id: UUID
+    run_id: Optional[str] = None
+    role: str
+    content: str
+    metadata: Optional[dict[str, Any]] = None
+
+
+class GenAIMessageListResponse(BaseModel):
+    messages: list[GenAIMessageResponse]
+    total: int
+
+
 # Update forward references
 ProjectDetailResponse.model_rebuild()
