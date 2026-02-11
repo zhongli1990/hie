@@ -243,6 +243,19 @@ class ProductionEngine:
         if not self._production_config:
             return
         
+        # Auto-discover and load custom developer classes (custom.* namespace)
+        # This ensures all @register_host decorators execute before we
+        # try to instantiate any custom classes from configuration.
+        try:
+            from Engine.custom import load_custom_modules
+            loaded = load_custom_modules()
+            if loaded > 0:
+                self._log.info("custom_modules_loaded", count=loaded)
+        except ImportError:
+            self._log.debug("no_custom_modules_package")
+        except Exception as e:
+            self._log.warning("custom_modules_load_error", error=str(e))
+        
         for item_config in self._production_config.items:
             try:
                 host = self._create_host_from_config(item_config)

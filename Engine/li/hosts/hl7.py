@@ -612,8 +612,10 @@ class HL7RetryError(Exception):
     pass
 
 
-# Register with ClassRegistry
-ClassRegistry.register_alias("EnsLib.HL7.Service.TCPService", HL7TCPService)
-ClassRegistry.register_alias("EnsLib.HL7.Operation.TCPOperation", HL7TCPOperation)
-ClassRegistry.register_alias("li.hosts.hl7.HL7TCPService", HL7TCPService)
-ClassRegistry.register_alias("li.hosts.hl7.HL7TCPOperation", HL7TCPOperation)
+# Register core classes with ClassRegistry (internal — protected namespace)
+ClassRegistry._register_internal("li.hosts.hl7.HL7TCPService", HL7TCPService)
+ClassRegistry._register_internal("li.hosts.hl7.HL7TCPOperation", HL7TCPOperation)
+
+# IRIS compatibility aliases
+ClassRegistry.register_alias("EnsLib.HL7.Service.TCPService", "li.hosts.hl7.HL7TCPService")
+ClassRegistry.register_alias("EnsLib.HL7.Operation.TCPOperation", "li.hosts.hl7.HL7TCPOperation")

@@ -18,6 +18,33 @@ if TYPE_CHECKING:
 logger = structlog.get_logger(__name__)
 
 
+# ─── Namespace Conventions ───────────────────────────────────────────
+#
+# PROTECTED namespaces (core product — developers MUST NOT modify):
+#   li.*          — Core LI host classes (HL7TCPService, RoutingEngine, etc.)
+#   Engine.li.*   — Same classes via fully-qualified import path
+#   EnsLib.*      — IRIS compatibility aliases
+#
+# DEVELOPER namespaces (custom extensions — developers create here):
+#   custom.*      — Organisation-specific custom classes
+#                   e.g. custom.nhs.NHSValidationProcess
+#                        custom.sth.PatientLookupProcess
+#                        custom.myorg.FHIRBridgeService
+#
+# The ClassRegistry enforces this at registration time:
+#   - Internal registration (_register_internal) bypasses checks (for core)
+#   - Public registration (register_host) validates namespace
+# ─────────────────────────────────────────────────────────────────────
+
+PROTECTED_NAMESPACES = (
+    "li.",
+    "Engine.li.",
+    "EnsLib.",
+)
+
+CUSTOM_NAMESPACE_PREFIX = "custom."
+
+
 class ClassRegistry:
     """
     Global registry for dynamic class lookup.
@@ -25,13 +52,24 @@ class ClassRegistry:
     Enables the engine to instantiate classes by name from configuration,
     supporting both built-in and custom user classes.
     
+    Namespace Convention:
+        - ``li.*`` and ``Engine.li.*`` — Protected core product classes.
+          Developers MUST NOT create or modify classes in these namespaces.
+        - ``custom.*`` — Developer extension namespace.
+          All custom services, processes, and operations go here.
+        - ``EnsLib.*`` — IRIS compatibility aliases (read-only).
+    
     Usage:
-        # Register a class
-        ClassRegistry.register_host("li.hosts.hl7.HL7TCPService", HL7TCPService)
+        # Core class (registered internally by the engine):
+        ClassRegistry._register_internal("li.hosts.hl7.HL7TCPService", HL7TCPService)
         
-        # Look up and instantiate
+        # Custom class (registered by developer via @register_host decorator):
+        @register_host("custom.nhs.NHSValidationProcess")
+        class NHSValidationProcess(BusinessProcess): ...
+        
+        # Look up and instantiate (works for both):
         host_class = ClassRegistry.get_host_class("li.hosts.hl7.HL7TCPService")
-        host = host_class(config)
+        host_class = ClassRegistry.get_host_class("custom.nhs.NHSValidationProcess")
     """
     
     # Class registries
@@ -44,14 +82,61 @@ class ClassRegistry:
     _aliases: dict[str, str] = {}
     
     @classmethod
-    def register_host(cls, name: str, host_class: Type[Any]) -> None:
+    def _validate_custom_namespace(cls, name: str, allow_internal: bool = False) -> None:
         """
-        Register a host class.
+        Validate that a class name follows namespace conventions.
+        
+        Raises ValueError if a non-internal caller tries to register
+        in a protected namespace (li.*, Engine.li.*, EnsLib.*).
+        
+        Args:
+            name: Full class name to validate
+            allow_internal: If True, skip validation (for core engine use)
+        """
+        if allow_internal:
+            return
+        
+        for ns in PROTECTED_NAMESPACES:
+            if name.startswith(ns):
+                raise ValueError(
+                    f"Cannot register class '{name}' in protected namespace '{ns}'. "
+                    f"Core product classes (li.*, Engine.li.*, EnsLib.*) are read-only. "
+                    f"Custom classes must use the '{CUSTOM_NAMESPACE_PREFIX}' namespace, "
+                    f"e.g. 'custom.myorg.{name.rsplit('.', 1)[-1]}'"
+                )
+    
+    @classmethod
+    def _register_internal(cls, name: str, host_class: Type[Any]) -> None:
+        """
+        Register a core product host class (internal use only).
+        
+        This bypasses namespace validation and is used by the engine
+        to register built-in li.* classes during startup.
         
         Args:
             name: Full class name (e.g., "li.hosts.hl7.HL7TCPService")
             host_class: The host class
         """
+        cls._hosts[name] = host_class
+        logger.debug("host_registered", name=name, class_name=host_class.__name__, internal=True)
+    
+    @classmethod
+    def register_host(cls, name: str, host_class: Type[Any]) -> None:
+        """
+        Register a host class.
+        
+        For custom developer classes, the name MUST start with 'custom.'.
+        Core product classes (li.*, Engine.li.*) are registered via
+        _register_internal() and cannot be overwritten by this method.
+        
+        Args:
+            name: Full class name (e.g., "custom.nhs.NHSValidationProcess")
+            host_class: The host class
+            
+        Raises:
+            ValueError: If name is in a protected namespace
+        """
+        cls._validate_custom_namespace(name)
         cls._hosts[name] = host_class
         logger.debug("host_registered", name=name, class_name=host_class.__name__)
     
@@ -61,7 +146,7 @@ class ClassRegistry:
         Register an adapter class.
         
         Args:
-            name: Full class name (e.g., "li.adapters.mllp.MLLPInboundAdapter")
+            name: Full class name (e.g., "custom.myorg.MyAdapter" or internal "li.adapters.mllp.MLLPInboundAdapter")
             adapter_class: The adapter class
         """
         cls._adapters[name] = adapter_class
@@ -73,9 +158,10 @@ class ClassRegistry:
         Register a transform class.
         
         Args:
-            name: Full class name
+            name: Full class name (e.g., "custom.sth.v23_to_v251")
             transform_class: The transform class
         """
+        cls._validate_custom_namespace(name)
         cls._transforms[name] = transform_class
         logger.debug("transform_registered", name=name, class_name=transform_class.__name__)
     
@@ -85,9 +171,10 @@ class ClassRegistry:
         Register a rule class.
         
         Args:
-            name: Full class name
+            name: Full class name (e.g., "custom.sth.ADTRoutingRule")
             rule_class: The rule class
         """
+        cls._validate_custom_namespace(name)
         cls._rules[name] = rule_class
         logger.debug("rule_registered", name=name, class_name=rule_class.__name__)
     
@@ -173,8 +260,9 @@ class ClassRegistry:
             host_class = import_host_class(name)
             logger.info("host_class_dynamically_imported", name=name)
 
-            # Cache in registry for future use
-            cls.register_host(name, host_class)
+            # Cache in registry for future use (use internal to bypass namespace check
+            # since dynamic import may resolve core classes by fully-qualified name)
+            cls._register_internal(name, host_class)
 
             return host_class
         except Exception as e:
@@ -255,11 +343,22 @@ class ClassRegistry:
         cls._aliases.clear()
     
     @classmethod
+    def is_protected_namespace(cls, name: str) -> bool:
+        """Check if a class name is in a protected (core product) namespace."""
+        return any(name.startswith(ns) for ns in PROTECTED_NAMESPACES)
+    
+    @classmethod
+    def is_custom_namespace(cls, name: str) -> bool:
+        """Check if a class name is in the custom developer namespace."""
+        return name.startswith(CUSTOM_NAMESPACE_PREFIX)
+    
+    @classmethod
     def register_defaults(cls) -> None:
         """
         Register default built-in classes.
         
         Called during engine initialization to register all standard classes.
+        Uses _register_internal() to bypass namespace validation for core classes.
         """
         # This will be populated as we implement the host classes
         # For now, set up IRIS aliases
@@ -280,7 +379,7 @@ class ClassRegistry:
             "EnsLib.HL7.Operation.FileOperation": "li.hosts.hl7.HL7FileOperation",
             
             # HL7 Processes
-            "EnsLib.HL7.MsgRouter.RoutingEngine": "li.hosts.hl7.HL7RoutingEngine",
+            "EnsLib.HL7.MsgRouter.RoutingEngine": "li.hosts.routing.HL7RoutingEngine",
             "EnsLib.HL7.SequenceManager": "li.hosts.hl7.HL7SequenceManager",
             
             # Generic
@@ -294,11 +393,17 @@ class ClassRegistry:
 
 def register_host(name: str):
     """
-    Decorator to register a host class.
+    Decorator to register a host class with the ClassRegistry.
+    
+    For DEVELOPER custom classes, use ``Engine.custom.register_host`` instead,
+    which enforces the ``custom.*`` namespace convention.
+    
+    This decorator calls ``ClassRegistry.register_host()`` which validates
+    that the name is NOT in a protected namespace (li.*, Engine.li.*, EnsLib.*).
     
     Usage:
-        @register_host("li.hosts.hl7.HL7TCPService")
-        class HL7TCPService(BusinessService):
+        @register_host("custom.myorg.MyProcess")
+        class MyProcess(BusinessProcess):
             ...
     """
     def decorator(cls):

@@ -568,6 +568,8 @@ def create_facility_rule(
     )
 
 
-# Register with ClassRegistry
-ClassRegistry.register_alias("EnsLib.HL7.MsgRouter.RoutingEngine", HL7RoutingEngine)
-ClassRegistry.register_alias("li.hosts.routing.HL7RoutingEngine", HL7RoutingEngine)
+# Register core classes with ClassRegistry (internal — protected namespace)
+ClassRegistry._register_internal("li.hosts.routing.HL7RoutingEngine", HL7RoutingEngine)
+
+# IRIS compatibility aliases
+ClassRegistry.register_alias("EnsLib.HL7.MsgRouter.RoutingEngine", "li.hosts.routing.HL7RoutingEngine")
