@@ -380,6 +380,24 @@ export default function ConfigurePage() {
               <span className="rounded-full bg-purple-100 px-3 py-1 text-xs font-medium text-purple-700">
                 Processes ({itemTypes.filter((t) => t.category === "process").length})
               </span>
+              <button
+                onClick={async () => {
+                  try {
+                    const res = await fetch("/api/item-types/reload-custom", { method: "POST" });
+                    if (res.ok) {
+                      const data = await res.json();
+                      alert(`Custom classes reloaded: ${data.modules_loaded || 0} modules, ${(data.registered?.hosts || []).length} hosts`);
+                      const typesRes = await listItemTypes();
+                      setItemTypes(typesRes.item_types || []);
+                    }
+                  } catch (e) { console.error("Reload failed", e); }
+                }}
+                className="flex items-center gap-1.5 rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-1 text-xs font-medium text-emerald-700 hover:bg-emerald-100 transition-colors"
+                title="Hot-reload custom.* classes from Engine/custom/ without restarting"
+              >
+                <RefreshCw className="h-3 w-3" />
+                Reload Custom
+              </button>
             </div>
           </div>
 

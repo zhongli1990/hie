@@ -343,6 +343,72 @@ class ClassRegistry:
         cls._aliases.clear()
     
     @classmethod
+    def reload_custom_classes(cls) -> dict[str, Any]:
+        """
+        Hot-reload custom.* classes without restarting the engine.
+        
+        Clears all custom.* entries from hosts, transforms, and rules,
+        then re-runs load_custom_modules() to re-discover and re-register.
+        Core li.* / EnsLib.* classes are untouched.
+        
+        Returns:
+            Dict with counts of removed and reloaded classes.
+        """
+        import importlib
+        
+        # 1. Snapshot custom entries before clearing
+        old_hosts = [n for n in cls._hosts if n.startswith(CUSTOM_NAMESPACE_PREFIX)]
+        old_transforms = [n for n in cls._transforms if n.startswith(CUSTOM_NAMESPACE_PREFIX)]
+        old_rules = [n for n in cls._rules if n.startswith(CUSTOM_NAMESPACE_PREFIX)]
+        
+        removed = len(old_hosts) + len(old_transforms) + len(old_rules)
+        
+        for name in old_hosts:
+            del cls._hosts[name]
+        for name in old_transforms:
+            del cls._transforms[name]
+        for name in old_rules:
+            del cls._rules[name]
+        
+        logger.info("custom_classes_cleared", hosts=len(old_hosts),
+                     transforms=len(old_transforms), rules=len(old_rules))
+        
+        # 2. Invalidate cached custom modules so importlib re-reads from disk
+        import sys
+        stale = [m for m in sys.modules if m.startswith("Engine.custom.") and not m.endswith("__init__")]
+        for mod_name in stale:
+            mod = sys.modules.pop(mod_name, None)
+            if mod is not None:
+                importlib.invalidate_caches()
+                logger.debug("custom_module_evicted", module=mod_name)
+        
+        # 3. Re-discover and re-register
+        loaded = 0
+        try:
+            from Engine.custom import load_custom_modules
+            loaded = load_custom_modules()
+        except ImportError:
+            logger.debug("no_custom_modules_package")
+        except Exception as e:
+            logger.error("custom_reload_error", error=str(e))
+        
+        new_hosts = [n for n in cls._hosts if n.startswith(CUSTOM_NAMESPACE_PREFIX)]
+        new_transforms = [n for n in cls._transforms if n.startswith(CUSTOM_NAMESPACE_PREFIX)]
+        new_rules = [n for n in cls._rules if n.startswith(CUSTOM_NAMESPACE_PREFIX)]
+        
+        result = {
+            "removed": removed,
+            "modules_loaded": loaded,
+            "registered": {
+                "hosts": new_hosts,
+                "transforms": new_transforms,
+                "rules": new_rules,
+            },
+        }
+        logger.info("custom_classes_reloaded", **result)
+        return result
+    
+    @classmethod
     def is_protected_namespace(cls, name: str) -> bool:
         """Check if a class name is in a protected (core product) namespace."""
         return any(name.startswith(ns) for ns in PROTECTED_NAMESPACES)

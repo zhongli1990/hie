@@ -626,6 +626,28 @@ ITEM_TYPE_REGISTRY: list[ItemTypeDefinition] = [
 ]
 
 
+def _infer_category(host_cls) -> ItemType:
+    """Infer item category (service/process/operation) from host class hierarchy."""
+    if host_cls is None:
+        return ItemType.PROCESS
+    try:
+        from Engine.li.hosts.base import BusinessService, BusinessProcess, BusinessOperation
+        if issubclass(host_cls, BusinessService):
+            return ItemType.SERVICE
+        elif issubclass(host_cls, BusinessOperation):
+            return ItemType.OPERATION
+        else:
+            return ItemType.PROCESS
+    except (ImportError, TypeError):
+        # Fallback: check class name for hints
+        name = getattr(host_cls, "__name__", "")
+        if "Service" in name:
+            return ItemType.SERVICE
+        elif "Operation" in name:
+            return ItemType.OPERATION
+        return ItemType.PROCESS
+
+
 def _enrich_item_type_with_common_settings(item_type: ItemTypeDefinition) -> ItemTypeDefinition:
     """
     Enrich item type with common host settings.
@@ -652,10 +674,38 @@ def setup_item_type_routes(app: web.Application, db_pool=None) -> None:
     """Set up item type registry routes."""
 
     async def list_item_types(request: web.Request) -> web.Response:
-        """List all available item types with common settings."""
+        """List all available item types with common settings.
+        
+        Merges the static ITEM_TYPE_REGISTRY with any custom.* classes
+        that have been dynamically registered in the ClassRegistry.
+        """
         category = request.query.get("category")
 
-        types = ITEM_TYPE_REGISTRY
+        types = list(ITEM_TYPE_REGISTRY)
+
+        # Merge dynamically-registered custom.* host classes
+        try:
+            from Engine.li.registry import ClassRegistry
+            known_li = {t.li_class_name for t in types}
+            for class_name in ClassRegistry.list_hosts():
+                if class_name.startswith("custom.") and class_name not in known_li:
+                    # Infer category from the host class if possible
+                    host_cls = ClassRegistry.get_host_class(class_name)
+                    cat = _infer_category(host_cls)
+                    short_name = class_name.rsplit(".", 1)[-1]
+                    types.append(ItemTypeDefinition(
+                        type=f"custom.{short_name.lower()}",
+                        name=short_name,
+                        description=getattr(host_cls, "__doc__", "") or f"Custom class: {class_name}",
+                        category=cat,
+                        iris_class_name="",
+                        li_class_name=class_name,
+                        adapter_settings=[],
+                        host_settings=[],
+                    ))
+        except Exception as e:
+            logger.warning("custom_item_types_merge_error", error=str(e))
+
         if category:
             types = [t for t in types if t.category.value == category]
 
@@ -688,8 +738,32 @@ def setup_item_type_routes(app: web.Application, db_pool=None) -> None:
                 return web.json_response(enriched.model_dump(mode='json'))
 
         return web.json_response({"error": f"Item type for class '{class_name}' not found"}, status=404)
-    
+
+    async def reload_custom_classes(request: web.Request) -> web.Response:
+        """Hot-reload custom.* classes without restarting the engine.
+        
+        POST /api/item-types/reload-custom
+        
+        Clears cached custom.* modules, re-discovers from Engine/custom/,
+        and re-registers all @register_host / @register_transform decorators.
+        Core li.* classes are untouched.
+        """
+        try:
+            from Engine.li.registry import ClassRegistry
+            result = ClassRegistry.reload_custom_classes()
+            return web.json_response({
+                "status": "ok",
+                "message": "Custom classes reloaded",
+                **result,
+            })
+        except Exception as e:
+            logger.error("reload_custom_classes_failed", error=str(e))
+            return web.json_response(
+                {"status": "error", "message": str(e)}, status=500
+            )
+
     # Register routes
     app.router.add_get("/api/item-types", list_item_types)
     app.router.add_get("/api/item-types/by-class", get_item_type_by_class)
+    app.router.add_post("/api/item-types/reload-custom", reload_custom_classes)
     app.router.add_get("/api/item-types/{type_id}", get_item_type)

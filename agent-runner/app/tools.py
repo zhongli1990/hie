@@ -335,6 +335,19 @@ HIE_TOOLS = [
             }
         }
     },
+    {
+        "name": "hie_reload_custom_classes",
+        "description": (
+            "Hot-reload custom.* classes without restarting the engine. "
+            "Clears cached custom modules, re-discovers from Engine/custom/, "
+            "and re-registers all @register_host / @register_transform decorators. "
+            "Core li.* classes are untouched. Use after deploying new custom class files."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {}
+        }
+    },
 ]
 
 # Combined tool list
@@ -525,6 +538,9 @@ def execute_tool(
             category = tool_input.get("category", "all")
             query = f"?category={category}" if category != "all" else ""
             return _hie_api_call("GET", f"/api/item-types{query}")
+
+        elif tool_name == "hie_reload_custom_classes":
+            return _hie_api_call("POST", "/api/item-types/reload-custom")
 
         else:
             return {"success": False, "error": f"Unknown tool: {tool_name}"}
