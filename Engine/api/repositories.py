@@ -703,7 +703,7 @@ class PortalMessageRepository:
         # Get paginated results
         query = f"""
             SELECT id, project_id, item_name, item_type, direction, message_type,
-                   correlation_id, status, content_preview, content_size,
+                   correlation_id, session_id, status, content_preview, content_size,
                    source_item, destination_item, remote_host, remote_port,
                    ack_type, error_message, latency_ms, retry_count,
                    received_at, completed_at
