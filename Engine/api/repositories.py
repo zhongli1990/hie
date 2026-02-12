@@ -735,10 +735,94 @@ class PortalMessageRepository:
         result = await self._pool.execute(query)
         return int(result.split()[1]) if result else 0
     
+    async def list_sessions(
+        self,
+        project_id: UUID,
+        item_name: str | None = None,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> list[dict]:
+        """List message sessions grouped by session_id."""
+        conditions = ["project_id = $1", "session_id IS NOT NULL"]
+        params = [project_id]
+        idx = 2
+
+        if item_name:
+            conditions.append(f"item_name = ${idx}")
+            params.append(item_name)
+            idx += 1
+
+        where_clause = " AND ".join(conditions)
+
+        query = f"""
+            SELECT
+                session_id,
+                COUNT(*) as message_count,
+                MIN(received_at) as started_at,
+                MAX(COALESCE(completed_at, received_at)) as ended_at,
+                ROUND(
+                    COUNT(*) FILTER (WHERE status IN ('sent', 'completed'))::numeric /
+                    NULLIF(COUNT(*)::numeric, 0),
+                    2
+                ) as success_rate,
+                array_agg(DISTINCT message_type) FILTER (WHERE message_type IS NOT NULL) as message_types
+            FROM portal_messages
+            WHERE {where_clause}
+            GROUP BY session_id
+            ORDER BY started_at DESC
+            LIMIT ${idx} OFFSET ${idx + 1}
+        """
+        params.extend([limit, offset])
+        rows = await self._pool.fetch(query, *params)
+
+        return [dict(r) for r in rows]
+
+    async def get_session_trace(self, session_id: str) -> Optional[dict]:
+        """Get trace data for a session to build sequence diagram."""
+        # Get all messages in the session, ordered by timestamp
+        messages_query = """
+            SELECT
+                id, item_name, item_type, direction, message_type,
+                status, source_item, destination_item,
+                received_at, completed_at, latency_ms,
+                correlation_id, content_preview
+            FROM portal_messages
+            WHERE session_id = $1
+            ORDER BY received_at ASC
+        """
+        messages = await self._pool.fetch(messages_query, session_id)
+
+        if not messages:
+            return None
+
+        # Extract unique items involved in this session
+        items_set = set()
+        for msg in messages:
+            if msg['item_name']:
+                items_set.add((msg['item_name'], msg['item_type']))
+            if msg['source_item']:
+                items_set.add((msg['source_item'], 'unknown'))
+            if msg['destination_item']:
+                items_set.add((msg['destination_item'], 'unknown'))
+
+        # Sort items by type (service -> process -> operation)
+        type_order = {'service': 0, 'process': 1, 'operation': 2, 'unknown': 3}
+        items = [
+            {"item_name": name, "item_type": itype}
+            for name, itype in sorted(items_set, key=lambda x: (type_order.get(x[1], 3), x[0]))
+        ]
+
+        return {
+            "messages": [dict(m) for m in messages],
+            "items": items,
+            "started_at": messages[0]['received_at'] if messages else None,
+            "ended_at": messages[-1]['completed_at'] or messages[-1]['received_at'] if messages else None,
+        }
+
     async def get_stats(self, project_id: UUID) -> dict:
         """Get message statistics for a project."""
         query = """
-            SELECT 
+            SELECT
                 COUNT(*) as total,
                 COUNT(*) FILTER (WHERE status = 'completed' OR status = 'sent') as successful,
                 COUNT(*) FILTER (WHERE status = 'failed' OR status = 'error') as failed,

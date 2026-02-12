@@ -8,7 +8,9 @@
 import { useState, useEffect, useCallback } from "react";
 import { X, Settings, Activity, MessageSquare, BarChart3, AlertCircle, AlertTriangle, Info, CheckCircle, Filter, RefreshCw } from "lucide-react";
 import type { ProjectItem } from "./types";
-import { MessageTraceSwimlane } from "./MessageTraceSwimlane";
+import { SessionListView } from "./SessionListView";
+import { MessageSequenceDiagram } from "./MessageSequenceDiagram";
+import { listMessages, type PortalMessage } from "@/lib/api-v2";
 
 interface ItemDetailPanelProps {
   item: ProjectItem | null;
@@ -19,6 +21,51 @@ type TabType = "config" | "events" | "messages" | "metrics";
 
 export function ItemDetailPanel({ item, onClose }: ItemDetailPanelProps) {
   const [activeTab, setActiveTab] = useState<TabType>("config");
+  const [panelWidth, setPanelWidth] = useState(400);
+  const [isResizing, setIsResizing] = useState(false);
+
+  // Load saved width from localStorage
+  useEffect(() => {
+    const saved = localStorage.getItem('itemDetailPanelWidth');
+    if (saved) {
+      const width = parseInt(saved, 10);
+      if (width >= 400 && width <= 800) {
+        setPanelWidth(width);
+      }
+    }
+  }, []);
+
+  // Save width to localStorage
+  useEffect(() => {
+    localStorage.setItem('itemDetailPanelWidth', panelWidth.toString());
+  }, [panelWidth]);
+
+  // Handle resize
+  const handleMouseDown = useCallback((e: React.MouseEvent) => {
+    setIsResizing(true);
+    e.preventDefault();
+  }, []);
+
+  useEffect(() => {
+    if (!isResizing) return;
+
+    function handleMouseMove(e: MouseEvent) {
+      const newWidth = window.innerWidth - e.clientX;
+      setPanelWidth(Math.max(400, Math.min(800, newWidth)));
+    }
+
+    function handleMouseUp() {
+      setIsResizing(false);
+    }
+
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [isResizing]);
 
   if (!item) return null;
 
@@ -30,10 +77,22 @@ export function ItemDetailPanel({ item, onClose }: ItemDetailPanelProps) {
         onClick={onClose}
       />
 
+      {/* Resize Handle */}
+      <div
+        onMouseDown={handleMouseDown}
+        className={`fixed top-0 bottom-0 w-2 cursor-ew-resize hover:bg-blue-200 transition-colors z-50 group ${
+          isResizing ? 'bg-blue-300' : ''
+        }`}
+        style={{ right: panelWidth }}
+      >
+        <div className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-12 bg-gray-300 rounded-full group-hover:bg-blue-400 transition-colors" />
+      </div>
+
       {/* Slide-in Panel */}
       <div
-        className="fixed right-0 top-0 bottom-0 w-[400px] bg-white shadow-2xl z-50 flex flex-col animate-slide-in-right"
+        className="fixed right-0 top-0 bottom-0 bg-white shadow-2xl z-50 flex flex-col animate-slide-in-right"
         style={{
+          width: panelWidth,
           animation: "slideInRight 300ms ease-out",
         }}
       >
@@ -86,10 +145,10 @@ export function ItemDetailPanel({ item, onClose }: ItemDetailPanelProps) {
 
         {/* Tab Content */}
         <div className="flex-1 overflow-y-auto">
-          {activeTab === "config" && <ConfigurationTab item={item} />}
-          {activeTab === "events" && <EventsTab item={item} />}
+          {activeTab === "config" && <ConfigurationTab item={item} onSwitchTab={setActiveTab} />}
+          {activeTab === "events" && <EventsTab item={item} onSwitchTab={setActiveTab} />}
           {activeTab === "messages" && <MessagesTab item={item} />}
-          {activeTab === "metrics" && <MetricsTab item={item} />}
+          {activeTab === "metrics" && <MetricsTab item={item} onSwitchTab={setActiveTab} panelWidth={panelWidth} />}
         </div>
       </div>
 
@@ -134,9 +193,29 @@ function TabButton({ icon, label, active, onClick }: TabButtonProps) {
 }
 
 // Placeholder tab components
-function ConfigurationTab({ item }: { item: ProjectItem }) {
+function ConfigurationTab({ item, onSwitchTab }: { item: ProjectItem; onSwitchTab: (tab: TabType) => void }) {
   return (
     <div className="p-6 space-y-6">
+      {/* Quick Actions Card */}
+      <div className="rounded-lg border-2 border-blue-200 bg-blue-50 p-4">
+        <h3 className="text-sm font-semibold text-blue-900 mb-2 flex items-center gap-2">
+          <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+          </svg>
+          Message Tracing Available
+        </h3>
+        <p className="text-xs text-blue-700 mb-3">
+          Track messages flowing through <strong>{item.name}</strong> with end-to-end swimlane visualization.
+        </p>
+        <button
+          onClick={() => onSwitchTab("messages")}
+          className="w-full px-3 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors flex items-center justify-center gap-2"
+        >
+          <MessageSquare className="h-4 w-4" />
+          View Messages & Traces
+        </button>
+      </div>
+
       <div>
         <h3 className="text-sm font-medium text-gray-900 mb-3">Basic Settings</h3>
         <div className="space-y-3">
@@ -184,7 +263,7 @@ interface LogEvent {
   details?: string;
 }
 
-function EventsTab({ item }: { item: ProjectItem }) {
+function EventsTab({ item, onSwitchTab }: { item: ProjectItem; onSwitchTab: (tab: TabType) => void }) {
   const [events, setEvents] = useState<LogEvent[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -281,6 +360,24 @@ function EventsTab({ item }: { item: ProjectItem }) {
               <RefreshCw className={`h-4 w-4 text-gray-600 ${isLoading ? "animate-spin" : ""}`} />
             </button>
           </div>
+        </div>
+
+        {/* Cross-reference to Messages */}
+        <div className="pt-2 border-t">
+          <button
+            onClick={() => onSwitchTab("messages")}
+            className="w-full flex items-center justify-between px-3 py-2 text-xs font-medium text-blue-700 bg-blue-50 rounded-lg hover:bg-blue-100 transition-colors"
+          >
+            <span className="flex items-center gap-2">
+              <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+              </svg>
+              View Message Traces
+            </span>
+            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+            </svg>
+          </button>
         </div>
       </div>
 
@@ -493,25 +590,40 @@ interface MessageItem {
 }
 
 function MessagesTab({ item }: { item: ProjectItem }) {
+  const [view, setView] = useState<"list" | "sessions">("list");
   const [messages, setMessages] = useState<MessageItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [filterStatus, setFilterStatus] = useState<"all" | "success" | "error">("all");
   const [autoRefresh, setAutoRefresh] = useState(true);
   const [selectedMessageId, setSelectedMessageId] = useState<string | null>(null);
+  const [showDemoTrace, setShowDemoTrace] = useState(false);
+  const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
 
   // Fetch messages from API
   const fetchMessages = useCallback(async () => {
     try {
       setError(null);
-      // TODO: Replace with actual API call when backend is ready
-      // const response = await fetch(`/api/projects/${projectId}/items/${item.id}/messages?limit=50`);
-      // const data = await response.json();
-      // setMessages(data.messages);
+      setIsLoading(true);
 
-      // Mock data for now
-      const mockMessages = generateMockMessages(item);
-      setMessages(mockMessages);
+      const response = await listMessages(item.project_id, {
+        item: item.name,
+        limit: 50,
+        offset: 0,
+      });
+
+      // Map PortalMessage to MessageItem
+      const mappedMessages: MessageItem[] = response.messages.map((msg) => ({
+        id: msg.id,
+        timestamp: msg.received_at,
+        direction: (msg.direction || "inbound") as "inbound" | "outbound",
+        messageType: msg.message_type || "Unknown",
+        status: mapMessageStatus(msg.status),
+        size: msg.content_size || 0,
+        sessionId: msg.correlation_id || undefined,
+      }));
+
+      setMessages(mappedMessages);
       setIsLoading(false);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to fetch messages");
@@ -524,16 +636,16 @@ function MessagesTab({ item }: { item: ProjectItem }) {
     fetchMessages();
   }, [fetchMessages]);
 
-  // Auto-refresh every 10 seconds
+  // Auto-refresh every 10 seconds (only for list view)
   useEffect(() => {
-    if (!autoRefresh) return;
+    if (!autoRefresh || view !== "list") return;
 
     const interval = setInterval(() => {
       fetchMessages();
     }, 10000);
 
     return () => clearInterval(interval);
-  }, [autoRefresh, fetchMessages]);
+  }, [autoRefresh, view, fetchMessages]);
 
   // Filter messages
   const filteredMessages = filterStatus === "all"
@@ -542,83 +654,179 @@ function MessagesTab({ item }: { item: ProjectItem }) {
 
   return (
     <div className="flex flex-col h-full">
-      {/* Toolbar */}
-      <div className="px-4 py-3 border-b bg-gray-50 space-y-2">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <span className="text-xs font-medium text-gray-600">Status:</span>
-            {(["all", "success", "error"] as const).map((status) => (
+      {/* Sub-Tab Navigation */}
+      <div className="flex border-b bg-white">
+        <button
+          onClick={() => setView("list")}
+          className={`flex-1 px-4 py-3 text-sm font-medium transition-colors ${
+            view === "list"
+              ? "border-b-2 border-nhs-blue text-nhs-blue bg-blue-50"
+              : "text-gray-600 hover:text-gray-900 hover:bg-gray-50"
+          }`}
+        >
+          <div className="flex items-center justify-center gap-2">
+            <MessageSquare className="h-4 w-4" />
+            All Messages
+          </div>
+        </button>
+        <button
+          onClick={() => setView("sessions")}
+          className={`flex-1 px-4 py-3 text-sm font-medium transition-colors ${
+            view === "sessions"
+              ? "border-b-2 border-nhs-blue text-nhs-blue bg-blue-50"
+              : "text-gray-600 hover:text-gray-900 hover:bg-gray-50"
+          }`}
+        >
+          <div className="flex items-center justify-center gap-2">
+            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+            </svg>
+            Message Sessions
+          </div>
+        </button>
+      </div>
+
+      {/* Content */}
+      {view === "list" ? (
+        <div className="flex flex-col flex-1">
+          {/* 🚀 E2E MESSAGE TRACING FEATURE BANNER */}
+          <div className="px-4 py-3 bg-gradient-to-r from-blue-50 to-purple-50 border-b border-blue-200">
+            <div className="flex items-start gap-3">
+              <div className="flex-shrink-0 mt-0.5">
+                <svg className="h-5 w-5 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                </svg>
+              </div>
+              <div className="flex-1 min-w-0">
+                <h3 className="text-sm font-semibold text-blue-900 mb-1">
+                  End-to-End Message Tracing
+                </h3>
+                <p className="text-xs text-blue-700 leading-relaxed">
+                  Track messages through the entire integration pipeline with interactive swimlane visualization.
+                  Click <strong>"View Trace →"</strong> on any message to see its complete journey across services, processes, and operations.
+                </p>
+              </div>
               <button
-                key={status}
-                onClick={() => setFilterStatus(status)}
-                className={`
-                  px-2 py-1 text-xs font-medium rounded transition-colors
-                  ${filterStatus === status
-                    ? status === "error" ? "bg-red-500 text-white" :
-                      status === "success" ? "bg-green-500 text-white" :
-                      "bg-nhs-blue text-white"
-                    : "bg-gray-100 text-gray-600 hover:bg-gray-200"
-                  }
-                `}
+                onClick={() => setShowDemoTrace(true)}
+                className="flex-shrink-0 px-3 py-1.5 text-xs font-semibold text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors shadow-sm"
               >
-                {status.charAt(0).toUpperCase() + status.slice(1)}
+                🎯 Demo Trace
               </button>
-            ))}
+            </div>
           </div>
 
-          <label className="flex items-center gap-2 text-xs text-gray-600">
-            <input
-              type="checkbox"
-              checked={autoRefresh}
-              onChange={(e) => setAutoRefresh(e.target.checked)}
-              className="rounded"
-            />
-            Auto-refresh
-          </label>
+          {/* Toolbar */}
+          <div className="px-4 py-3 border-b bg-gray-50 space-y-2">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-medium text-gray-600">Filter by Status:</span>
+                {(["all", "success", "error"] as const).map((status) => (
+                  <button
+                    key={status}
+                    onClick={() => setFilterStatus(status)}
+                    className={`
+                      px-2 py-1 text-xs font-medium rounded transition-colors
+                      ${filterStatus === status
+                        ? status === "error" ? "bg-red-500 text-white" :
+                          status === "success" ? "bg-green-500 text-white" :
+                          "bg-nhs-blue text-white"
+                        : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                      }
+                    `}
+                  >
+                    {status.charAt(0).toUpperCase() + status.slice(1)}
+                  </button>
+                ))}
+              </div>
+
+              <label className="flex items-center gap-2 text-xs text-gray-600">
+                <input
+                  type="checkbox"
+                  checked={autoRefresh}
+                  onChange={(e) => setAutoRefresh(e.target.checked)}
+                  className="rounded"
+                />
+                Auto-refresh (10s)
+              </label>
+            </div>
+
+            <div className="flex items-center justify-between text-xs">
+              <span className="text-gray-500">
+                {filteredMessages.length} message{filteredMessages.length !== 1 ? "s" : ""}
+              </span>
+              {messages.length > 0 && (
+                <span className="text-blue-600 font-medium">
+                  ✨ Click any message to view its end-to-end trace
+                </span>
+              )}
+            </div>
+          </div>
+
+          {/* Messages List */}
+          <div className="flex-1 overflow-y-auto">
+            {error && (
+              <div className="m-4 p-3 bg-red-50 border border-red-200 rounded-lg">
+                <p className="text-sm text-red-900">{error}</p>
+              </div>
+            )}
+
+            {isLoading && messages.length === 0 ? (
+              <div className="flex items-center justify-center py-12">
+                <RefreshCw className="h-8 w-8 text-gray-300 animate-spin" />
+              </div>
+            ) : filteredMessages.length === 0 ? (
+              <div className="text-center py-12 px-4">
+                <MessageSquare className="h-16 w-16 mx-auto mb-4 text-gray-300" />
+                <p className="text-sm font-medium text-gray-700 mb-2">
+                  No {filterStatus !== "all" ? filterStatus : ""} messages found
+                </p>
+                <p className="text-xs text-gray-500 mb-4 max-w-md mx-auto">
+                  {filterStatus !== "all"
+                    ? "Try changing the status filter above to see other messages."
+                    : "Messages will appear here as they are processed through the integration engine."}
+                </p>
+                <button
+                  onClick={() => setShowDemoTrace(true)}
+                  className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-nhs-blue rounded-lg hover:bg-blue-700 transition-colors"
+                >
+                  <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                  </svg>
+                  View Sample Message Trace
+                </button>
+              </div>
+            ) : (
+              <div className="divide-y">
+                {filteredMessages.map((message) => (
+                  <MessageRow
+                    key={message.id}
+                    message={message}
+                    itemName={item.name}
+                    onViewTrace={() => setSelectedMessageId(message.id)}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
         </div>
+      ) : (
+        <SessionListView
+          itemId={item.id}
+          projectId={item.project_id}
+          onSessionClick={setSelectedSessionId}
+        />
+      )}
 
-        <div className="text-xs text-gray-500">
-          Showing last {filteredMessages.length} messages
-        </div>
-      </div>
-
-      {/* Messages List */}
-      <div className="flex-1 overflow-y-auto">
-        {error && (
-          <div className="m-4 p-3 bg-red-50 border border-red-200 rounded-lg">
-            <p className="text-sm text-red-900">{error}</p>
-          </div>
-        )}
-
-        {isLoading && messages.length === 0 ? (
-          <div className="flex items-center justify-center py-12">
-            <RefreshCw className="h-8 w-8 text-gray-300 animate-spin" />
-          </div>
-        ) : filteredMessages.length === 0 ? (
-          <div className="text-center py-12 text-gray-500">
-            <MessageSquare className="h-12 w-12 mx-auto mb-3 text-gray-300" />
-            <p className="text-sm">No {filterStatus !== "all" ? filterStatus : ""} messages</p>
-            <p className="text-xs text-gray-400 mt-1">Messages will appear here when processed</p>
-          </div>
-        ) : (
-          <div className="divide-y">
-            {filteredMessages.map((message) => (
-              <MessageRow
-                key={message.id}
-                message={message}
-                itemName={item.name}
-                onViewTrace={() => setSelectedMessageId(message.id)}
-              />
-            ))}
-          </div>
-        )}
-      </div>
-
-      {/* Message Trace Swimlane Modal */}
-      {selectedMessageId && (
-        <MessageTraceSwimlane
-          messageId={selectedMessageId}
-          onClose={() => setSelectedMessageId(null)}
+      {/* Message Sequence Diagram Modal (IRIS-style) */}
+      {(selectedSessionId || selectedMessageId || showDemoTrace) && (
+        <MessageSequenceDiagram
+          sessionId={selectedSessionId || selectedMessageId || "DEMO-SESSION-001"}
+          projectId={item.project_id}
+          onClose={() => {
+            setSelectedSessionId(null);
+            setSelectedMessageId(null);
+            setShowDemoTrace(false);
+          }}
         />
       )}
     </div>
@@ -632,11 +840,11 @@ function MessageRow({ message, itemName, onViewTrace }: {
 }) {
 
   return (
-    <div className="p-3 hover:bg-gray-50 transition-colors">
+    <div className="p-3 hover:bg-blue-50 transition-colors border-l-4 border-transparent hover:border-blue-500">
       <div className="flex items-start justify-between gap-3">
         <div className="flex-1 min-w-0">
           {/* Header */}
-          <div className="flex items-center gap-2 mb-1">
+          <div className="flex items-center gap-2 mb-2">
             <span
               className={`
                 inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium
@@ -663,27 +871,51 @@ function MessageRow({ message, itemName, onViewTrace }: {
               {message.status === "success" ? "✓" : message.status === "error" ? "✗" : "⏳"}
               {message.status}
             </span>
+            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-purple-100 text-purple-700">
+              <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+              </svg>
+              E2E Traced
+            </span>
           </div>
 
           {/* Details */}
           <div className="text-sm space-y-1">
-            <p className="font-medium text-gray-900">{message.messageType}</p>
+            <p className="font-semibold text-gray-900">{message.messageType}</p>
             <p className="text-xs text-gray-500">
-              <code className="bg-gray-100 px-1 rounded">{message.id}</code>
+              <span className="text-gray-600 font-medium">Message ID:</span>{" "}
+              <code className="bg-gray-100 px-1.5 py-0.5 rounded font-mono">{message.id}</code>
             </p>
             <div className="flex items-center gap-3 text-xs text-gray-500">
-              <span>{new Date(message.timestamp).toLocaleString()}</span>
+              <span className="flex items-center gap-1">
+                <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                {new Date(message.timestamp).toLocaleString()}
+              </span>
               <span>Size: {formatBytes(message.size)}</span>
             </div>
           </div>
         </div>
 
-        {/* Actions */}
+        {/* 🎯 PROMINENT TRACE BUTTON */}
         <button
           onClick={onViewTrace}
-          className="px-3 py-1 text-xs font-medium text-blue-600 bg-blue-50 rounded hover:bg-blue-100 transition-colors whitespace-nowrap"
+          className="flex-shrink-0 group relative px-4 py-2.5 text-sm font-semibold text-white bg-gradient-to-r from-blue-600 to-purple-600 rounded-lg hover:from-blue-700 hover:to-purple-700 transition-all shadow-sm hover:shadow-md"
         >
-          View Trace →
+          <span className="flex items-center gap-2">
+            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+            </svg>
+            View Trace
+            <svg className="h-4 w-4 group-hover:translate-x-1 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+            </svg>
+          </span>
+          {/* Tooltip */}
+          <span className="absolute -top-10 left-1/2 -translate-x-1/2 px-3 py-1 text-xs font-medium text-white bg-gray-900 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none">
+            Track end-to-end message flow
+          </span>
         </button>
       </div>
     </div>
@@ -696,31 +928,21 @@ function formatBytes(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-// Mock message generator (will be replaced with real API)
-function generateMockMessages(item: ProjectItem): MessageItem[] {
-  if (!item.enabled || !item.metrics) return [];
-
-  const now = new Date();
-  const messages: MessageItem[] = [];
-  const messageCount = Math.min((item.metrics as any).messages_received || 0, 20);
-
-  for (let i = 0; i < messageCount; i++) {
-    const isError = Math.random() > 0.9;
-    messages.push({
-      id: `MSG-${Date.now()}-${i}`,
-      timestamp: new Date(now.getTime() - i * 30000).toISOString(),
-      direction: item.item_type === "service" ? "inbound" : "outbound",
-      messageType: ["ADT^A01", "ADT^A02", "ADT^A03", "ORU^R01", "ORM^O01"][Math.floor(Math.random() * 5)],
-      status: isError ? "error" : "success",
-      size: Math.floor(Math.random() * 5000) + 1000,
-      sessionId: `session-${Math.floor(Math.random() * 1000)}`,
-    });
+/**
+ * Map API status to MessageItem status
+ */
+function mapMessageStatus(apiStatus: string): "success" | "error" | "pending" {
+  const status = apiStatus.toLowerCase();
+  if (status === "sent" || status === "completed" || status === "success") {
+    return "success";
+  } else if (status === "failed" || status === "error") {
+    return "error";
+  } else {
+    return "pending";
   }
-
-  return messages;
 }
 
-function MetricsTab({ item }: { item: ProjectItem }) {
+function MetricsTab({ item, onSwitchTab, panelWidth }: { item: ProjectItem; onSwitchTab: (tab: TabType) => void; panelWidth: number }) {
   const [autoRefresh, setAutoRefresh] = useState(true);
   const [lastRefresh, setLastRefresh] = useState<Date>(new Date());
 
@@ -785,9 +1007,34 @@ function MetricsTab({ item }: { item: ProjectItem }) {
       </div>
 
       {/* Metrics Content */}
-      <div className="flex-1 overflow-y-auto p-6 space-y-6">
+      <div className="flex-1 overflow-y-auto overflow-x-auto p-6 space-y-6">
+        {/* Message Trace Cross-Reference */}
+        {messagesReceived > 0 && (
+          <div className="rounded-lg border-2 border-purple-200 bg-purple-50 p-4">
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex-1">
+                <h4 className="text-sm font-semibold text-purple-900 mb-1 flex items-center gap-2">
+                  <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                  </svg>
+                  {messagesReceived.toLocaleString()} Messages Processed
+                </h4>
+                <p className="text-xs text-purple-700">
+                  View individual message traces with swimlane visualization
+                </p>
+              </div>
+              <button
+                onClick={() => onSwitchTab("messages")}
+                className="flex-shrink-0 px-3 py-1.5 text-xs font-medium text-white bg-purple-600 rounded-lg hover:bg-purple-700 transition-colors"
+              >
+                View Traces
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Key Performance Indicators */}
-        <div className="grid grid-cols-2 gap-4">
+        <div className={`grid gap-4 ${panelWidth >= 600 ? 'grid-cols-3' : 'grid-cols-2'}`}>
           <MetricCard
             label="Success Rate"
             value={`${successRate}%`}

@@ -91,7 +91,7 @@ def _save_hooks_config(config: dict[str, Any]) -> None:
         json.dump(config, f, indent=2)
 
 
-app = FastAPI(title="OpenLI HIE Agent Runner", version="1.8.0")
+app = FastAPI(title="OpenLI HIE Agent Runner", version="1.8.1")
 app.include_router(skills_router)
 app.add_middleware(
     CORSMiddleware,
@@ -158,7 +158,7 @@ def must_resolve_workspace(path_str: str) -> str:
 
 @app.get("/health")
 async def health() -> dict[str, str]:
-    return {"status": "ok", "service": "hie-agent-runner", "version": "1.8.0"}
+    return {"status": "ok", "service": "hie-agent-runner", "version": "1.8.1"}
 
 
 @app.post("/threads", response_model=CreateThreadResponse)

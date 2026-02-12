@@ -418,6 +418,7 @@ export interface PortalMessage {
   direction: string;
   message_type: string | null;
   correlation_id: string | null;
+  session_id: string | null;
   status: string;
   content_preview: string | null;
   content_size: number;
@@ -457,6 +458,28 @@ export interface PortalMessageStats {
   avg_latency_ms: number | null;
 }
 
+export interface SessionSummary {
+  session_id: string;
+  message_count: number;
+  started_at: string;
+  ended_at: string;
+  success_rate: number; // 0.0 to 1.0
+  message_types: string[];
+}
+
+export interface SessionListResponse {
+  sessions: SessionSummary[];
+  total: number;
+}
+
+export interface SessionTrace {
+  session_id: string;
+  messages: PortalMessage[];
+  items: Array<{ item_name: string; item_type: string }>;
+  started_at: string | null;
+  ended_at: string | null;
+}
+
 export async function listMessages(
   projectId: string,
   options?: {
@@ -492,6 +515,31 @@ export async function resendMessage(projectId: string, messageId: string): Promi
   return request(`/api/projects/${projectId}/messages/${messageId}/resend`, {
     method: 'POST',
   });
+}
+
+// Session APIs
+
+export async function listSessions(
+  projectId: string,
+  options?: {
+    item?: string;
+    limit?: number;
+    offset?: number;
+  }
+): Promise<SessionListResponse> {
+  const params = new URLSearchParams();
+  if (options?.item) params.set('item', options.item);
+  if (options?.limit) params.set('limit', options.limit.toString());
+  if (options?.offset) params.set('offset', options.offset.toString());
+
+  const query = params.toString();
+  const url = `/api/projects/${projectId}/sessions${query ? `?${query}` : ''}`;
+
+  return request(url);
+}
+
+export async function getSessionTrace(sessionId: string): Promise<SessionTrace> {
+  return request(`/api/sessions/${sessionId}/trace`);
 }
 
 // Connection APIs

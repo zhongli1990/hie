@@ -309,6 +309,7 @@ services:
   # ==========================================================================
   redis-commander:
     image: rediscommander/redis-commander:latest
+    platform: linux/amd64
     container_name: hie-redis-commander
     ports:
       - "9331:8081"

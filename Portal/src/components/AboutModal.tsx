@@ -8,12 +8,24 @@ interface VersionHistory {
   features: string[];
 }
 
-const VERSION = "1.7.4";
-const BUILD_DATE = "Feb 11, 2026";
+const VERSION = "1.8.1";
+const BUILD_DATE = "Feb 12, 2026";
 const PLATFORM_NAME = "OpenLI HIE";
 const PRODUCT_NAME = "OpenLI Healthcare Integration Engine";
 
 const versionHistory: VersionHistory[] = [
+  {
+    version: "1.8.1",
+    date: "Feb 12, 2026",
+    features: [
+      "Message Trace Swimlanes UI overhaul: prominent banners, gradient buttons, cross-tab navigation",
+      "Always-on demo mode: 🎯 Demo Trace button and sample message generation",
+      "Enhanced message rows: E2E Traced badges, View Trace buttons with tooltips",
+      "Cross-tab references: Config, Events, and Metrics tabs link to Message Trace",
+      "Docker ARM64 compatibility: redis-commander platform fix for Apple Silicon Macs",
+      "260+ lines of UX improvements for operational discoverability",
+    ],
+  },
   {
     version: "1.7.4",
     date: "Feb 11, 2026",

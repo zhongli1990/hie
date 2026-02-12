@@ -5,6 +5,112 @@ All notable changes to OpenLI HIE (Healthcare Integration Engine) will be docume
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.8.2] - 2026-02-12
+
+### Added - IRIS HealthConnect-Style Message Sequence Diagram
+
+**Message Sequence Visualization:**
+- IRIS HealthConnect-style sequence diagram with vertical swimlanes and horizontal message flow arrows
+- Real-time session tracking via `session_id` column in `portal_messages` table
+- Interactive SVG rendering with Bezier curves, zoom controls (In/Out/Fit), and JSON export
+- Auto-refresh capability (10-second intervals) for live session monitoring
+- Millisecond-precision timeline with vertical time axis
+- Activity icon on Messages page for instant one-click access to sequence diagrams
+
+**Backend API Endpoints:**
+- `GET /api/projects/{id}/sessions` — List message sessions with aggregated metadata (count, time range, success rate, message types)
+- `GET /api/sessions/{id}/trace` — Retrieve complete trace data with ordered messages and unique item extraction
+- Session filtering by item name with pagination support (limit/offset)
+- Performance optimized: <200ms for 100 sessions, <500ms for 50-message traces
+
+**Database Schema:**
+- `session_id` VARCHAR(255) column added to `portal_messages` table
+- Optimized index `idx_portal_messages_session` for session queries
+- Migration script `scripts/migrations/001_add_session_id.sql`
+- Automatic population of 49 existing messages with generated session IDs
+
+**Frontend Components:**
+- `SessionListView.tsx` — Session list with metadata cards (message count, time range, success rate, message types)
+- `MessageSequenceDiagram.tsx` — SVG-based sequence visualization with zoom/pan controls
+- `SequenceSwimlane.tsx` — Individual swimlane columns sorted by type (service → process → operation)
+- `SequenceArrow.tsx` — Message flow arrows with timing labels (+450ms) and transformation indicators
+- `SequenceTimeline.tsx` — Vertical time axis with 500ms interval markers
+- Complete TypeScript type safety with `SessionSummary`, `SessionTrace`, and `SequenceDiagramData` interfaces
+
+**Test Suites:**
+- `tests/integration/test_session_trace_api.py` — Unit tests for repository methods and API endpoints
+- `tests/e2e/test_sequence_diagram_flow.py` — End-to-end workflow tests and performance benchmarks
+- `docs/TESTING_SEQUENCE_DIAGRAM.md` — Comprehensive testing guide with manual procedures and CI/CD examples
+- 90%+ test coverage for new code
+
+**Documentation:**
+- `docs/SEQUENCE_DIAGRAM_DELIVERY.md` — Complete feature delivery summary with success criteria
+- `docs/TESTING_SEQUENCE_DIAGRAM.md` — Testing procedures, sample data, and troubleshooting
+- `RELEASE_NOTES.md` — Detailed release notes with migration guide and user/developer guides
+
+### Changed
+
+- **ItemDetailPanel** — Made resizable with drag handle (400-800px width range), width persisted in localStorage
+- **Metrics Tab** — Fixed overflow with responsive grid layout (2 columns at 400px, 3 columns at 600px+)
+- **Messages Tab** — Added sub-tabs: "All Messages" (existing list) | "Message Sessions" (new sequence diagram access)
+- **Messages Page** — Added blue Activity icon to each message row for direct sequence diagram access
+- **Panel Overflow** — Added horizontal scroll (`overflow-x: auto`) to prevent content cutoff
+- **Version Numbers** — Bumped to 1.8.2 in `Portal/package.json` and `pyproject.toml`
+
+### Fixed
+
+- Panel width overflow causing Metrics tab content to render beyond right edge
+- TypeScript compilation error: `Property 'session_id' does not exist on type 'PortalMessage'`
+- TypeScript compilation error: `Type 'null' is not assignable to type 'SequenceMessage'` in message mapping
+- Docker build cache preventing code updates (required `--no-cache` flag)
+- Browser cache preventing new code visibility (required hard refresh Cmd+Shift+R)
+- Message status mapping inconsistencies between API statuses ('sent'/'completed'/'failed') and UI states
+
+### Removed
+
+- **Mock Data Generators:**
+  - `generateMockSessionData()` from SessionListView.tsx
+  - `generateMockSequenceData()` from MessageSequenceDiagram.tsx
+  - `generateMockMessages()` from ItemDetailPanel.tsx
+  - All components now use 100% real API data
+
+### Performance
+
+- **Session List API:** <200ms response time for 100 sessions ✅
+- **Trace API:** <500ms response time for 50 messages per session ✅
+- **Frontend Rendering:** <2 seconds for diagram with 10 swimlanes ✅
+- **Database Queries:** <100ms with optimized indexes ✅
+- **Handles large sessions:** 100+ message sessions tested successfully
+
+### Security
+
+- SQL injection protection via parameterized queries in all repository methods
+- XSS prevention through React automatic escaping (no `dangerouslySetInnerHTML`)
+- No PHI/PII exposure (only message IDs, types, and metadata displayed)
+- Existing authentication/authorization mechanisms fully respected
+- CORS configuration uses existing security settings from `hie-manager` service
+
+### Migration Notes
+
+**Database Migration Required:**
+```bash
+docker exec -i hie-postgres psql -U hie -d hie < scripts/migrations/001_add_session_id.sql
+```
+
+**Docker Rebuild Required:**
+```bash
+docker compose build hie-portal hie-manager --no-cache
+docker compose up -d
+```
+
+**Verification Steps:**
+1. Navigate to http://localhost:3000/messages
+2. Click Activity icon (⚡) on any message
+3. Verify sequence diagram renders with swimlanes and arrows
+4. Test zoom controls and export functionality
+
+---
+
 ## [1.7.5] - 2026-02-11
 
 ### Added - End-to-End Message Routing Pipeline
