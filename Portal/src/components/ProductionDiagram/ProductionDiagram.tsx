@@ -23,6 +23,7 @@ import { DiagramEdge } from "./DiagramEdge";
 import { DiagramToolbar } from "./DiagramToolbar";
 import { DiagramLegend } from "./DiagramLegend";
 import { ItemDetailPanel } from "./ItemDetailPanel";
+import { TopologyTable } from "./TopologyTable";
 import type {
   ProjectItem,
   Connection,
@@ -126,7 +127,7 @@ export function ProductionDiagram({
     fitView({ duration: 300, padding: 0.2 });
   }, [fitView]);
 
-  // If table view, show fallback table
+  // If table view, show enhanced table
   if (viewMode === "table") {
     return (
       <div className="space-y-4">
@@ -143,43 +144,11 @@ export function ProductionDiagram({
           onToggleMetrics={() => setShowMetrics(!showMetrics)}
           onToggleLabels={() => setShowLabels(!showLabels)}
         />
-        <div className="bg-white rounded-lg border p-6 overflow-auto" style={{ height: "calc(100vh - 260px)", minHeight: "500px" }}>
-          <table className="w-full">
-            <thead>
-              <tr className="border-b">
-                <th className="text-left py-2 px-4">Name</th>
-                <th className="text-left py-2 px-4">Type</th>
-                <th className="text-left py-2 px-4">Class</th>
-                <th className="text-left py-2 px-4">Status</th>
-                <th className="text-left py-2 px-4">Pool Size</th>
-              </tr>
-            </thead>
-            <tbody>
-              {items.map((item) => (
-                <tr key={item.id} className="border-b hover:bg-gray-50">
-                  <td className="py-2 px-4">{item.name}</td>
-                  <td className="py-2 px-4 capitalize">{item.item_type}</td>
-                  <td className="py-2 px-4 text-sm text-gray-600">{item.class_name}</td>
-                  <td className="py-2 px-4">
-                    <span
-                      className={`inline-flex items-center gap-2 text-sm ${
-                        item.enabled ? "text-green-600" : "text-gray-400"
-                      }`}
-                    >
-                      <span
-                        className={`inline-block w-2 h-2 rounded-full ${
-                          item.enabled ? "bg-green-500" : "bg-gray-400"
-                        }`}
-                      />
-                      {item.enabled ? "Running" : "Stopped"}
-                    </span>
-                  </td>
-                  <td className="py-2 px-4">{item.pool_size}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <TopologyTable
+          items={items}
+          onItemClick={(item) => setSelectedItem(item)}
+        />
+        <ItemDetailPanel item={selectedItem} onClose={() => setSelectedItem(null)} />
       </div>
     );
   }
