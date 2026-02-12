@@ -1,5 +1,5 @@
 /**
- * Custom edge component for Production Diagram
+ * Custom edge component for Production Topology
  * Renders standard, error, and async connections with NHS styling
  */
 

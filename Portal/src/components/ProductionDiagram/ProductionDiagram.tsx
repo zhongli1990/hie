@@ -1,5 +1,5 @@
 /**
- * Main Production Diagram Component
+ * Main Production Topology Component
  * Visual representation of HIE production items and message flow
  */
 
@@ -22,6 +22,7 @@ import { DiagramNode } from "./DiagramNode";
 import { DiagramEdge } from "./DiagramEdge";
 import { DiagramToolbar } from "./DiagramToolbar";
 import { DiagramLegend } from "./DiagramLegend";
+import { ItemDetailPanel } from "./ItemDetailPanel";
 import type {
   ProjectItem,
   Connection,
@@ -65,6 +66,7 @@ export function ProductionDiagram({
   const [showStatus, setShowStatus] = useState(true);
   const [showMetrics, setShowMetrics] = useState(true);
   const [showLabels, setShowLabels] = useState(true);
+  const [selectedItem, setSelectedItem] = useState<ProjectItem | null>(null);
 
   const { fitView, zoomIn, zoomOut } = useReactFlow();
 
@@ -81,14 +83,19 @@ export function ProductionDiagram({
   const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
 
-  // Handle node click
+  // Handle node click - open detail panel
   const handleNodeClick = useCallback(
     (_event: React.MouseEvent, node: Node) => {
+      const item = items.find((i) => i.id === node.id);
+      if (item) {
+        setSelectedItem(item);
+      }
+      // Also call parent callback if provided
       if (onNodeClick) {
         onNodeClick(node.id);
       }
     },
-    [onNodeClick]
+    [items, onNodeClick]
   );
 
   // Handle node drag end - update position in backend
@@ -136,7 +143,7 @@ export function ProductionDiagram({
           onToggleMetrics={() => setShowMetrics(!showMetrics)}
           onToggleLabels={() => setShowLabels(!showLabels)}
         />
-        <div className="bg-white rounded-lg border p-6">
+        <div className="bg-white rounded-lg border p-6 overflow-auto" style={{ height: "calc(100vh - 260px)", minHeight: "500px" }}>
           <table className="w-full">
             <thead>
               <tr className="border-b">
@@ -179,7 +186,7 @@ export function ProductionDiagram({
 
   return (
     <div className="space-y-4">
-      {/* Toolbar */}
+      {/* Topology Toolbar */}
       <DiagramToolbar
         viewMode={viewMode}
         onViewModeChange={handleViewModeChange}
@@ -194,8 +201,8 @@ export function ProductionDiagram({
         onToggleLabels={() => setShowLabels(!showLabels)}
       />
 
-      {/* Diagram */}
-      <div className="bg-white rounded-lg border shadow-sm" style={{ height: "600px" }}>
+      {/* Topology Graph */}
+      <div className="bg-white rounded-lg border shadow-sm" style={{ height: "calc(100vh - 260px)", minHeight: "500px" }}>
         <ReactFlow
           nodes={nodes}
           edges={edges}
@@ -218,6 +225,9 @@ export function ProductionDiagram({
 
       {/* Legend */}
       <DiagramLegend />
+
+      {/* Item Detail Panel */}
+      <ItemDetailPanel item={selectedItem} onClose={() => setSelectedItem(null)} />
     </div>
   );
 }

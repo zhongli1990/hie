@@ -1,5 +1,5 @@
 /**
- * Legend component for Production Diagram
+ * Legend component for Production Topology
  * Shows color coding and connection types
  */
 

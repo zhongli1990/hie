@@ -1,5 +1,5 @@
 /**
- * Custom node component for Production Diagram
+ * Custom node component for Production Topology
  * Renders service, process, and operation items with NHS styling
  */
 

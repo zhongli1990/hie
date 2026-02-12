@@ -1,5 +1,5 @@
 /**
- * Toolbar for Production Diagram
+ * Toolbar for Production Topology
  * Provides zoom, fit view, and view mode controls
  */
 

@@ -1,5 +1,5 @@
 /**
- * Type definitions for Visual Production Diagram
+ * Type definitions for Visual Production Topology
  */
 
 import type { ProjectItem, Connection, RoutingRule } from "@/lib/api-v2";
