@@ -8,6 +8,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { X, Settings, Activity, MessageSquare, BarChart3, AlertCircle, AlertTriangle, Info, CheckCircle, Filter, RefreshCw } from "lucide-react";
 import type { ProjectItem } from "./types";
+import { MessageTraceSwimlane } from "./MessageTraceSwimlane";
 
 interface ItemDetailPanelProps {
   item: ProjectItem | null;
@@ -497,6 +498,7 @@ function MessagesTab({ item }: { item: ProjectItem }) {
   const [error, setError] = useState<string | null>(null);
   const [filterStatus, setFilterStatus] = useState<"all" | "success" | "error">("all");
   const [autoRefresh, setAutoRefresh] = useState(true);
+  const [selectedMessageId, setSelectedMessageId] = useState<string | null>(null);
 
   // Fetch messages from API
   const fetchMessages = useCallback(async () => {
@@ -601,21 +603,33 @@ function MessagesTab({ item }: { item: ProjectItem }) {
         ) : (
           <div className="divide-y">
             {filteredMessages.map((message) => (
-              <MessageRow key={message.id} message={message} itemName={item.name} />
+              <MessageRow
+                key={message.id}
+                message={message}
+                itemName={item.name}
+                onViewTrace={() => setSelectedMessageId(message.id)}
+              />
             ))}
           </div>
         )}
       </div>
+
+      {/* Message Trace Swimlane Modal */}
+      {selectedMessageId && (
+        <MessageTraceSwimlane
+          messageId={selectedMessageId}
+          onClose={() => setSelectedMessageId(null)}
+        />
+      )}
     </div>
   );
 }
 
-function MessageRow({ message, itemName }: { message: MessageItem; itemName: string }) {
-  const handleViewTrace = () => {
-    // TODO: Open message trace swimlane modal (Phase 2)
-    console.log("View trace for message:", message.id);
-    alert(`Message Trace Swimlane\n\nWill show e2e transaction flow for message ${message.id}\n\nComing in Phase 2: Message Trace Swimlanes`);
-  };
+function MessageRow({ message, itemName, onViewTrace }: {
+  message: MessageItem;
+  itemName: string;
+  onViewTrace: () => void;
+}) {
 
   return (
     <div className="p-3 hover:bg-gray-50 transition-colors">
@@ -666,7 +680,7 @@ function MessageRow({ message, itemName }: { message: MessageItem; itemName: str
 
         {/* Actions */}
         <button
-          onClick={handleViewTrace}
+          onClick={onViewTrace}
           className="px-3 py-1 text-xs font-medium text-blue-600 bg-blue-50 rounded hover:bg-blue-100 transition-colors whitespace-nowrap"
         >
           View Trace →
