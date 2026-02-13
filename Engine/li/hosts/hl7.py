@@ -21,6 +21,11 @@ import structlog
 
 from Engine.li.hosts.base import BusinessService, BusinessOperation, HostMetrics
 from Engine.li.adapters.mllp import MLLPInboundAdapter, MLLPOutboundAdapter
+from Engine.li.adapters.file import InboundFileAdapter, OutboundFileAdapter
+from Engine.li.adapters.http import (
+    InboundHTTPAdapter, OutboundHTTPAdapter,
+    HTTPRequest, HTTPResponse,
+)
 from Engine.li.schemas.hl7 import HL7Schema, HL7ParsedView
 from Engine.li.registry import SchemaRegistry, ClassRegistry
 
@@ -833,10 +838,420 @@ class HL7RetryError(Exception):
     pass
 
 
+# =========================================================================
+# HL7 File Service — IRIS EnsLib.HL7.Service.FileService
+# =========================================================================
+
+class HL7FileService(HL7TCPService):
+    """
+    HL7v2 File Service — polls a directory for HL7 message files.
+
+    Inherits all HL7 parsing, validation, ACK generation, and message trace
+    logic from HL7TCPService. Only the adapter is different: InboundFileAdapter
+    instead of MLLPInboundAdapter.
+
+    IRIS equivalent: EnsLib.HL7.Service.FileService
+        extends EnsLib.HL7.Service.Standard (shared HL7 logic)
+        uses EnsLib.File.InboundAdapter (file polling)
+
+    Rhapsody equivalent: File Communication Point (Input) + HL7 parser
+    Mirth equivalent: File Reader connector + HL7v2 data type
+
+    Settings (Host):
+        MessageSchemaCategory: Schema category for validation (e.g., "2.4")
+        TargetConfigNames: Comma-separated list of target hosts
+        AckMode: ACK generation mode ("Never" recommended for file — no one to ACK to)
+        BadMessageHandler: Target for invalid messages
+
+    Settings (Adapter):
+        FilePath:     Directory to poll for inbound HL7 files (required)
+        FileSpec:     Glob pattern (default: *.hl7)
+        PollInterval: Seconds between scans (default: 5)
+        ArchivePath:  Directory for processed files (default: archive)
+
+    Example IRIS Config:
+        <Item Name="HL7.In.File" ClassName="EnsLib.HL7.Service.FileService" PoolSize="1" Enabled="true">
+            <Setting Target="Adapter" Name="FilePath">/data/hl7/inbound</Setting>
+            <Setting Target="Adapter" Name="FileSpec">*.hl7</Setting>
+            <Setting Target="Host" Name="MessageSchemaCategory">2.4</Setting>
+            <Setting Target="Host" Name="TargetConfigNames">HL7.Router</Setting>
+        </Item>
+    """
+
+    adapter_class = InboundFileAdapter
+
+    def __init__(
+        self,
+        name: str,
+        config: "ItemConfig | None" = None,
+        pool_size: int = 1,
+        enabled: bool = True,
+        adapter_settings: dict[str, Any] | None = None,
+        host_settings: dict[str, Any] | None = None,
+    ):
+        # Default AckMode to "Never" for file services (no TCP peer to ACK)
+        if host_settings and "AckMode" not in host_settings:
+            host_settings["AckMode"] = "Never"
+        elif not host_settings:
+            host_settings = {"AckMode": "Never"}
+
+        super().__init__(
+            name=name,
+            config=config,
+            pool_size=pool_size,
+            enabled=enabled,
+            adapter_settings=adapter_settings,
+            host_settings=host_settings,
+        )
+
+        self._log = logger.bind(
+            host="HL7FileService",
+            name=name,
+            schema=self.message_schema_category,
+        )
+
+
+# =========================================================================
+# HL7 File Operation — IRIS EnsLib.HL7.Operation.FileOperation
+# =========================================================================
+
+class HL7FileOperation(HL7TCPOperation):
+    """
+    HL7v2 File Operation — writes HL7 messages to files.
+
+    Inherits all HL7 schema loading, ACK evaluation, and message trace
+    logic from HL7TCPOperation. Only the adapter is different: OutboundFileAdapter
+    instead of MLLPOutboundAdapter.
+
+    Note: File operations do NOT receive ACKs (no TCP peer). The send()
+    returns the file path as bytes. The operation marks the header as
+    Completed on successful write.
+
+    IRIS equivalent: EnsLib.HL7.Operation.FileOperation
+        extends EnsLib.HL7.Operation.BatchStandard
+        uses EnsLib.File.OutboundAdapter
+
+    Settings (Host):
+        MessageSchemaCategory: Schema category (e.g., "2.4")
+        ReplyCodeActions: Not applicable for file (no ACK)
+
+    Settings (Adapter):
+        FilePath: Directory to write outbound HL7 files (required)
+        Filename: Filename pattern (default: msg_%timestamp%_%id%.hl7)
+        Overwrite: "error"|"overwrite"|"append" (default: error)
+
+    Example IRIS Config:
+        <Item Name="HL7.Out.File" ClassName="EnsLib.HL7.Operation.FileOperation" PoolSize="1" Enabled="true">
+            <Setting Target="Adapter" Name="FilePath">/data/hl7/outbound</Setting>
+            <Setting Target="Adapter" Name="Filename">%type%_%timestamp%.hl7</Setting>
+        </Item>
+    """
+
+    adapter_class = OutboundFileAdapter
+
+    def __init__(
+        self,
+        name: str,
+        config: "ItemConfig | None" = None,
+        pool_size: int = 1,
+        enabled: bool = True,
+        adapter_settings: dict[str, Any] | None = None,
+        host_settings: dict[str, Any] | None = None,
+    ):
+        super().__init__(
+            name=name,
+            config=config,
+            pool_size=pool_size,
+            enabled=enabled,
+            adapter_settings=adapter_settings,
+            host_settings=host_settings,
+        )
+
+        self._log = logger.bind(
+            host="HL7FileOperation",
+            name=name,
+        )
+
+    async def on_message(self, message: Any) -> Any:
+        """
+        Send HL7 message to file.
+
+        File operations don't receive ACKs, so we write the file
+        and mark the header as Completed.
+        """
+        session_id = None
+        correlation_id = None
+        header_id = None
+
+        if isinstance(message, HL7Message):
+            data = message.raw
+            session_id = getattr(message, 'session_id', None)
+            correlation_id = getattr(message, 'correlation_id', None)
+            header_id = getattr(message, 'header_id', None)
+        elif isinstance(message, bytes):
+            data = message
+        elif hasattr(message, "raw"):
+            data = message.raw
+            session_id = getattr(message, 'session_id', None)
+            correlation_id = getattr(message, 'correlation_id', None)
+            header_id = getattr(message, 'header_id', None)
+        else:
+            data = str(message).encode("utf-8")
+
+        try:
+            # Write to file via adapter
+            file_path = await self._adapter.send(message)
+
+            self._log.debug("hl7_file_written", file_path=file_path)
+
+            # Store outbound trace (no ACK for file)
+            project_id = getattr(self, 'project_id', None)
+            if project_id:
+                import asyncio as _asyncio
+                _asyncio.create_task(self._store_outbound_message(
+                    project_id=project_id,
+                    raw_content=data,
+                    ack_content=None,
+                    status="sent",
+                    session_id=session_id,
+                    correlation_id=correlation_id,
+                    header_id=header_id,
+                ))
+
+            return SendResult(
+                success=True,
+                ack_code=None,
+                ack_raw=None,
+                action="S",
+            )
+
+        except Exception as e:
+            self._log.error("hl7_file_write_error", error=str(e))
+
+            project_id = getattr(self, 'project_id', None)
+            if project_id:
+                import asyncio as _asyncio
+                _asyncio.create_task(self._store_outbound_message(
+                    project_id=project_id,
+                    raw_content=data,
+                    ack_content=None,
+                    status="failed",
+                    error_message=str(e),
+                    session_id=session_id,
+                    correlation_id=correlation_id,
+                    header_id=header_id,
+                ))
+            raise HL7SendError(f"File write failed: {e}")
+
+
+# =========================================================================
+# HL7 HTTP Service — IRIS EnsLib.HL7.Service.HTTPService
+# =========================================================================
+
+class HL7HTTPService(HL7TCPService):
+    """
+    HL7v2 HTTP Service — receives HL7 messages via HTTP POST.
+
+    Inherits all HL7 parsing, validation, ACK generation, and message trace
+    logic from HL7TCPService. Uses InboundHTTPAdapter instead of MLLP.
+
+    The HTTP response body contains the HL7 ACK message.
+    Content-Type is application/hl7-v2+er7.
+
+    IRIS equivalent: EnsLib.HL7.Service.HTTPService
+        extends EnsLib.HTTP.Service + EnsLib.HL7.Service.Standard
+        uses EnsLib.HTTP.InboundAdapter
+
+    Rhapsody equivalent: HTTP Communication Point (Input) + HL7 parser
+    Mirth equivalent: HTTP Listener connector + HL7v2 data type
+
+    Settings (Host):
+        MessageSchemaCategory: Schema category for validation (e.g., "2.4")
+        TargetConfigNames: Comma-separated list of target hosts
+        AckMode: ACK generation mode (default: "Immediate")
+        BadMessageHandler: Target for invalid messages
+
+    Settings (Adapter):
+        Port: HTTP port to listen on (required)
+        Host: IP address to bind to (default: 0.0.0.0)
+        AllowedMethods: HTTP methods (default: POST)
+        SSLCertFile: Path to SSL certificate (optional)
+        SSLKeyFile: Path to SSL key (optional)
+
+    Example IRIS Config:
+        <Item Name="HL7.In.HTTP" ClassName="EnsLib.HL7.Service.HTTPService" PoolSize="1" Enabled="true">
+            <Setting Target="Adapter" Name="Port">9380</Setting>
+            <Setting Target="Host" Name="MessageSchemaCategory">2.4</Setting>
+            <Setting Target="Host" Name="TargetConfigNames">HL7.Router</Setting>
+        </Item>
+    """
+
+    adapter_class = InboundHTTPAdapter
+
+    def __init__(
+        self,
+        name: str,
+        config: "ItemConfig | None" = None,
+        pool_size: int = 1,
+        enabled: bool = True,
+        adapter_settings: dict[str, Any] | None = None,
+        host_settings: dict[str, Any] | None = None,
+    ):
+        super().__init__(
+            name=name,
+            config=config,
+            pool_size=pool_size,
+            enabled=enabled,
+            adapter_settings=adapter_settings,
+            host_settings=host_settings,
+        )
+
+        self._log = logger.bind(
+            host="HL7HTTPService",
+            name=name,
+            schema=self.message_schema_category,
+        )
+
+    async def on_start(self) -> None:
+        """Initialize schema and set up HTTP request handler."""
+        await super().on_start()
+
+        # Set up the HTTP adapter to use our custom request handler
+        if isinstance(self._adapter, InboundHTTPAdapter):
+            self._adapter.set_request_handler(self._handle_http_request)
+
+    async def _handle_http_request(self, request: HTTPRequest) -> HTTPResponse:
+        """
+        Handle an inbound HTTP request containing an HL7 message.
+
+        Extracts the HL7 message from the HTTP body, processes it
+        using the standard HL7 pipeline, and returns the ACK as
+        the HTTP response body.
+        """
+        data = request.body
+
+        if not data:
+            return HTTPResponse(
+                status_code=400,
+                body=b"Empty request body",
+                content_type="text/plain",
+            )
+
+        # Process through standard HL7 pipeline
+        try:
+            message = await self.on_message_received(data)
+
+            # Submit to queue for downstream routing
+            await self.submit(message)
+
+            # Return ACK as HTTP response
+            if isinstance(message, HL7Message) and message.ack:
+                return HTTPResponse(
+                    status_code=200,
+                    body=message.ack,
+                    content_type="application/hl7-v2+er7",
+                )
+            else:
+                return HTTPResponse(
+                    status_code=200,
+                    body=b"OK",
+                    content_type="text/plain",
+                )
+
+        except Exception as e:
+            self._log.error("hl7_http_processing_error", error=str(e))
+            return HTTPResponse(
+                status_code=500,
+                body=f"Processing error: {e}".encode(),
+                content_type="text/plain",
+            )
+
+
+# =========================================================================
+# HL7 HTTP Operation — IRIS EnsLib.HL7.Operation.HTTPOperation
+# =========================================================================
+
+class HL7HTTPOperation(HL7TCPOperation):
+    """
+    HL7v2 HTTP Operation — sends HL7 messages via HTTP POST.
+
+    Inherits all HL7 schema loading, ACK evaluation, and message trace
+    logic from HL7TCPOperation. Uses OutboundHTTPAdapter instead of MLLP.
+
+    The HTTP request body contains the HL7 message.
+    The HTTP response body is expected to contain the HL7 ACK.
+
+    IRIS equivalent: EnsLib.HL7.Operation.HTTPOperation
+        extends EnsLib.HL7.Operation.Standard
+        uses EnsLib.HTTP.OutboundAdapter
+
+    Settings (Host):
+        MessageSchemaCategory: Schema category (e.g., "2.4")
+        ReplyCodeActions: ACK code handling rules
+
+    Settings (Adapter):
+        URL: Target URL for HTTP POST (required)
+        ContentType: Content-Type header (default: application/hl7-v2+er7)
+        ConnectTimeout: Connection timeout (default: 10)
+        ResponseTimeout: Response timeout (default: 30)
+        MaxRetries: Maximum retries (default: 3)
+
+    Example IRIS Config:
+        <Item Name="HL7.Out.HTTP" ClassName="EnsLib.HL7.Operation.HTTPOperation" PoolSize="1" Enabled="true">
+            <Setting Target="Adapter" Name="URL">http://remote:8080/hl7</Setting>
+            <Setting Target="Host" Name="ReplyCodeActions">:?R=F,:?E=S,:*=S</Setting>
+        </Item>
+    """
+
+    adapter_class = OutboundHTTPAdapter
+
+    def __init__(
+        self,
+        name: str,
+        config: "ItemConfig | None" = None,
+        pool_size: int = 1,
+        enabled: bool = True,
+        adapter_settings: dict[str, Any] | None = None,
+        host_settings: dict[str, Any] | None = None,
+    ):
+        # Default ContentType for HL7 over HTTP
+        if adapter_settings and "ContentType" not in adapter_settings:
+            adapter_settings["ContentType"] = "application/hl7-v2+er7"
+        elif not adapter_settings:
+            adapter_settings = {"ContentType": "application/hl7-v2+er7"}
+
+        super().__init__(
+            name=name,
+            config=config,
+            pool_size=pool_size,
+            enabled=enabled,
+            adapter_settings=adapter_settings,
+            host_settings=host_settings,
+        )
+
+        self._log = logger.bind(
+            host="HL7HTTPOperation",
+            name=name,
+            url=self.get_setting("Adapter", "URL"),
+        )
+
+
+# =========================================================================
+# ClassRegistry Registration
+# =========================================================================
+
 # Register core classes with ClassRegistry (internal — protected namespace)
 ClassRegistry._register_internal("li.hosts.hl7.HL7TCPService", HL7TCPService)
 ClassRegistry._register_internal("li.hosts.hl7.HL7TCPOperation", HL7TCPOperation)
+ClassRegistry._register_internal("li.hosts.hl7.HL7FileService", HL7FileService)
+ClassRegistry._register_internal("li.hosts.hl7.HL7FileOperation", HL7FileOperation)
+ClassRegistry._register_internal("li.hosts.hl7.HL7HTTPService", HL7HTTPService)
+ClassRegistry._register_internal("li.hosts.hl7.HL7HTTPOperation", HL7HTTPOperation)
 
 # IRIS compatibility aliases
 ClassRegistry.register_alias("EnsLib.HL7.Service.TCPService", "li.hosts.hl7.HL7TCPService")
 ClassRegistry.register_alias("EnsLib.HL7.Operation.TCPOperation", "li.hosts.hl7.HL7TCPOperation")
+ClassRegistry.register_alias("EnsLib.HL7.Service.FileService", "li.hosts.hl7.HL7FileService")
+ClassRegistry.register_alias("EnsLib.HL7.Operation.FileOperation", "li.hosts.hl7.HL7FileOperation")
+ClassRegistry.register_alias("EnsLib.HL7.Service.HTTPService", "li.hosts.hl7.HL7HTTPService")
+ClassRegistry.register_alias("EnsLib.HL7.Operation.HTTPOperation", "li.hosts.hl7.HL7HTTPOperation")
