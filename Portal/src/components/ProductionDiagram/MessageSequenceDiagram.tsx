@@ -257,12 +257,21 @@ export function MessageSequenceDiagram({ sessionId, projectId, onClose }: Messag
 
 /**
  * Transform API trace data into sequence diagram format.
- *
- * Uses IRIS-convention per-leg trace (message_headers).
+ * Routes to V2 (message_headers) or V1 (portal_messages) builder based on trace_version.
+ */
+function buildSequenceDiagram(trace: SessionTrace): SequenceDiagramData {
+  if (trace.trace_version === "v2") {
+    return buildSequenceDiagramV2(trace);
+  }
+  return buildSequenceDiagramV1(trace);
+}
+
+/**
+ * V2: IRIS-convention per-leg trace (message_headers).
  * Each message row IS one arrow. source_config_name → target_config_name.
  * Swimlanes derived from items[] with accurate business_type.
  */
-function buildSequenceDiagram(trace: SessionTrace): SequenceDiagramData {
+function buildSequenceDiagramV2(trace: SessionTrace): SequenceDiagramData {
   const itemsMap = new Map<string, SequenceItem>();
 
   // Build swimlanes from trace.items (already sorted by backend)
@@ -328,6 +337,117 @@ function buildSequenceDiagram(trace: SessionTrace): SequenceDiagramData {
   const endTime =
     processedTimestamps.length > 0
       ? new Date(Math.max(...processedTimestamps))
+      : timestamps.length > 0
+      ? new Date(Math.max(...timestamps) + 1000)
+      : new Date(startTime.getTime() + 1000);
+
+  return {
+    sessionId: trace.session_id,
+    items,
+    messages,
+    timeRange: { start: startTime, end: endTime },
+  };
+}
+
+/**
+ * V1: Legacy portal_messages format (read-only for historical data).
+ */
+function buildSequenceDiagramV1(trace: SessionTrace): SequenceDiagramData {
+  const itemsMap = new Map<string, SequenceItem>();
+
+  // Add items from trace.items array
+  trace.items.forEach((item) => {
+    if (item.item_name && !itemsMap.has(item.item_name)) {
+      itemsMap.set(item.item_name, {
+        itemId: item.item_name,
+        itemName: item.item_name,
+        itemType: item.item_type as "service" | "process" | "operation",
+        columnIndex: 0,
+      });
+    }
+  });
+
+  // Add items from messages (source_item, destination_item) — v1 fields
+  trace.messages.forEach((msg) => {
+    const m = msg as unknown as Record<string, unknown>;
+    const itemName = m.item_name as string | null;
+    const itemType = (m.item_type as string) || "process";
+    const sourceItem = m.source_item as string | null;
+    const destItem = m.destination_item as string | null;
+
+    if (itemName && !itemsMap.has(itemName)) {
+      itemsMap.set(itemName, {
+        itemId: itemName,
+        itemName: itemName,
+        itemType: itemType as "service" | "process" | "operation",
+        columnIndex: 0,
+      });
+    }
+    if (sourceItem && !itemsMap.has(sourceItem)) {
+      itemsMap.set(sourceItem, {
+        itemId: sourceItem,
+        itemName: sourceItem,
+        itemType: "process",
+        columnIndex: 0,
+      });
+    }
+    if (destItem && !itemsMap.has(destItem)) {
+      itemsMap.set(destItem, {
+        itemId: destItem,
+        itemName: destItem,
+        itemType: "process",
+        columnIndex: 0,
+      });
+    }
+  });
+
+  const typeOrder: Record<string, number> = { service: 0, process: 1, operation: 2 };
+  const items = Array.from(itemsMap.values())
+    .sort((a, b) => {
+      const typeA = typeOrder[a.itemType] ?? 1;
+      const typeB = typeOrder[b.itemType] ?? 1;
+      if (typeA !== typeB) return typeA - typeB;
+      return a.itemName.localeCompare(b.itemName);
+    })
+    .map((item, idx) => ({ ...item, columnIndex: idx }));
+
+  const messages = trace.messages
+    .map((msg) => {
+      const m = msg as unknown as Record<string, unknown>;
+      const sourceItem = (m.source_item as string) || (m.item_name as string);
+      const targetItem = (m.destination_item as string) || (m.item_name as string);
+
+      if (!sourceItem || !targetItem) return null;
+
+      let status: "success" | "error" | "pending" = "success";
+      if (m.status === "failed" || m.status === "error") {
+        status = "error";
+      } else if (m.status === "pending" || m.status === "received") {
+        status = "pending";
+      }
+
+      return {
+        messageId: m.id as string,
+        sourceItemId: sourceItem,
+        targetItemId: targetItem,
+        timestamp: new Date(m.received_at as string),
+        duration_ms: (m.latency_ms as number) || 0,
+        status,
+        transformation: (m.message_type as string) || undefined,
+      } as SequenceMessage;
+    })
+    .filter((msg): msg is SequenceMessage => msg !== null);
+
+  const allMsgs = trace.messages as unknown as Record<string, unknown>[];
+  const timestamps = allMsgs.map((m) => new Date(m.received_at as string).getTime());
+  const completedTimestamps = allMsgs
+    .filter((m) => m.completed_at)
+    .map((m) => new Date(m.completed_at as string).getTime());
+
+  const startTime = timestamps.length > 0 ? new Date(Math.min(...timestamps)) : new Date();
+  const endTime =
+    completedTimestamps.length > 0
+      ? new Date(Math.max(...completedTimestamps))
       : timestamps.length > 0
       ? new Date(Math.max(...timestamps) + 1000)
       : new Date(startTime.getTime() + 1000);

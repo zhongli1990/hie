@@ -372,6 +372,50 @@ async def test_trace_time_range():
 
 
 @pytest.mark.asyncio
+async def test_trace_v1_fallback_by_session_id():
+    """Old portal_messages with SES- session_id should return v1 trace."""
+    pool = await get_db_pool()
+    if pool is None:
+        pytest.skip("asyncpg not available — skipping direct DB check")
+
+    # Find an old session that exists in portal_messages
+    row = await pool.fetchrow(
+        "SELECT session_id FROM portal_messages WHERE session_id IS NOT NULL LIMIT 1"
+    )
+    if not row:
+        pytest.skip("No portal_messages with session_id found")
+
+    old_session_id = row["session_id"]
+    status, trace = await api_get_json(f"{MANAGER_BASE}/api/sessions/{old_session_id}/trace")
+
+    assert status == 200, f"V1 fallback failed for session_id={old_session_id}: {trace}"
+    assert trace["trace_version"] == "v1"
+    assert len(trace["messages"]) >= 1
+
+
+@pytest.mark.asyncio
+async def test_trace_v1_fallback_by_message_id():
+    """Old portal_messages with NULL session_id should be found by message id."""
+    pool = await get_db_pool()
+    if pool is None:
+        pytest.skip("asyncpg not available — skipping direct DB check")
+
+    # Find an old message that has NULL session_id
+    row = await pool.fetchrow(
+        "SELECT id::text FROM portal_messages WHERE session_id IS NULL LIMIT 1"
+    )
+    if not row:
+        pytest.skip("No portal_messages with NULL session_id found")
+
+    msg_id = row["id"]
+    status, trace = await api_get_json(f"{MANAGER_BASE}/api/sessions/{msg_id}/trace")
+
+    assert status == 200, f"V1 id-fallback failed for msg_id={msg_id}: {trace}"
+    assert trace["trace_version"] == "v1"
+    assert len(trace["messages"]) >= 1
+
+
+@pytest.mark.asyncio
 async def test_trace_404_for_nonexistent_session():
     """GET /api/sessions/{bad_id}/trace returns 404, not 500."""
     status, data = await api_get_json(f"{MANAGER_BASE}/api/sessions/SES-00000000-0000-0000-0000-000000000000/trace")

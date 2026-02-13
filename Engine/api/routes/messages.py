@@ -331,7 +331,7 @@ async def get_session_trace(request: web.Request) -> web.Response:
             "items": trace_data.get("items", []),
             "started_at": trace_data.get("started_at").isoformat() if trace_data.get("started_at") else None,
             "ended_at": trace_data.get("ended_at").isoformat() if trace_data.get("ended_at") else None,
-            "trace_version": "v2",
+            "trace_version": trace_data.get("trace_version", "v2"),
         }
 
         return web.json_response(result)
