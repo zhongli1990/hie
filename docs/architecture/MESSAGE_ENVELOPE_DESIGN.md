@@ -2,9 +2,14 @@
 
 **Polymorphic Messaging Architecture for LI HIE**
 
-**Version:** 2.0 (Phase 4)
-**Design Date:** February 10, 2026
+**Version:** 2.1 (Phase 4 — Layer 1: In-Memory Transport)
+**Design Date:** February 10, 2026 (Revised February 13, 2026)
 **Status:** Proposed Architecture Enhancement
+
+> **Architecture Note (Feb 13, 2026):** This document describes **Layer 1: In-Memory Transport** — the `MessageEnvelope` / `MessageHeader` / `MessageBody` objects that travel with messages between hosts in memory. It does NOT cover the **persisted trace** (Layer 2), which is the `message_headers` / `message_bodies` database tables that power the Visual Trace / Sequence Diagram. For Layer 2, see:
+> - [MESSAGE_MODEL.md](MESSAGE_MODEL.md) §Persisted Trace Layer
+> - [SESSION_ID_DESIGN.md](SESSION_ID_DESIGN.md) §4 Implementation Design
+> - [MESSAGE_HEADER_BODY_REDESIGN.md](MESSAGE_HEADER_BODY_REDESIGN.md) — Master consolidated design
 
 ---
 

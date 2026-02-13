@@ -534,6 +534,11 @@ class HL7RoutingEngine(BusinessProcess):
             raw = message.raw if isinstance(message.raw, bytes) else str(message.raw).encode()
             status = "completed" if result.matched else "no_match"
             dest = ",".join(result.targets) if result.targets else None
+
+            # Extract session_id and correlation_id from incoming message for propagation
+            session_id = getattr(message, 'session_id', None)
+            correlation_id = getattr(message, 'correlation_id', None)
+
             await store_and_complete_message(
                 project_id=project_id,
                 item_name=self.name,
@@ -543,6 +548,8 @@ class HL7RoutingEngine(BusinessProcess):
                 status=status,
                 source_item=getattr(message, 'source', None),
                 destination_item=dest,
+                correlation_id=correlation_id,
+                session_id=session_id,  # Propagate session_id
             )
         except Exception as e:
             self._log.warning("routing_message_storage_failed", error=str(e))

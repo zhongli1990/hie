@@ -68,6 +68,10 @@ async def store_message(
     raw_content: bytes | None = None,
     message_type: str | None = None,
     correlation_id: str | None = None,
+    session_id: str | None = None,
+    body_class_name: str | None = None,
+    schema_name: str | None = None,
+    schema_namespace: str | None = None,
     status: str = "received",
     source_item: str | None = None,
     destination_item: str | None = None,
@@ -100,19 +104,29 @@ async def store_message(
         except:
             content_preview = f"[Binary data: {content_size} bytes]"
     
+    # Auto-populate body_class_name and schema_name if not provided
+    if not body_class_name:
+        body_class_name = "Engine.li.messages.hl7.HL7Message" if message_type else "Engine.core.message.GenericMessage"
+    if not schema_name:
+        schema_name = message_type or "GenericMessage"
+    if not schema_namespace:
+        schema_namespace = "urn:hl7-org:v2" if message_type and ("HL7" in message_type or "ADT" in message_type or "ORU" in message_type) else "urn:hie:generic"
+
     try:
         import json
         query = """
             INSERT INTO portal_messages (
                 project_id, item_name, item_type, direction, message_type,
-                correlation_id, status, raw_content, content_preview, content_size,
+                correlation_id, session_id, body_class_name, schema_name, schema_namespace,
+                status, raw_content, content_preview, content_size,
                 source_item, destination_item, remote_host, remote_port, metadata
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)
             RETURNING id
         """
         row = await pool.fetchrow(
             query, project_id, item_name, item_type, direction, message_type,
-            correlation_id, status, raw_content, content_preview, content_size,
+            correlation_id, session_id, body_class_name, schema_name, schema_namespace,
+            status, raw_content, content_preview, content_size,
             source_item, destination_item, remote_host, remote_port,
             json.dumps(metadata or {})
         )
@@ -185,6 +199,11 @@ async def store_and_complete_message(
     destination_item: str | None = None,
     remote_host: str | None = None,
     remote_port: int | None = None,
+    correlation_id: str | None = None,
+    session_id: str | None = None,
+    body_class_name: str | None = None,
+    schema_name: str | None = None,
+    schema_namespace: str | None = None,
 ) -> UUID | None:
     """
     Store a message and immediately set its final status.
@@ -213,20 +232,30 @@ async def store_and_complete_message(
             content_preview = f"[Binary data: {content_size} bytes]"
     
     completed_at = datetime.now(timezone.utc) if status in ('sent', 'completed', 'failed', 'error') else None
-    
+
+    # Auto-populate body_class_name and schema_name if not provided
+    if not body_class_name:
+        body_class_name = "Engine.li.messages.hl7.HL7Message" if message_type else "Engine.core.message.GenericMessage"
+    if not schema_name:
+        schema_name = message_type or "GenericMessage"
+    if not schema_namespace:
+        schema_namespace = "urn:hl7-org:v2" if message_type and ("HL7" in message_type or "ADT" in message_type or "ORU" in message_type) else "urn:hie:generic"
+
     try:
         import json
         query = """
             INSERT INTO portal_messages (
                 project_id, item_name, item_type, direction, message_type,
+                correlation_id, session_id, body_class_name, schema_name, schema_namespace,
                 status, raw_content, content_preview, content_size,
                 source_item, destination_item, remote_host, remote_port,
                 ack_content, ack_type, error_message, latency_ms, completed_at, metadata
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24)
             RETURNING id
         """
         row = await pool.fetchrow(
             query, project_id, item_name, item_type, direction, message_type,
+            correlation_id, session_id, body_class_name, schema_name, schema_namespace,
             status, raw_content, content_preview, content_size,
             source_item, destination_item, remote_host, remote_port,
             ack_content, ack_type, error_message, latency_ms, completed_at,

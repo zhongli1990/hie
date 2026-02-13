@@ -706,6 +706,7 @@ class PortalMessageRepository:
                    correlation_id, session_id, status, content_preview, content_size,
                    source_item, destination_item, remote_host, remote_port,
                    ack_type, error_message, latency_ms, retry_count,
+                   body_class_name, schema_name, schema_namespace,
                    received_at, completed_at
             FROM portal_messages
             WHERE {where_clause}
@@ -785,7 +786,8 @@ class PortalMessageRepository:
                 id, item_name, item_type, direction, message_type,
                 status, source_item, destination_item,
                 received_at, completed_at, latency_ms,
-                correlation_id, content_preview
+                correlation_id, session_id, content_preview,
+                body_class_name, schema_name, schema_namespace
             FROM portal_messages
             WHERE session_id = $1
             ORDER BY received_at ASC

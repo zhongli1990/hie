@@ -41,10 +41,21 @@ async def _store_inbound_message(
     error_message: str | None = None,
     remote_host: str | None = None,
     remote_port: int | None = None,
-) -> None:
-    """Store inbound message in portal_messages table."""
+    session_id: str | None = None,
+) -> str:
+    """
+    Store inbound message in portal_messages table.
+
+    Returns the session_id (generated if not provided).
+    """
     try:
         from Engine.api.services.message_store import store_and_complete_message
+        from uuid import uuid4
+
+        # Generate session_id if not provided (first message in chain)
+        if not session_id:
+            session_id = f"SES-{uuid4()}"
+
         await store_and_complete_message(
             project_id=project_id,
             item_name=item_name,
@@ -57,9 +68,13 @@ async def _store_inbound_message(
             error_message=error_message,
             remote_host=remote_host,
             remote_port=remote_port,
+            session_id=session_id,
         )
+        return session_id
     except Exception as e:
         logger.warning("inbound_message_storage_failed", error=str(e))
+        # Return session_id even if storage failed
+        return session_id if session_id else f"SES-{uuid4()}"
 
 
 class HL7TCPService(BusinessService):
@@ -194,31 +209,24 @@ class HL7TCPService(BusinessService):
                         # Generate positive ACK
                         ack = self._schema.create_ack(parsed, "AA", "Message accepted")
             
-            # Create message envelope
-            message = HL7Message(
-                raw=data,
-                parsed=parsed,
-                ack=ack,
-                received_at=received_at,
-                source=self.name,
-                validation_errors=validation_errors,
-            )
-            
             latency_ms = int((time.time() - start_time) * 1000)
-            
+
             self._log.debug(
                 "hl7_message_received",
                 message_type=message_type,
                 control_id=parsed.get_message_control_id() if parsed else None,
                 valid=len(validation_errors) == 0,
             )
-            
-            # Store inbound message in portal_messages
+
+            # Store inbound message and get session_id
+            session_id = None
+            correlation_id = parsed.get_message_control_id() if parsed else None
             project_id = getattr(self, 'project_id', None)
             if project_id:
                 status = "completed" if not validation_errors else "error"
                 error_msg = "; ".join(str(e) for e in validation_errors[:3]) if validation_errors else None
-                asyncio.create_task(_store_inbound_message(
+                # Await to get session_id for propagation
+                session_id = await _store_inbound_message(
                     project_id=project_id,
                     item_name=self.name,
                     raw_content=data,
@@ -227,8 +235,20 @@ class HL7TCPService(BusinessService):
                     status=status,
                     latency_ms=latency_ms,
                     error_message=error_msg,
-                ))
-            
+                )
+
+            # Create message envelope with session_id
+            message = HL7Message(
+                raw=data,
+                parsed=parsed,
+                ack=ack,
+                received_at=received_at,
+                source=self.name,
+                validation_errors=validation_errors,
+                session_id=session_id,
+                correlation_id=correlation_id,
+            )
+
             return message
         
         except Exception as e:
@@ -244,20 +264,12 @@ class HL7TCPService(BusinessService):
                 except Exception:
                     pass
             
-            # Create error message
-            message = HL7Message(
-                raw=data,
-                parsed=None,
-                ack=ack,
-                received_at=received_at,
-                source=self.name,
-                error=str(e),
-            )
-            
-            # Store error message in portal_messages
+            # Store error message and get session_id
+            session_id = None
             project_id = getattr(self, 'project_id', None)
             if project_id:
-                asyncio.create_task(_store_inbound_message(
+                # Await to get session_id for propagation
+                session_id = await _store_inbound_message(
                     project_id=project_id,
                     item_name=self.name,
                     raw_content=data,
@@ -266,8 +278,19 @@ class HL7TCPService(BusinessService):
                     status="error",
                     latency_ms=latency_ms,
                     error_message=str(e),
-                ))
-            
+                )
+
+            # Create error message with session_id
+            message = HL7Message(
+                raw=data,
+                parsed=None,
+                ack=ack,
+                received_at=received_at,
+                source=self.name,
+                error=str(e),
+                session_id=session_id,
+            )
+
             return message
     
     async def _process_message(self, message: Any) -> Any:
@@ -457,20 +480,27 @@ class HL7TCPOperation(BusinessOperation):
     async def on_message(self, message: Any) -> Any:
         """
         Send an HL7 message to the remote system.
-        
+
         Args:
             message: HL7Message or raw bytes
-            
+
         Returns:
             SendResult with ACK and action taken
         """
-        # Extract raw bytes
+        # Extract raw bytes and session tracking IDs
+        session_id = None
+        correlation_id = None
+
         if isinstance(message, HL7Message):
             data = message.raw
+            session_id = getattr(message, 'session_id', None)
+            correlation_id = getattr(message, 'correlation_id', None)
         elif isinstance(message, bytes):
             data = message
         elif hasattr(message, "raw"):
             data = message.raw
+            session_id = getattr(message, 'session_id', None)
+            correlation_id = getattr(message, 'correlation_id', None)
         else:
             data = str(message).encode("utf-8")
         
@@ -516,6 +546,8 @@ class HL7TCPOperation(BusinessOperation):
                     raw_content=data,
                     ack_content=ack_bytes,
                     status="sent",
+                    session_id=session_id,
+                    correlation_id=correlation_id,
                 ))
             
             return SendResult(
@@ -537,6 +569,8 @@ class HL7TCPOperation(BusinessOperation):
                     ack_content=None,
                     status="failed",
                     error_message=str(e),
+                    session_id=session_id,
+                    correlation_id=correlation_id,
                 ))
             raise
         
@@ -552,6 +586,8 @@ class HL7TCPOperation(BusinessOperation):
                     ack_content=None,
                     status="failed",
                     error_message=str(e),
+                    session_id=session_id,
+                    correlation_id=correlation_id,
                 ))
             raise HL7SendError(f"Send failed: {e}")
     
@@ -562,6 +598,8 @@ class HL7TCPOperation(BusinessOperation):
         ack_content: bytes | None,
         status: str,
         error_message: str | None = None,
+        session_id: str | None = None,
+        correlation_id: str | None = None,
     ) -> None:
         """Store outbound message in portal_messages for UI visibility."""
         try:
@@ -579,6 +617,8 @@ class HL7TCPOperation(BusinessOperation):
                 error_message=error_message,
                 remote_host=str(remote_host) if remote_host else None,
                 remote_port=int(remote_port) if remote_port else None,
+                session_id=session_id,
+                correlation_id=correlation_id,
             )
         except Exception as e:
             self._log.warning("outbound_message_storage_failed", error=str(e))
@@ -600,6 +640,8 @@ class HL7Message:
         source: str | None = None,
         validation_errors: list | None = None,
         error: str | None = None,
+        session_id: str | None = None,
+        correlation_id: str | None = None,
     ):
         self.raw = raw
         self.parsed = parsed
@@ -608,6 +650,8 @@ class HL7Message:
         self.source = source
         self.validation_errors = validation_errors or []
         self.error = error
+        self.session_id = session_id  # Session tracking for message flow
+        self.correlation_id = correlation_id  # Correlation for ACKs/responses
     
     @property
     def message_type(self) -> str | None:
