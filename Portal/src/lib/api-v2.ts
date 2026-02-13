@@ -500,11 +500,11 @@ export interface TraceMessage {
 
 export interface SessionTrace {
   session_id: string;
-  messages: (PortalMessage | TraceMessage)[];
+  messages: TraceMessage[];
   items: Array<{ item_name: string; item_type: string }>;
   started_at: string | null;
   ended_at: string | null;
-  trace_version?: "v1" | "v2";
+  trace_version: "v2";
 }
 
 export async function listMessages(
