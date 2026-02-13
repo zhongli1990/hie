@@ -1,8 +1,8 @@
 # Multi-Protocol HL7 Hosts & FHIR Service Architecture
 
-**Version:** 1.0  
+**Version:** 2.0  
 **Date:** February 13, 2026  
-**Status:** HL7 File/HTTP — ✅ Implemented | FHIR — 📋 Proposed  
+**Status:** HL7 File/HTTP — ✅ Implemented | FHIR REST — ✅ Implemented  
 **Author:** Architecture Team  
 **Branch:** `feature/enterprise-topology-viewer`
 
@@ -14,7 +14,7 @@ This document covers two related features:
 
 1. **HL7 Multi-Protocol Hosts** (✅ Implemented) — File and HTTP adapters + host classes for HL7v2, matching IRIS `EnsLib.HL7.Service.FileService`, `EnsLib.HL7.Service.HTTPService`, and their operation counterparts.
 
-2. **FHIR Service Architecture** (📋 Proposed) — HTTP REST adapters with JSON/stream payload for FHIR R4/R5 resources, following the same decoupled adapter pattern.
+2. **FHIR Service Architecture** (✅ Implemented) — HTTP REST adapters with JSON/stream payload for FHIR R4/R5 resources, following the same decoupled adapter pattern.
 
 Both features follow the **IRIS adapter decoupling principle**: the host class handles message parsing, validation, ACK/response generation, and trace storage. The adapter handles only transport (TCP, File, HTTP). Swapping the adapter changes the transport without touching any business logic.
 
@@ -184,7 +184,7 @@ ClassRegistry.register_alias("EnsLib.HL7.Operation.HTTPOperation", "li.hosts.hl7
 
 ---
 
-## 4. FHIR Service Architecture (📋 Proposed Design)
+## 4. FHIR Service Architecture (✅ Implemented)
 
 ### 4.1 Design Principles
 
@@ -333,13 +333,14 @@ All new hosts follow the same lifecycle as existing hosts:
 | `Engine/li/adapters/__init__.py` | Updated exports |
 | `Engine/li/hosts/hl7.py` | Added `HL7FileService`, `HL7FileOperation`, `HL7HTTPService`, `HL7HTTPOperation` + ClassRegistry registrations |
 
-### 6.2 FHIR (📋 Proposed — Future Implementation)
+### 6.2 FHIR (✅ Implemented)
 
 | File | What |
 |------|------|
-| `Engine/li/hosts/fhir.py` | `FHIRMessage`, `FHIRRESTService`, `FHIRRESTOperation` |
-| `Engine/li/hosts/fhir_routing.py` | `FHIRRoutingEngine` (FHIRPath-based routing) |
-| `Engine/li/schemas/fhir.py` | FHIR profile validation, resource parsing |
+| `Engine/li/hosts/fhir.py` | `FHIRMessage`, `FHIRRESTService`, `FHIRRESTOperation`, `FHIRSendResult`, `FHIRSendError`, `parse_fhir_url()`, `build_operation_outcome()`, `_store_inbound_fhir()`, `_store_outbound_fhir()` |
+| `Engine/li/hosts/fhir_routing.py` | `FHIRRoutingEngine`, `FHIRRoutingRule`, `FHIRRoutingResult`, `FHIRConditionEvaluator`, `create_resource_type_rule()`, `create_bundle_type_rule()` |
+| `Engine/li/hosts/__init__.py` | Updated exports for all FHIR + HL7 File/HTTP classes |
+| `Engine/li/registry/class_registry.py` | Added FHIR IRIS aliases (`HS.FHIRServer.Interop.*`) |
 
 No new adapters needed — reuses `InboundHTTPAdapter` and `OutboundHTTPAdapter`.
 
@@ -351,15 +352,16 @@ No new adapters needed — reuses `InboundHTTPAdapter` and `OutboundHTTPAdapter`
 
 - **4 new HL7 host classes** (`HL7FileService`, `HL7FileOperation`, `HL7HTTPService`, `HL7HTTPOperation`)
 - **4 new adapter classes** (`InboundFileAdapter`, `OutboundFileAdapter`, `InboundHTTPAdapter`, `OutboundHTTPAdapter`)
-- **Full IRIS alias compatibility** (e.g., `EnsLib.HL7.Service.FileService` → `HL7FileService`)
-- **E2E routing works** across all transport combinations (TCP↔File↔HTTP)
-- **Message trace unchanged** — all hosts use the same `store_message_header/body` functions
-
-### What's Proposed
-
-- **FHIR service architecture** — reuses HTTP adapters, adds FHIR-specific host classes
+- **3 new FHIR host classes** (`FHIRRESTService`, `FHIRRESTOperation`, `FHIRRoutingEngine`)
+- **FHIRMessage** in-memory container with full field access, `with_header_id()`, and trace support
+- **FHIR URL parser** (`parse_fhir_url`) — handles all FHIR REST interactions (read, create, update, delete, search, transaction, capabilities, vread, history)
+- **FHIR condition evaluator** — routes by `resourceType`, `interaction`, `bundleType`, and field values
+- **Full IRIS alias compatibility** (HL7: `EnsLib.HL7.*` → `HL7*`, FHIR: `HS.FHIRServer.*` → `FHIR*`)
+- **E2E routing works** across all transport combinations (TCP↔File↔HTTP for HL7, HTTP for FHIR)
+- **Message trace unchanged** — all hosts use the same `store_message_header/body` functions with `body_class_name` discriminator (`'EnsLib.HL7.Message'` for HL7, `'FHIRMessageBody'` for FHIR)
 - **Zero design conflicts** with existing Message Model (Option C Hybrid)
-- **Cross-platform migration** support for IRIS, Rhapsody, and Mirth FHIR configurations
+- **Cross-platform migration** support for IRIS, Rhapsody, and Mirth configurations
+- **All FHIR hosts run as standalone async worker loops** with configurable pool_size, queue-based message reception, full callback support, and inter-service messaging via reliable/sync/async patterns
 
 ---
 
