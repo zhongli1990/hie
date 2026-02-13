@@ -779,8 +779,97 @@ class PortalMessageRepository:
         return [dict(r) for r in rows]
 
     async def get_session_trace(self, session_id: str) -> Optional[dict]:
-        """Get trace data for a session to build sequence diagram."""
-        # Get all messages in the session, ordered by timestamp
+        """
+        Get trace data for a session to build the Visual Trace / sequence diagram.
+
+        Uses the new message_headers table (IRIS convention: one row per leg).
+        Each row IS one arrow on the diagram.
+        Falls back to portal_messages if message_headers table is empty.
+        """
+        # Try new message_headers table first
+        try:
+            headers_query = """
+                SELECT
+                    h.id, h.sequence_num, h.session_id,
+                    h.source_config_name, h.target_config_name,
+                    h.source_business_type, h.target_business_type,
+                    h.message_type, h.body_class_name, h.message_body_id,
+                    h.type, h.status, h.is_error, h.error_status,
+                    h.time_created, h.time_processed,
+                    h.parent_header_id, h.corresponding_header_id,
+                    h.correlation_id, h.description,
+                    b.content_preview, b.hl7_message_type, b.hl7_doc_type
+                FROM message_headers h
+                LEFT JOIN message_bodies b ON h.message_body_id = b.id
+                WHERE h.session_id = $1
+                ORDER BY h.sequence_num ASC
+            """
+            headers = await self._pool.fetch(headers_query, session_id)
+
+            if headers:
+                # Extract unique items from source/target pairs with their business_type
+                items_set: dict[str, str] = {}
+                for h in headers:
+                    src = h['source_config_name']
+                    tgt = h['target_config_name']
+                    if src and src not in items_set:
+                        items_set[src] = h['source_business_type']
+                    if tgt and tgt not in items_set:
+                        items_set[tgt] = h['target_business_type']
+
+                type_order = {'service': 0, 'process': 1, 'operation': 2}
+                items = [
+                    {"item_name": name, "item_type": btype}
+                    for name, btype in sorted(
+                        items_set.items(),
+                        key=lambda x: (type_order.get(x[1], 3), x[0])
+                    )
+                ]
+
+                # Build messages list — each header IS one arrow
+                messages = []
+                for h in headers:
+                    latency_ms = None
+                    if h['time_created'] and h['time_processed']:
+                        delta = h['time_processed'] - h['time_created']
+                        latency_ms = int(delta.total_seconds() * 1000)
+
+                    messages.append({
+                        "id": h['id'],
+                        "sequence_num": h['sequence_num'],
+                        "source_config_name": h['source_config_name'],
+                        "target_config_name": h['target_config_name'],
+                        "source_business_type": h['source_business_type'],
+                        "target_business_type": h['target_business_type'],
+                        "message_type": h['message_type'] or h['hl7_message_type'],
+                        "body_class_name": h['body_class_name'],
+                        "type": h['type'],
+                        "status": h['status'],
+                        "is_error": h['is_error'],
+                        "error_status": h['error_status'],
+                        "time_created": h['time_created'],
+                        "time_processed": h['time_processed'],
+                        "latency_ms": latency_ms,
+                        "content_preview": h['content_preview'],
+                        "correlation_id": h['correlation_id'],
+                        "description": h['description'],
+                        "parent_header_id": h['parent_header_id'],
+                        "corresponding_header_id": h['corresponding_header_id'],
+                        "session_id": session_id,
+                        "hl7_doc_type": h['hl7_doc_type'],
+                    })
+
+                return {
+                    "messages": messages,
+                    "items": items,
+                    "started_at": headers[0]['time_created'] if headers else None,
+                    "ended_at": headers[-1]['time_processed'] or headers[-1]['time_created'] if headers else None,
+                    "trace_version": "v2",
+                }
+        except Exception:
+            pass  # Table may not exist yet — fall back to portal_messages
+
+        # Fallback: legacy portal_messages query
         messages_query = """
             SELECT
                 id, item_name, item_type, direction, message_type,
@@ -797,21 +886,19 @@ class PortalMessageRepository:
         if not messages:
             return None
 
-        # Extract unique items involved in this session
-        items_set = set()
+        items_set_legacy = set()
         for msg in messages:
             if msg['item_name']:
-                items_set.add((msg['item_name'], msg['item_type']))
+                items_set_legacy.add((msg['item_name'], msg['item_type']))
             if msg['source_item']:
-                items_set.add((msg['source_item'], 'unknown'))
+                items_set_legacy.add((msg['source_item'], 'process'))
             if msg['destination_item']:
-                items_set.add((msg['destination_item'], 'unknown'))
+                items_set_legacy.add((msg['destination_item'], 'process'))
 
-        # Sort items by type (service -> process -> operation)
         type_order = {'service': 0, 'process': 1, 'operation': 2, 'unknown': 3}
         items = [
             {"item_name": name, "item_type": itype}
-            for name, itype in sorted(items_set, key=lambda x: (type_order.get(x[1], 3), x[0]))
+            for name, itype in sorted(items_set_legacy, key=lambda x: (type_order.get(x[1], 3), x[0]))
         ]
 
         return {
@@ -819,6 +906,7 @@ class PortalMessageRepository:
             "items": items,
             "started_at": messages[0]['received_at'] if messages else None,
             "ended_at": messages[-1]['completed_at'] or messages[-1]['received_at'] if messages else None,
+            "trace_version": "v1",
         }
 
     async def get_stats(self, project_id: UUID) -> dict:

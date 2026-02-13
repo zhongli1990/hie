@@ -37,44 +37,93 @@ async def _store_inbound_message(
     ack_content: bytes | None,
     message_type: str | None,
     status: str,
+    target_config_names: list[str] | None = None,
     latency_ms: int | None = None,
     error_message: str | None = None,
     remote_host: str | None = None,
     remote_port: int | None = None,
     session_id: str | None = None,
-) -> str:
+    correlation_id: str | None = None,
+) -> tuple[str, "UUID | None", "UUID | None"]:
     """
-    Store inbound message in portal_messages table.
+    Store inbound message using IRIS-convention per-leg trace model.
 
-    Returns the session_id (generated if not provided).
+    1. Stores body once in message_bodies (with dedup)
+    2. Creates one message_header per target (one arrow per target)
+
+    Returns (session_id, header_id, body_id).
     """
+    from uuid import uuid4
+
+    if not session_id:
+        session_id = f"SES-{uuid4()}"
+
+    header_id = None
+    body_id = None
+
     try:
-        from Engine.api.services.message_store import store_and_complete_message
-        from uuid import uuid4
-
-        # Generate session_id if not provided (first message in chain)
-        if not session_id:
-            session_id = f"SES-{uuid4()}"
-
-        await store_and_complete_message(
-            project_id=project_id,
-            item_name=item_name,
-            item_type="service",
-            direction="inbound",
-            raw_content=raw_content,
-            status=status,
-            ack_content=ack_content,
-            latency_ms=latency_ms,
-            error_message=error_message,
-            remote_host=remote_host,
-            remote_port=remote_port,
-            session_id=session_id,
+        from Engine.api.services.message_store import (
+            store_message_body, store_message_header, update_header_status,
         )
-        return session_id
+
+        # Step 1: Store body once
+        body_id = await store_message_body(
+            raw_content=raw_content,
+            body_class_name='EnsLib.HL7.Message',
+            content_type='application/hl7-v2+er7',
+        )
+
+        # Step 2: Create one header per target
+        targets = target_config_names or []
+        is_err = status in ('error', 'failed')
+
+        if targets:
+            for target_name in targets:
+                header_id = await store_message_header(
+                    project_id=project_id,
+                    session_id=session_id,
+                    source_config_name=item_name,
+                    target_config_name=target_name,
+                    source_business_type='service',
+                    target_business_type='process',
+                    message_body_id=body_id,
+                    message_type=message_type,
+                    body_class_name='EnsLib.HL7.Message',
+                    status='Completed' if not is_err else 'Error',
+                    is_error=is_err,
+                    error_status=error_message,
+                    correlation_id=correlation_id,
+                )
+        else:
+            # No targets configured — store a self-referencing header for visibility
+            header_id = await store_message_header(
+                project_id=project_id,
+                session_id=session_id,
+                source_config_name=item_name,
+                target_config_name=item_name,
+                source_business_type='service',
+                target_business_type='service',
+                message_body_id=body_id,
+                message_type=message_type,
+                body_class_name='EnsLib.HL7.Message',
+                status='Completed' if not is_err else 'Error',
+                is_error=is_err,
+                error_status=error_message,
+                correlation_id=correlation_id,
+            )
+
+        # Also store ACK body if present
+        if ack_content and header_id:
+            ack_body_id = await store_message_body(
+                raw_content=ack_content,
+                body_class_name='EnsLib.HL7.Message',
+                content_type='application/hl7-v2+er7',
+            )
+
     except Exception as e:
         logger.warning("inbound_message_storage_failed", error=str(e))
-        # Return session_id even if storage failed
-        return session_id if session_id else f"SES-{uuid4()}"
+
+    return session_id, header_id, body_id
 
 
 class HL7TCPService(BusinessService):
@@ -218,26 +267,29 @@ class HL7TCPService(BusinessService):
                 valid=len(validation_errors) == 0,
             )
 
-            # Store inbound message and get session_id
+            # Store inbound message and get session_id + trace IDs
             session_id = None
+            header_id = None
+            body_id = None
             correlation_id = parsed.get_message_control_id() if parsed else None
             project_id = getattr(self, 'project_id', None)
             if project_id:
                 status = "completed" if not validation_errors else "error"
                 error_msg = "; ".join(str(e) for e in validation_errors[:3]) if validation_errors else None
-                # Await to get session_id for propagation
-                session_id = await _store_inbound_message(
+                session_id, header_id, body_id = await _store_inbound_message(
                     project_id=project_id,
                     item_name=self.name,
                     raw_content=data,
                     ack_content=ack,
                     message_type=message_type,
                     status=status,
+                    target_config_names=self.target_config_names,
                     latency_ms=latency_ms,
                     error_message=error_msg,
+                    correlation_id=correlation_id,
                 )
 
-            # Create message envelope with session_id
+            # Create message envelope with session_id and trace IDs
             message = HL7Message(
                 raw=data,
                 parsed=parsed,
@@ -247,6 +299,8 @@ class HL7TCPService(BusinessService):
                 validation_errors=validation_errors,
                 session_id=session_id,
                 correlation_id=correlation_id,
+                header_id=header_id,
+                body_id=body_id,
             )
 
             return message
@@ -264,23 +318,25 @@ class HL7TCPService(BusinessService):
                 except Exception:
                     pass
             
-            # Store error message and get session_id
+            # Store error message and get session_id + trace IDs
             session_id = None
+            header_id = None
+            body_id = None
             project_id = getattr(self, 'project_id', None)
             if project_id:
-                # Await to get session_id for propagation
-                session_id = await _store_inbound_message(
+                session_id, header_id, body_id = await _store_inbound_message(
                     project_id=project_id,
                     item_name=self.name,
                     raw_content=data,
                     ack_content=ack,
                     message_type=None,
                     status="error",
+                    target_config_names=self.target_config_names,
                     latency_ms=latency_ms,
                     error_message=str(e),
                 )
 
-            # Create error message with session_id
+            # Create error message with session_id and trace IDs
             message = HL7Message(
                 raw=data,
                 parsed=None,
@@ -289,6 +345,8 @@ class HL7TCPService(BusinessService):
                 source=self.name,
                 error=str(e),
                 session_id=session_id,
+                header_id=header_id,
+                body_id=body_id,
             )
 
             return message
@@ -490,17 +548,20 @@ class HL7TCPOperation(BusinessOperation):
         # Extract raw bytes and session tracking IDs
         session_id = None
         correlation_id = None
+        header_id = None
 
         if isinstance(message, HL7Message):
             data = message.raw
             session_id = getattr(message, 'session_id', None)
             correlation_id = getattr(message, 'correlation_id', None)
+            header_id = getattr(message, 'header_id', None)
         elif isinstance(message, bytes):
             data = message
         elif hasattr(message, "raw"):
             data = message.raw
             session_id = getattr(message, 'session_id', None)
             correlation_id = getattr(message, 'correlation_id', None)
+            header_id = getattr(message, 'header_id', None)
         else:
             data = str(message).encode("utf-8")
         
@@ -537,7 +598,7 @@ class HL7TCPOperation(BusinessOperation):
             elif action == "W":
                 self._log.warning("hl7_ack_warning", ack_code=ack_code)
             
-            # Store outbound message in portal_messages
+            # Store outbound message trace
             project_id = getattr(self, 'project_id', None)
             if project_id:
                 import asyncio as _asyncio
@@ -548,6 +609,7 @@ class HL7TCPOperation(BusinessOperation):
                     status="sent",
                     session_id=session_id,
                     correlation_id=correlation_id,
+                    header_id=header_id,
                 ))
             
             return SendResult(
@@ -559,7 +621,7 @@ class HL7TCPOperation(BusinessOperation):
             )
         
         except (HL7SendError, HL7RetryError) as e:
-            # Store failed message
+            # Store failed message trace
             project_id = getattr(self, 'project_id', None)
             if project_id:
                 import asyncio as _asyncio
@@ -571,12 +633,13 @@ class HL7TCPOperation(BusinessOperation):
                     error_message=str(e),
                     session_id=session_id,
                     correlation_id=correlation_id,
+                    header_id=header_id,
                 ))
             raise
         
         except Exception as e:
             self._log.error("hl7_send_error", error=str(e))
-            # Store failed message
+            # Store failed message trace
             project_id = getattr(self, 'project_id', None)
             if project_id:
                 import asyncio as _asyncio
@@ -588,6 +651,7 @@ class HL7TCPOperation(BusinessOperation):
                     error_message=str(e),
                     session_id=session_id,
                     correlation_id=correlation_id,
+                    header_id=header_id,
                 ))
             raise HL7SendError(f"Send failed: {e}")
     
@@ -600,26 +664,54 @@ class HL7TCPOperation(BusinessOperation):
         error_message: str | None = None,
         session_id: str | None = None,
         correlation_id: str | None = None,
+        header_id: "UUID | None" = None,
     ) -> None:
-        """Store outbound message in portal_messages for UI visibility."""
+        """
+        Store outbound message using IRIS-convention per-leg trace model.
+
+        1. Updates the existing header status (the leg that caused this send)
+        2. If ACK received, creates a Response header linking back
+        """
         try:
-            from Engine.api.services.message_store import store_and_complete_message
-            remote_host = self.get_setting("Adapter", "IPAddress")
-            remote_port = self.get_setting("Adapter", "Port")
-            await store_and_complete_message(
-                project_id=project_id,
-                item_name=self.name,
-                item_type="operation",
-                direction="outbound",
-                raw_content=raw_content,
-                status=status,
-                ack_content=ack_content,
-                error_message=error_message,
-                remote_host=str(remote_host) if remote_host else None,
-                remote_port=int(remote_port) if remote_port else None,
-                session_id=session_id,
-                correlation_id=correlation_id,
+            from Engine.api.services.message_store import (
+                store_message_body, store_message_header, update_header_status,
             )
+
+            is_err = status in ('failed', 'error')
+
+            # Step 1: Update the header that caused this leg
+            if header_id:
+                await update_header_status(
+                    header_id=header_id,
+                    status='Completed' if not is_err else 'Error',
+                    is_error=is_err,
+                    error_status=error_message,
+                )
+
+            # Step 2: If ACK received, create a Response header
+            if ack_content and session_id:
+                ack_body_id = await store_message_body(
+                    raw_content=ack_content,
+                    body_class_name='EnsLib.HL7.Message',
+                    content_type='application/hl7-v2+er7',
+                )
+                await store_message_header(
+                    project_id=project_id,
+                    session_id=session_id,
+                    source_config_name=self.name,
+                    target_config_name=getattr(self, '_source_for_response', self.name),
+                    source_business_type='operation',
+                    target_business_type='process',
+                    message_body_id=ack_body_id,
+                    parent_header_id=header_id,
+                    corresponding_header_id=header_id,
+                    message_type='ACK',
+                    body_class_name='EnsLib.HL7.Message',
+                    type='Response',
+                    status='Completed',
+                    correlation_id=correlation_id,
+                )
+
         except Exception as e:
             self._log.warning("outbound_message_storage_failed", error=str(e))
 
@@ -629,6 +721,10 @@ class HL7Message:
     HL7 message container.
     
     Holds raw bytes, parsed view, ACK, and metadata.
+    
+    IRIS equivalent: EnsLib.HL7.Message (the in-memory message object).
+    The header_id and body_id fields link to the persisted trace tables
+    (message_headers / message_bodies) for Visual Trace support.
     """
     
     def __init__(
@@ -642,6 +738,8 @@ class HL7Message:
         error: str | None = None,
         session_id: str | None = None,
         correlation_id: str | None = None,
+        header_id: "UUID | None" = None,
+        body_id: "UUID | None" = None,
     ):
         self.raw = raw
         self.parsed = parsed
@@ -652,6 +750,8 @@ class HL7Message:
         self.error = error
         self.session_id = session_id  # Session tracking for message flow
         self.correlation_id = correlation_id  # Correlation for ACKs/responses
+        self.header_id = header_id  # Persisted header ID for parent chain
+        self.body_id = body_id  # Persisted body ID for content sharing
     
     @property
     def message_type(self) -> str | None:
@@ -678,6 +778,22 @@ class HL7Message:
             return self.parsed.get_field(path, default)
         return default
     
+    def with_header_id(self, header_id: "UUID") -> "HL7Message":
+        """Return a copy with updated header_id for downstream propagation."""
+        return HL7Message(
+            raw=self.raw,
+            parsed=self.parsed,
+            ack=self.ack,
+            received_at=self.received_at,
+            source=self.source,
+            validation_errors=self.validation_errors,
+            error=self.error,
+            session_id=self.session_id,
+            correlation_id=self.correlation_id,
+            header_id=header_id,
+            body_id=self.body_id,
+        )
+
     def __repr__(self) -> str:
         return f"HL7Message(type={self.message_type}, id={self.message_control_id}, valid={self.is_valid})"
 

@@ -472,12 +472,39 @@ export interface SessionListResponse {
   total: number;
 }
 
+// V2 trace message (IRIS convention: one row per message leg)
+export interface TraceMessage {
+  id: string;
+  sequence_num: number;
+  source_config_name: string;
+  target_config_name: string;
+  source_business_type: string;
+  target_business_type: string;
+  message_type: string | null;
+  body_class_name: string;
+  type: string; // "Request" | "Response"
+  status: string;
+  is_error: boolean;
+  error_status: string | null;
+  time_created: string;
+  time_processed: string | null;
+  latency_ms: number | null;
+  content_preview: string | null;
+  correlation_id: string | null;
+  description: string | null;
+  parent_header_id: string | null;
+  corresponding_header_id: string | null;
+  session_id: string;
+  hl7_doc_type: string | null;
+}
+
 export interface SessionTrace {
   session_id: string;
-  messages: PortalMessage[];
+  messages: (PortalMessage | TraceMessage)[];
   items: Array<{ item_name: string; item_type: string }>;
   started_at: string | null;
   ended_at: string | null;
+  trace_version?: "v1" | "v2";
 }
 
 export async function listMessages(

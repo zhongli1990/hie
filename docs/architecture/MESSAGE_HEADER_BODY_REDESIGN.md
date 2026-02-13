@@ -1,10 +1,18 @@
 # MessageHeader & MessageBody — Architecture Review & Revised Design
 
-**Version:** 2.0  
+**Version:** 2.1  
 **Date:** February 13, 2026  
-**Status:** Design Review — Critical Path  
+**Status:** ✅ Implemented (Phase 1–3 complete)  
 **Author:** Architecture Team  
 **Scope:** Core message model, DB schema, visual trace, cross-platform compatibility  
+**Implementation Branch:** `feature/enterprise-topology-viewer`  
+
+> **Architecture Decision: Option C (Hybrid) for MessageBody storage.**  
+> In IRIS, each body class has its own SQL table (`EnsLib_HL7.Message`, `Ens.StreamContainer`, etc.).  
+> PostgreSQL doesn't have IRIS's class-per-table inheritance, so we use a **single `message_bodies` table**  
+> with a `body_class_name` discriminator column and **protocol-specific nullable columns** with partial indexes.  
+> A future **SearchTable** (EAV pattern, equivalent to `EnsLib.HL7.SearchTable`) will provide configurable  
+> per-field indexing. See migration `004_message_headers_bodies.sql` for the actual schema.  
 
 > **This is the master consolidated design document.** The following existing docs have been revised to align:
 > - [MESSAGE_MODEL.md](MESSAGE_MODEL.md) — v3.0: Added Persisted Trace Layer (IRIS convention)
