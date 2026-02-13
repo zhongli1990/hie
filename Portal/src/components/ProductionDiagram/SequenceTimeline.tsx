@@ -7,17 +7,17 @@
 
 interface SequenceTimelineProps {
   height: number;
-  scale: number; // px per ms (e.g., 0.2 = 20px per 100ms)
+  scale: number; // px per ms (legacy, used only if no row layout)
   startTime: Date;
   endTime: Date;
+  /** Row-based layout: Y positions and timestamps for each message row */
+  rowPositions?: Array<{ y: number; timestamp: Date; offsetMs: number }>;
 }
 
 const HEADER_HEIGHT = 60; // Must match SequenceSwimlane header height
-const MARKER_INTERVAL_MS = 500; // Show a time marker every 500ms
 
-export function SequenceTimeline({ height, scale, startTime, endTime }: SequenceTimelineProps) {
+export function SequenceTimeline({ height, scale, startTime, endTime, rowPositions }: SequenceTimelineProps) {
   const durationMs = endTime.getTime() - startTime.getTime();
-  const markers = generateTimeMarkers(durationMs, MARKER_INTERVAL_MS);
 
   return (
     <g transform={`translate(40, 0)`}>
@@ -31,7 +31,7 @@ export function SequenceTimeline({ height, scale, startTime, endTime }: Sequence
         fill="#666"
         className="uppercase tracking-wide"
       >
-        Time
+        TIME
       </text>
 
       {/* Vertical Axis Line */}
@@ -44,31 +44,40 @@ export function SequenceTimeline({ height, scale, startTime, endTime }: Sequence
         strokeWidth={1.5}
       />
 
-      {/* Time Markers */}
-      {markers.map((ms) => {
-        const yPos = HEADER_HEIGHT + (ms * scale);
+      {/* Row-based time markers (one per message arrow) */}
+      {rowPositions && rowPositions.map((row, idx) => (
+        <g key={idx}>
+          {/* Horizontal tick mark */}
+          <line
+            x1={-6}
+            y1={row.y}
+            x2={6}
+            y2={row.y}
+            stroke="#999"
+            strokeWidth={1}
+          />
 
+          {/* Relative time offset label */}
+          <text
+            x={-12}
+            y={row.y + 4}
+            textAnchor="end"
+            fontSize={10}
+            fill="#666"
+            fontFamily="monospace"
+          >
+            {formatTimeLabel(row.offsetMs)}
+          </text>
+        </g>
+      ))}
+
+      {/* Fallback: time-proportional markers if no rowPositions */}
+      {!rowPositions && generateTimeMarkers(durationMs, 500).map((ms) => {
+        const yPos = HEADER_HEIGHT + (ms * scale);
         return (
           <g key={ms}>
-            {/* Horizontal tick mark */}
-            <line
-              x1={-6}
-              y1={yPos}
-              x2={6}
-              y2={yPos}
-              stroke="#999"
-              strokeWidth={1}
-            />
-
-            {/* Time label */}
-            <text
-              x={-12}
-              y={yPos + 4}
-              textAnchor="end"
-              fontSize={10}
-              fill="#666"
-              fontFamily="monospace"
-            >
+            <line x1={-6} y1={yPos} x2={6} y2={yPos} stroke="#999" strokeWidth={1} />
+            <text x={-12} y={yPos + 4} textAnchor="end" fontSize={10} fill="#666" fontFamily="monospace">
               {formatTimeLabel(ms)}
             </text>
           </g>

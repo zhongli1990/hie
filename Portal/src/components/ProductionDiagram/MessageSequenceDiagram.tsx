@@ -32,7 +32,8 @@ const MARGIN_LEFT = 100; // Space for timeline
 const MARGIN_RIGHT = 50;
 const MARGIN_TOP = 20;
 const MARGIN_BOTTOM = 80;
-const TIME_SCALE = 0.2; // 20px per 100ms
+const TIME_SCALE = 0.2; // 20px per 100ms (used only for timeline ticks)
+const ROW_HEIGHT = 70; // Fixed vertical spacing between message arrows
 
 export function MessageSequenceDiagram({ sessionId, projectId, onClose }: MessageSequenceDiagramProps) {
   const [sequenceData, setSequenceData] = useState<SequenceDiagramData | null>(null);
@@ -118,7 +119,9 @@ export function MessageSequenceDiagram({ sessionId, projectId, onClose }: Messag
   // Calculate dimensions
   const totalWidth = MARGIN_LEFT + (sequenceData.items.length * COLUMN_WIDTH) + MARGIN_RIGHT;
   const durationMs = sequenceData.timeRange.end.getTime() - sequenceData.timeRange.start.getTime();
-  const contentHeight = Math.max(durationMs * TIME_SCALE, 400);
+  // Use row-based layout: each message gets its own evenly-spaced row
+  const messageCount = sequenceData.messages.length;
+  const contentHeight = Math.max(messageCount * ROW_HEIGHT + ROW_HEIGHT, 400);
   const totalHeight = MARGIN_TOP + HEADER_HEIGHT + contentHeight + MARGIN_BOTTOM;
 
   // Calculate swimlane positions
@@ -214,6 +217,11 @@ export function MessageSequenceDiagram({ sessionId, projectId, onClose }: Messag
               scale={TIME_SCALE}
               startTime={sequenceData.timeRange.start}
               endTime={sequenceData.timeRange.end}
+              rowPositions={sequenceData.messages.map((msg, idx) => ({
+                y: MARGIN_TOP + HEADER_HEIGHT + ROW_HEIGHT + (idx * ROW_HEIGHT),
+                timestamp: msg.timestamp,
+                offsetMs: msg.timestamp.getTime() - sequenceData.timeRange.start.getTime(),
+              }))}
             />
 
             {/* Swimlanes */}
@@ -233,9 +241,8 @@ export function MessageSequenceDiagram({ sessionId, projectId, onClose }: Messag
 
               if (!sourceLane || !targetLane) return null;
 
-              // Calculate Y position based on timestamp
-              const relativeTime = msg.timestamp.getTime() - sequenceData.timeRange.start.getTime();
-              const yPosition = MARGIN_TOP + HEADER_HEIGHT + (relativeTime * TIME_SCALE);
+              // Use index-based equal spacing so arrows never overlap
+              const yPosition = MARGIN_TOP + HEADER_HEIGHT + ROW_HEIGHT + (idx * ROW_HEIGHT);
 
               return (
                 <SequenceArrow
