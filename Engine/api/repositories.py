@@ -669,54 +669,134 @@ class PortalMessageRepository:
         limit: int = 50,
         offset: int = 0,
     ) -> tuple[list[dict], int]:
-        """List messages for a project with filters."""
-        conditions = ["project_id = $1"]
-        params = [project_id]
+        """List messages for a project with filters.
+
+        Queries message_headers (v2) as primary source, with portal_messages
+        as fallback for old data.  The two tables are UNIONed into a common
+        shape that the frontend already understands.
+        """
+        # ── Build dynamic WHERE fragments ──────────────────────────────
+        # v2 conditions (message_headers)
+        v2_conds = ["h.project_id = $1"]
+        # v1 conditions (portal_messages)
+        v1_conds = ["pm.project_id = $1"]
+        params: list = [project_id]
         idx = 2
-        
+
         if item_name:
-            conditions.append(f"item_name = ${idx}")
+            v2_conds.append(f"(h.source_config_name = ${idx} OR h.target_config_name = ${idx})")
+            v1_conds.append(f"pm.item_name = ${idx}")
             params.append(item_name)
             idx += 1
-        
+
         if status:
-            conditions.append(f"status = ${idx}")
+            v2_conds.append(f"h.status = ${idx}")
+            v1_conds.append(f"pm.status = ${idx}")
             params.append(status)
             idx += 1
-        
+
         if message_type:
-            conditions.append(f"message_type ILIKE ${idx}")
+            v2_conds.append(f"h.message_type ILIKE ${idx}")
+            v1_conds.append(f"pm.message_type ILIKE ${idx}")
             params.append(f"%{message_type}%")
             idx += 1
-        
+
         if direction:
-            conditions.append(f"direction = ${idx}")
-            params.append(direction)
+            # v2 has no direction column; map inbound→type='Request', outbound→type='Response'
+            v2_dir_map = {'inbound': 'Request', 'outbound': 'Response'}
+            v2_conds.append(f"h.type = ${idx}")
+            v1_conds.append(f"pm.direction = ${idx}")
+            params.append(v2_dir_map.get(direction, direction))
             idx += 1
-        
-        where_clause = " AND ".join(conditions)
-        
-        # Get total count
-        count_query = f"SELECT COUNT(*) FROM portal_messages WHERE {where_clause}"
-        total = await self._pool.fetchval(count_query, *params)
-        
-        # Get paginated results
-        query = f"""
-            SELECT id, project_id, item_name, item_type, direction, message_type,
-                   correlation_id, session_id, status, content_preview, content_size,
-                   source_item, destination_item, remote_host, remote_port,
-                   ack_type, error_message, latency_ms, retry_count,
-                   body_class_name, schema_name, schema_namespace,
-                   received_at, completed_at
-            FROM portal_messages
-            WHERE {where_clause}
+
+        v2_where = " AND ".join(v2_conds)
+        v1_where = " AND ".join(v1_conds)
+
+        # ── Count ──────────────────────────────────────────────────────
+        count_query = f"""
+            SELECT (
+                (SELECT COUNT(*) FROM message_headers h WHERE {v2_where})
+                +
+                (SELECT COUNT(*) FROM portal_messages pm WHERE {v1_where})
+            )
+        """
+        try:
+            total = await self._pool.fetchval(count_query, *params) or 0
+        except Exception:
+            # message_headers may not exist yet
+            total = await self._pool.fetchval(
+                f"SELECT COUNT(*) FROM portal_messages pm WHERE {v1_where}", *params
+            ) or 0
+
+        # ── Paginated results (UNION ALL) ──────────────────────────────
+        union_query = f"""
+            (
+                SELECT
+                    h.id, h.project_id,
+                    h.source_config_name AS item_name,
+                    h.source_business_type AS item_type,
+                    CASE WHEN h.type = 'Response' THEN 'outbound' ELSE 'inbound' END AS direction,
+                    COALESCE(h.message_type, b.hl7_message_type) AS message_type,
+                    h.correlation_id,
+                    h.session_id,
+                    h.status,
+                    b.content_preview,
+                    b.content_size,
+                    h.source_config_name AS source_item,
+                    h.target_config_name AS destination_item,
+                    NULL::text AS remote_host,
+                    NULL::int AS remote_port,
+                    NULL::text AS ack_type,
+                    h.error_status AS error_message,
+                    CASE WHEN h.time_created IS NOT NULL AND h.time_processed IS NOT NULL
+                         THEN EXTRACT(EPOCH FROM (h.time_processed - h.time_created))::int * 1000
+                         ELSE NULL END AS latency_ms,
+                    0 AS retry_count,
+                    h.body_class_name,
+                    NULL::text AS schema_name,
+                    NULL::text AS schema_namespace,
+                    h.time_created AS received_at,
+                    h.time_processed AS completed_at
+                FROM message_headers h
+                LEFT JOIN message_bodies b ON h.message_body_id = b.id
+                WHERE {v2_where}
+            )
+            UNION ALL
+            (
+                SELECT
+                    pm.id, pm.project_id, pm.item_name, pm.item_type, pm.direction,
+                    pm.message_type, pm.correlation_id, pm.session_id, pm.status,
+                    pm.content_preview, pm.content_size,
+                    pm.source_item, pm.destination_item, pm.remote_host, pm.remote_port,
+                    pm.ack_type, pm.error_message, pm.latency_ms, pm.retry_count,
+                    pm.body_class_name, pm.schema_name, pm.schema_namespace,
+                    pm.received_at, pm.completed_at
+                FROM portal_messages pm
+                WHERE {v1_where}
+            )
             ORDER BY received_at DESC
             LIMIT ${idx} OFFSET ${idx + 1}
         """
         params.extend([limit, offset])
-        rows = await self._pool.fetch(query, *params)
-        
-        return [dict(r) for r in rows], total or 0
+        try:
+            rows = await self._pool.fetch(union_query, *params)
+        except Exception:
+            # Fallback if message_headers doesn't exist
+            fallback = f"""
+                SELECT id, project_id, item_name, item_type, direction, message_type,
+                       correlation_id, session_id, status, content_preview, content_size,
+                       source_item, destination_item, remote_host, remote_port,
+                       ack_type, error_message, latency_ms, retry_count,
+                       body_class_name, schema_name, schema_namespace,
+                       received_at, completed_at
+                FROM portal_messages pm
+                WHERE {v1_where}
+                ORDER BY received_at DESC
+                LIMIT ${idx} OFFSET ${idx + 1}
+            """
+            rows = await self._pool.fetch(fallback, *params)
+
+        return [dict(r) for r in rows], total
     
     async def get_content(self, message_id: UUID) -> Optional[dict]:
         """Get full message content including raw bytes."""
@@ -743,38 +823,88 @@ class PortalMessageRepository:
         limit: int = 50,
         offset: int = 0,
     ) -> list[dict]:
-        """List message sessions grouped by session_id."""
-        conditions = ["project_id = $1", "session_id IS NOT NULL"]
-        params = [project_id]
+        """List message sessions grouped by session_id.
+
+        Queries message_headers (v2) as primary source, with portal_messages
+        as fallback for old data.
+        """
+        # ── v2: message_headers ────────────────────────────────────────
+        v2_conds = ["h.project_id = $1", "h.session_id IS NOT NULL"]
+        v1_conds = ["pm.project_id = $1", "pm.session_id IS NOT NULL"]
+        params: list = [project_id]
         idx = 2
 
         if item_name:
-            conditions.append(f"item_name = ${idx}")
+            v2_conds.append(f"(h.source_config_name = ${idx} OR h.target_config_name = ${idx})")
+            v1_conds.append(f"pm.item_name = ${idx}")
             params.append(item_name)
             idx += 1
 
-        where_clause = " AND ".join(conditions)
+        v2_where = " AND ".join(v2_conds)
+        v1_where = " AND ".join(v1_conds)
 
         query = f"""
-            SELECT
-                session_id,
-                COUNT(*) as message_count,
-                MIN(received_at) as started_at,
-                MAX(COALESCE(completed_at, received_at)) as ended_at,
-                ROUND(
-                    COUNT(*) FILTER (WHERE status IN ('sent', 'completed'))::numeric /
-                    NULLIF(COUNT(*)::numeric, 0),
-                    2
-                ) as success_rate,
-                array_agg(DISTINCT message_type) FILTER (WHERE message_type IS NOT NULL) as message_types
-            FROM portal_messages
-            WHERE {where_clause}
-            GROUP BY session_id
+            SELECT session_id, message_count, started_at, ended_at, success_rate, message_types
+            FROM (
+                SELECT
+                    h.session_id,
+                    COUNT(*) AS message_count,
+                    MIN(h.time_created) AS started_at,
+                    MAX(COALESCE(h.time_processed, h.time_created)) AS ended_at,
+                    ROUND(
+                        COUNT(*) FILTER (WHERE h.status IN ('Completed', 'sent', 'completed'))::numeric /
+                        NULLIF(COUNT(*)::numeric, 0), 2
+                    ) AS success_rate,
+                    array_agg(DISTINCT h.message_type) FILTER (WHERE h.message_type IS NOT NULL) AS message_types
+                FROM message_headers h
+                WHERE {v2_where}
+                GROUP BY h.session_id
+
+                UNION ALL
+
+                SELECT
+                    pm.session_id,
+                    COUNT(*) AS message_count,
+                    MIN(pm.received_at) AS started_at,
+                    MAX(COALESCE(pm.completed_at, pm.received_at)) AS ended_at,
+                    ROUND(
+                        COUNT(*) FILTER (WHERE pm.status IN ('sent', 'completed'))::numeric /
+                        NULLIF(COUNT(*)::numeric, 0), 2
+                    ) AS success_rate,
+                    array_agg(DISTINCT pm.message_type) FILTER (WHERE pm.message_type IS NOT NULL) AS message_types
+                FROM portal_messages pm
+                WHERE {v1_where}
+                  AND pm.session_id NOT IN (SELECT DISTINCT session_id FROM message_headers WHERE project_id = $1 AND session_id IS NOT NULL)
+                GROUP BY pm.session_id
+            ) combined
             ORDER BY started_at DESC
             LIMIT ${idx} OFFSET ${idx + 1}
         """
         params.extend([limit, offset])
-        rows = await self._pool.fetch(query, *params)
+        try:
+            rows = await self._pool.fetch(query, *params)
+        except Exception:
+            # Fallback if message_headers doesn't exist
+            fallback_conds = ["project_id = $1", "session_id IS NOT NULL"]
+            fallback_params: list = [project_id]
+            f_idx = 2
+            if item_name:
+                fallback_conds.append(f"item_name = ${f_idx}")
+                fallback_params.append(item_name)
+                f_idx += 1
+            fw = " AND ".join(fallback_conds)
+            fallback = f"""
+                SELECT session_id, COUNT(*) as message_count,
+                    MIN(received_at) as started_at,
+                    MAX(COALESCE(completed_at, received_at)) as ended_at,
+                    ROUND(COUNT(*) FILTER (WHERE status IN ('sent','completed'))::numeric / NULLIF(COUNT(*)::numeric,0), 2) as success_rate,
+                    array_agg(DISTINCT message_type) FILTER (WHERE message_type IS NOT NULL) as message_types
+                FROM portal_messages WHERE {fw}
+                GROUP BY session_id ORDER BY started_at DESC
+                LIMIT ${f_idx} OFFSET ${f_idx + 1}
+            """
+            fallback_params.extend([limit, offset])
+            rows = await self._pool.fetch(fallback, *fallback_params)
 
         return [dict(r) for r in rows]
 

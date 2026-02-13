@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import base64
 from datetime import datetime
+from decimal import Decimal
 from typing import Optional
 from uuid import UUID
 
@@ -30,6 +31,8 @@ def _serialize_message(msg: dict) -> dict:
         elif isinstance(value, bytes):
             # Don't include raw bytes in list responses
             continue
+        elif isinstance(value, Decimal):
+            result[key] = float(value)
         elif isinstance(value, (int, float)) and value is not None:
             result[key] = value
         else:
