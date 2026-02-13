@@ -1,8 +1,13 @@
 # HIE Message Model
 
-**Version:** 3.0 (Revised per IRIS Convention)
+**Version:** 3.1 (Implemented)
 **Last Updated:** February 13, 2026
-**Status:** ⚠️ **REVISED** — Adds persisted trace layer (IRIS `Ens.MessageHeader` convention)
+**Status:** ✅ **IMPLEMENTED** — Persisted trace layer (IRIS `Ens.MessageHeader` convention) is live
+
+> **Implementation complete.** Migration `004_message_headers_bodies.sql` creates the tables.
+> `message_store.py` provides `store_message_body()`, `store_message_header()`, `update_header_status()`.
+> All HL7 hosts (`HL7TCPService`, `HL7RoutingEngine`, `HL7TCPOperation`) write per-leg headers.
+> Frontend `MessageSequenceDiagram` supports v2 trace format. See [MESSAGE_HEADER_BODY_REDESIGN.md](MESSAGE_HEADER_BODY_REDESIGN.md) for full design.
 
 ---
 
@@ -15,9 +20,9 @@ The HIE message model operates on **two layers**:
 - `MessageEnvelope` / `MessageHeader` / `MessageBody` (`Engine/core/message_envelope.py`) — Phase 4 envelope
 - `HL7Message` (`Engine/li/hosts/hl7.py`) — HL7-specific container
 
-### Layer 2: Persisted Trace (NEW — IRIS Convention) ⭐
+### Layer 2: Persisted Trace (IRIS Convention) ✅
 - **`message_headers` table** — One row per message leg (= IRIS `Ens.MessageHeader`)
-- **`message_bodies` table** — Shared message content (= IRIS `Ens.MessageBody`)
+- **`message_bodies` table** — Shared message content (= IRIS `Ens.MessageBody`, Option C Hybrid: single table with `body_class_name` discriminator)
 - Powers the **Visual Trace / Sequence Diagram** — each row = one arrow
 
 ### Why Two Layers?
@@ -26,7 +31,18 @@ IRIS separates these concerns identically:
 - **In-memory**: `Ens.Request` / `Ens.Response` objects flow between hosts
 - **Persisted**: `Ens.MessageHeader` rows are written to `^Ens.MessageHeaderD` at each hop
 
-Our current defect: we have Layer 1 but **Layer 2 is a flat activity log** (`portal_messages`) instead of a per-leg trace table. This is why the sequence diagram is broken.
+The previous `portal_messages` table was a flat activity log (one row per item). This has been replaced by the per-leg `message_headers` table. The repository falls back to `portal_messages` for legacy data.
+
+### Host Lifecycle — Unchanged by Design
+
+The message trace layer is purely a **storage concern**. The host lifecycle is completely unchanged:
+- Each host runs as a standalone async worker loop (`_worker_loop`)
+- Hosts are dynamically invoked with configurable `pool_size` workers
+- Hosts receive messages via `submit()` → async queue → `_process_message()`
+- Hosts can call other hosts via `send_to_targets()`, `send_request_async()`, `send_request_sync()`
+- Lifecycle callbacks (`on_init`, `on_start`, `on_stop`, `on_teardown`) are untouched
+- Message hooks (`on_before_process`, `on_after_process`, `on_process_error`) are untouched
+- The trace writes happen inside the host's message handler (e.g., `on_message_received`), not in the base lifecycle
 
 ### Design Principles
 - **Raw content preserved end-to-end** (audit trail)

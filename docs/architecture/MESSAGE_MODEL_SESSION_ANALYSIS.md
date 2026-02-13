@@ -1,7 +1,13 @@
 # Message Model & Session ID - Architecture Analysis
 
-**Date:** February 13, 2026 (Revised)
-**Status:** 🔴 **CRITICAL GAPS IDENTIFIED — ROOT CAUSE DEEPER THAN ORIGINALLY THOUGHT**
+**Date:** February 13, 2026 (Revised & Implemented)
+**Status:** ✅ **RESOLVED** — All critical gaps addressed by IRIS message model implementation
+
+> **All gaps closed.** The flat `portal_messages` log has been replaced by `message_headers` (one row per leg)
+> + `message_bodies` (shared content, Option C Hybrid with `body_class_name` discriminator).
+> The routing engine now stores one header per target (not comma-joined). Parent→child chain via
+> `parent_header_id`. Global ordering via `sequence_num` (BIGSERIAL). Request↔Response linking via
+> `corresponding_header_id`. Host lifecycle is completely unchanged — trace writes are a storage concern only.
 
 ---
 

@@ -14,11 +14,15 @@
 > A future **SearchTable** (EAV pattern, equivalent to `EnsLib.HL7.SearchTable`) will provide configurable  
 > per-field indexing. See migration `004_message_headers_bodies.sql` for the actual schema.  
 
-> **This is the master consolidated design document.** The following existing docs have been revised to align:
-> - [MESSAGE_MODEL.md](MESSAGE_MODEL.md) — v3.0: Added Persisted Trace Layer (IRIS convention)
-> - [SESSION_ID_DESIGN.md](SESSION_ID_DESIGN.md) — v2.0: Revised to one-row-per-leg model
-> - [MESSAGE_MODEL_SESSION_ANALYSIS.md](MESSAGE_MODEL_SESSION_ANALYSIS.md) — Revised gap analysis
-> - [MESSAGE_ENVELOPE_DESIGN.md](MESSAGE_ENVELOPE_DESIGN.md) — In-memory transport (Layer 1, unchanged)
+> **This is the master consolidated design document.** All related docs are updated to reflect implementation:
+> - [MESSAGE_MODEL.md](MESSAGE_MODEL.md) — v3.1 ✅ Implemented: Two-layer architecture (in-memory + persisted trace)
+> - [SESSION_ID_DESIGN.md](SESSION_ID_DESIGN.md) — v2.1 ✅ Resolved: One-row-per-leg model with session_id propagation
+> - [MESSAGE_MODEL_SESSION_ANALYSIS.md](MESSAGE_MODEL_SESSION_ANALYSIS.md) — ✅ Resolved: All critical gaps closed
+> - [MESSAGE_ENVELOPE_DESIGN.md](MESSAGE_ENVELOPE_DESIGN.md) — v2.2: Layer 1 in-memory transport (unchanged by this work)
+>
+> **Host lifecycle is completely unchanged by design.** The trace layer is purely a storage concern.
+> Each host still runs as a standalone async worker loop with queue-based message reception,
+> configurable pool_size, and full callback support. See [MESSAGE_MODEL.md](MESSAGE_MODEL.md) §Host Lifecycle.
 
 ---
 

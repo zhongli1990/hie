@@ -1,9 +1,15 @@
 # Message Session ID & Visual Trace — Enterprise Design Document
 
-**Version:** 2.0 (Revised per IRIS Visual Trace Convention)
+**Version:** 2.1 (Implemented)
 **Date:** 2026-02-13
-**Status:** ⚠️ **REVISED** — Now uses one-row-per-leg model (IRIS `Ens.MessageHeader`)
-**Priority:** CRITICAL - Production Blocker
+**Status:** ✅ **IMPLEMENTED** — One-row-per-leg model (IRIS `Ens.MessageHeader`) is live
+**Priority:** RESOLVED
+
+> **Implementation complete.** The `message_headers` table replaces `portal_messages` as the primary
+> trace data source. `session_id` is propagated through `HL7Message.session_id` and stored on every
+> header row. `parent_header_id` provides tree-structured lineage. `sequence_num` (BIGSERIAL) provides
+> deterministic ordering. The repository falls back to `portal_messages` for legacy data.
+> See [MESSAGE_HEADER_BODY_REDESIGN.md](MESSAGE_HEADER_BODY_REDESIGN.md) for full design.
 
 ---
 
