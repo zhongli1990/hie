@@ -5,6 +5,95 @@ All notable changes to OpenLI HIE (Healthcare Integration Engine) will be docume
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.0] - 2026-02-14
+
+### Added - IRIS Message Model, Multi-Protocol Hosts, FHIR REST Stack, Unified Message Tracing
+
+**IRIS Ens.MessageHeader/MessageBody Convention (message_headers + message_bodies):**
+- New `message_headers` table: one row per message leg (source→target), mirroring IRIS `Ens.MessageHeader`
+- New `message_bodies` table: content storage with body_class_name discriminator, checksum dedup, HL7/FHIR protocol fields
+- Migration `004_message_headers_bodies.sql` with full schema, indexes, and architectural documentation
+- `store_message_header()`, `store_message_body()`, `update_header_status()` in `message_store.py`
+- Per-leg tracing: every hop between config items creates a header row = one arrow on Visual Trace
+- Session-based grouping: all legs share a `session_id` (SES-UUID format)
+
+**HL7 Multi-Protocol Hosts & Adapters:**
+- `HL7FileService` / `HL7FileOperation` — file-based HL7 inbound/outbound with `InboundFileAdapter` / `OutboundFileAdapter`
+- `HL7HTTPService` / `HL7HTTPOperation` — HTTP-based HL7 inbound/outbound with `InboundHTTPAdapter` / `OutboundHTTPAdapter`
+- All hosts write per-leg headers to `message_headers` for full Visual Trace support
+
+**FHIR REST Stack:**
+- `FHIRRESTService` — inbound FHIR REST endpoint with full URL parsing (read/vread/create/update/patch/delete/search/history/transaction/capabilities)
+- `FHIRRESTOperation` — outbound FHIR REST client with OperationOutcome error parsing
+- `FHIRRoutingEngine` — routes by resourceType, interaction, bundleType, field values with `FHIRConditionEvaluator`
+- `FHIRMessage` in-memory container with `get_field()`, `with_header_id()`, session/header/body ID tracking
+- IRIS aliases: `HS.FHIRServer.Interop.Service`, `HS.FHIR.REST.Operation`, `HS.FHIRServer.Interop.Process`
+
+**Unified Message Listing (UNION ALL):**
+- `list_by_project()` now queries `message_headers` (v2) UNION ALL `portal_messages` (v1) — all legs visible in Messages tab
+- `list_sessions()` now queries `message_headers` (v2) UNION ALL `portal_messages` (v1) — all sessions visible in Topology pane
+- Column mapping: v2 fields (source_config_name, time_created, etc.) mapped to v1 field names the frontend expects
+- Deduplication: portal_messages sessions excluded if they also exist in message_headers
+
+**Visual Trace V1/V2 Support:**
+- `get_session_trace()` primary path: `message_headers` (v2) with per-leg arrows
+- Fallback path 1: `portal_messages` by `session_id` (v1, old sessions with SES- prefix)
+- Fallback path 2: `portal_messages` by message `id` (v1, old rows with NULL session_id)
+- `trace_version` field in API response indicates which data source was used
+- Frontend `buildSequenceDiagramV1` restored for rendering legacy portal_messages trace data
+- `SessionTrace` interface accepts both `PortalMessage | TraceMessage` union
+
+**E2E Test Suite:**
+- `tests/e2e/test_visual_trace_e2e.py` — 11 async tests covering full HL7 pipeline
+- `tests/e2e/run_visual_trace_e2e.sh` — bash script for quick manual verification (9 tests)
+- Tests cover: MLLP send → message_headers creation → body storage → trace API → V1 fallback paths → 404 handling
+
+**Documentation:**
+- `docs/architecture/MESSAGE_HEADER_BODY_REDESIGN.md` — v2.1 design document (implemented)
+- `docs/architecture/MULTI_PROTOCOL_HOSTS_AND_FHIR_DESIGN.md` — v2.0 design document (implemented)
+
+### Changed
+
+- **Visual Trace Layout** — Equal row spacing (70px per message) instead of time-proportional Y positioning; arrows and labels never overlap regardless of timing differences
+- **SequenceTimeline** — Row-based time markers aligned with each message arrow instead of fixed 500ms interval ticks
+- **_serialize_message()** — Added `Decimal` handling for PostgreSQL aggregate values (success_rate)
+- **Messages tab** — Now shows all pipeline legs (PAS-In, ADT_Router, EPR_Out, RIS_Out, ACKs), not just Testharness
+- **Topology Message pane** — Now shows sessions from message_headers with correct message counts
+
+### Fixed
+
+- Messages tab only showing Testharness messages (portal_messages was the sole data source, but HL7 hosts write to message_headers)
+- Visual Trace "Session not found" error for old messages (V1 fallback was removed too aggressively)
+- Visual Trace showing only single Testharness message instead of full pipeline (frontend passed msg.id when session_id was NULL)
+- All message arrows stacking on same horizontal line in Visual Trace (time differences within a session are sub-millisecond)
+- `Decimal` serialization error in sessions list API (PostgreSQL ROUND returns Decimal, not float)
+
+### Migration Notes
+
+**Database Migration Required:**
+```bash
+docker exec -i hie-postgres psql -U hie -d hie < scripts/migrations/004_message_headers_bodies.sql
+```
+
+**Docker Rebuild Required:**
+```bash
+docker compose build --no-cache hie-manager hie-portal
+docker compose up -d
+```
+
+### Version Bumps
+
+All services bumped to **1.9.0**:
+- `Portal/package.json`
+- `pyproject.toml`
+- `AboutModal.tsx` VERSION constant + version history entry
+
+### Breaking Changes
+
+None — 100% backward compatible. Old portal_messages data continues to work via V1 fallback.
+
+---
+
 ## [1.8.2] - 2026-02-12
 
 ### Added - IRIS HealthConnect-Style Message Sequence Diagram

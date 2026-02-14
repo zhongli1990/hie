@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "hie"
-version = "1.8.2"
+version = "1.9.0"
 description = "Healthcare Integration Engine - Enterprise-grade healthcare messaging platform"
 readme = "README.md"
 license = "MIT"
@@ -110,6 +110,10 @@ disallow_untyped_defs = true
 asyncio_mode = "auto"
 testpaths = ["tests"]
 addopts = "-ra -q --cov=Engine --cov-report=term-missing"
+markers = [
+    "e2e: end-to-end tests requiring live services (db, browser)",
+    "performance: performance benchmark tests",
+]
 
 [tool.coverage.run]
 source = ["Engine"]

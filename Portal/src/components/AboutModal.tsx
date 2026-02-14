@@ -8,12 +8,25 @@ interface VersionHistory {
   features: string[];
 }
 
-const VERSION = "1.8.1";
-const BUILD_DATE = "Feb 12, 2026";
+const VERSION = "1.9.0";
+const BUILD_DATE = "Feb 14, 2026";
 const PLATFORM_NAME = "OpenLI HIE";
 const PRODUCT_NAME = "OpenLI Healthcare Integration Engine";
 
 const versionHistory: VersionHistory[] = [
+  {
+    version: "1.9.0",
+    date: "Feb 14, 2026",
+    features: [
+      "IRIS Ens.MessageHeader/MessageBody convention: per-leg message tracing with message_headers + message_bodies tables",
+      "HL7 File/HTTP hosts + adapters: HL7FileService, HL7FileOperation, HL7HTTPService, HL7HTTPOperation",
+      "FHIR REST stack: FHIRRESTService, FHIRRESTOperation, FHIRRoutingEngine with full FHIR URL parsing",
+      "Unified message listing: Messages tab and Topology pane query both message_headers (v2) and portal_messages (v1)",
+      "Visual Trace V1/V2 support: old portal_messages sessions and new message_headers sessions both render correctly",
+      "Visual Trace layout fix: equal row spacing so arrows never overlap regardless of timing",
+      "E2E test suite for Visual Trace covering full HL7 pipeline and V1 fallback paths",
+    ],
+  },
   {
     version: "1.8.1",
     date: "Feb 12, 2026",

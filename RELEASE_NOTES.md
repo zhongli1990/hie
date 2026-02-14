@@ -1,5 +1,114 @@
 # HIE Release Notes
 
+## Version 1.9.0 - February 14, 2026
+
+### 🎯 Major Feature: IRIS Message Model, FHIR REST Stack, Unified Message Tracing
+
+**Enterprise-Grade Per-Leg Message Tracing with Multi-Protocol Support**
+
+This release implements the IRIS `Ens.MessageHeader` / `Ens.MessageBody` convention for per-leg message tracing, adds HL7 File/HTTP and FHIR REST host classes, and unifies the Messages tab and Visual Trace to work seamlessly with both new and legacy data.
+
+### ✨ New Features
+
+#### IRIS Message Model (message_headers + message_bodies)
+- **Per-leg tracing** — Every hop between config items (service→process→operation) creates a `message_headers` row = one arrow on Visual Trace
+- **Content deduplication** — `message_bodies` table with SHA-256 checksum dedup, HL7/FHIR protocol-specific indexed columns
+- **Session grouping** — All legs within a single inbound message share a `session_id` (SES-UUID format)
+- **Body class discriminator** — `body_class_name` column enables polymorphic dispatch (EnsLib.HL7.Message, FHIRMessageBody, etc.)
+
+#### HL7 Multi-Protocol Hosts & Adapters
+- **HL7FileService / HL7FileOperation** — File-based HL7 inbound/outbound via `InboundFileAdapter` / `OutboundFileAdapter`
+- **HL7HTTPService / HL7HTTPOperation** — HTTP-based HL7 inbound/outbound via `InboundHTTPAdapter` / `OutboundHTTPAdapter`
+- All new hosts write per-leg headers to `message_headers` for full Visual Trace support
+
+#### FHIR REST Stack
+- **FHIRRESTService** — Inbound FHIR REST endpoint with full URL parsing (read, vread, create, update, patch, delete, search, history, transaction, capabilities)
+- **FHIRRESTOperation** — Outbound FHIR REST client with OperationOutcome error parsing
+- **FHIRRoutingEngine** — Routes by resourceType, interaction, bundleType, field values with condition evaluator (=, !=, Contains, StartsWith, IN, AND, OR, NOT)
+- **FHIRMessage** — In-memory container with `get_field()`, `with_header_id()`, session/header/body ID tracking
+- **IRIS aliases**: `HS.FHIRServer.Interop.Service`, `HS.FHIR.REST.Operation`, `HS.FHIRServer.Interop.Process`
+
+#### Unified Message Listing
+- **Messages tab** now shows ALL pipeline legs (PAS-In, ADT_Router, EPR_Out, RIS_Out, ACKs) — not just Testharness
+- **Topology Message pane** now shows sessions from `message_headers` with correct message counts
+- Both views use `UNION ALL` to merge `message_headers` (v2) + `portal_messages` (v1) into a common shape
+
+#### Visual Trace V1/V2 Support
+- **V2 primary path**: `message_headers` with per-leg arrows and swimlanes
+- **V1 fallback**: `portal_messages` by session_id or message id for historical data
+- **`trace_version`** field in API response indicates which data source was used
+- **Equal row spacing**: Arrows never overlap regardless of timing differences (70px per message row)
+
+### 🔧 Improvements
+
+- **Visual Trace Layout** — Equal vertical spacing per message instead of time-proportional positioning
+- **SequenceTimeline** — Row-based time markers aligned with each message arrow
+- **Decimal serialization** — PostgreSQL aggregate values (success_rate) now serialize correctly to JSON
+
+### 🧪 Testing & Quality Assurance
+
+- **`test_visual_trace_e2e.py`** — 11 async tests: MLLP send → headers creation → body storage → trace API → V1 fallback → 404 handling
+- **`run_visual_trace_e2e.sh`** — 9-test bash script for quick manual verification
+- **V1 fallback tests** — `test_trace_v1_fallback_by_session_id`, `test_trace_v1_fallback_by_message_id`
+- All tests passing (9/9 bash, 11/11 pytest)
+
+### 🐛 Bug Fixes
+
+- **Messages tab empty for new messages** — HL7 hosts wrote to `message_headers` but Messages tab only queried `portal_messages`
+- **"Session not found" on old messages** — V1 fallback was removed too aggressively; restored with 3-layer resolution
+- **Single Testharness in Visual Trace** — Frontend passed `msg.id` when `session_id` was NULL; added id-based fallback
+- **Overlapping arrows** — Time-proportional Y positioning collapsed sub-millisecond differences to same pixel
+- **Decimal serialization error** — PostgreSQL `ROUND()` returns `Decimal`, not `float`
+
+### 📦 Deployment
+
+**Database Migration Required:**
+```bash
+docker exec -i hie-postgres psql -U hie -d hie < scripts/migrations/004_message_headers_bodies.sql
+```
+
+**Docker Rebuild Required:**
+```bash
+docker compose build --no-cache hie-manager hie-portal
+docker compose up -d
+```
+
+**Verification:**
+1. Navigate to Messages tab — should show all pipeline legs
+2. Click View Trace on any message — should show full IRIS-style sequence diagram with separated arrows
+3. Send a new HL7 message via MLLP — should appear immediately in Messages tab and Visual Trace
+
+### ⚠️ Breaking Changes
+
+**None** — 100% backward compatible. Old `portal_messages` data continues to work via V1 fallback.
+
+### 📝 Files Changed (19 commits)
+
+**New Files:**
+- `scripts/migrations/004_message_headers_bodies.sql` — message_headers + message_bodies schema
+- `Engine/li/adapters/file.py` — InboundFileAdapter, OutboundFileAdapter
+- `Engine/li/adapters/http.py` — InboundHTTPAdapter, OutboundHTTPAdapter
+- `Engine/li/hosts/fhir.py` — FHIRRESTService, FHIRRESTOperation, FHIRMessage
+- `Engine/li/hosts/fhir_routing.py` — FHIRRoutingEngine, FHIRConditionEvaluator
+- `tests/e2e/test_visual_trace_e2e.py` — Visual Trace E2E test suite
+- `tests/e2e/run_visual_trace_e2e.sh` — Quick verification script
+- `docs/architecture/MESSAGE_HEADER_BODY_REDESIGN.md`
+- `docs/architecture/MULTI_PROTOCOL_HOSTS_AND_FHIR_DESIGN.md`
+
+**Modified Files:**
+- `Engine/api/services/message_store.py` — store_message_header, store_message_body, update_header_status
+- `Engine/api/repositories.py` — list_by_project (UNION ALL), list_sessions (UNION ALL), get_session_trace (V1/V2)
+- `Engine/api/routes/messages.py` — Decimal handling, trace_version passthrough
+- `Engine/li/hosts/hl7.py` — Per-leg header storage, body storage
+- `Engine/li/hosts/routing.py` — Per-target routing headers
+- `Portal/src/lib/api-v2.ts` — SessionTrace V1/V2 union type
+- `Portal/src/components/ProductionDiagram/MessageSequenceDiagram.tsx` — Row-based layout, V1/V2 branching
+- `Portal/src/components/ProductionDiagram/SequenceTimeline.tsx` — Row-based time markers
+- `Portal/package.json` — Version 1.9.0
+- `pyproject.toml` — Version 1.9.0
+
+---
+
 ## Version 1.8.2 - February 12, 2026
 
 ### 🎯 Major Feature: IRIS HealthConnect-Style Message Sequence Diagram
