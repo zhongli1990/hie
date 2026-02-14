@@ -27,7 +27,7 @@ logger = logging.getLogger(__name__)
 
 SEED_DIR = os.environ.get("SEED_DIR", "/app/seeds")
 
-app = FastAPI(title="OpenLI HIE Prompt Manager", version="1.8.0")
+app = FastAPI(title="OpenLI HIE Prompt Manager", version="1.8.1")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -52,7 +52,7 @@ async def on_startup():
 
 @app.get("/health")
 async def health():
-    return {"status": "ok", "service": "hie-prompt-manager", "version": "1.8.0"}
+    return {"status": "ok", "service": "hie-prompt-manager", "version": "1.8.1"}
 
 
 # ── Seed API ──────────────────────────────────────────────────────────────────

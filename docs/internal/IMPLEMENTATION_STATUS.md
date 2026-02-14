@@ -1,14 +1,91 @@
 # HIE Implementation Status
 
-**Version:** v1.8.0 (GenAI Session Persistence & UI Fixes)
-**Last Updated:** February 11, 2026
-**Status:** 🚀 **Complete** - GenAI Agents & Chat with Full Session Persistence
+**Version:** v1.8.1 (Message Trace Discoverability & Platform Compatibility)
+**Last Updated:** February 12, 2026
+**Status:** 🚀 **Complete** - Message Trace UX Overhaul + ARM64 Docker Fix
 **Branch:** `main`
-**Release:** v1.8.0
+**Release:** v1.8.1
 
 ---
 
-## 🎯 v1.8.0 Update - GenAI Session Persistence & UI Fixes
+## 🎯 v1.8.1 Update - Message Trace Discoverability & Platform Compatibility
+
+### Critical Enhancements ✅ COMPLETE
+
+Post-manual-testing of v1.8.0 identified Message Trace Swimlanes feature not discoverable. Implemented 7 UX improvements plus Docker ARM64 fix.
+
+| Enhancement | Status | Implementation Summary |
+|-------------|--------|------------------------|
+| **Message Trace Feature Banner** | ✅ Complete | Blue gradient banner with "🎯 Demo Trace" button in Messages tab |
+| **Enhanced Message Row UI** | ✅ Complete | Gradient "View Trace" buttons, E2E badges, tooltips on all messages |
+| **Always-On Demo Mode** | ✅ Complete | Mock data generator always produces 5-10 sample messages |
+| **Config Tab Cross-Reference** | ✅ Complete | "Message Tracing Available" card with "View Messages & Traces" button |
+| **Events Tab Cross-Reference** | ✅ Complete | "View Message Traces" button in event list footer |
+| **Metrics Tab Cross-Reference** | ✅ Complete | Purple "Messages Processed" card with "View Traces" button |
+| **Docker ARM64 Compatibility** | ✅ Complete | Platform specification for redis-commander on Apple Silicon |
+
+### Implementation Details
+
+**Files Modified (2):**
+
+1. **`Portal/src/components/ProductionDiagram/ItemDetailPanel.tsx`** (+260 lines)
+   - Lines 136-157: Config tab - "Message Tracing Available" blue card
+   - Lines 286-301: Events tab - "View Message Traces" button
+   - Lines 512-694: Messages tab - Feature banner, demo button, empty state handling
+   - Lines 697-784: Enhanced MessageRow - Gradient buttons, E2E badges, tooltips
+   - Lines 793-839: Mock data generator - Always-on sample generation (forceSamples)
+   - Lines 908-930: Metrics tab - Purple "Messages Processed" card
+
+2. **`docker-compose.yml`** (+1 line)
+   - Line 312: Added `platform: linux/amd64` to redis-commander service
+   - Enables Rosetta 2 emulation on Apple Silicon Macs
+   - Resolves platform mismatch warnings on ARM64 systems
+
+### User Experience Improvements
+
+**Before v1.8.1:**
+- ❌ Message Trace feature hidden - users couldn't find it during manual testing
+- ❌ No clear entry point to swimlane visualization
+- ❌ Demo mode only available with real data
+- ❌ No cross-references from Config/Events/Metrics tabs
+- ❌ redis-commander platform mismatch on Apple Silicon
+
+**After v1.8.1:**
+- ✅ Prominent blue banner explains feature and provides "🎯 Demo Trace" button
+- ✅ Every message row has gradient "View Trace" button (blue→purple)
+- ✅ Always-on demo mode - users can explore feature without real data
+- ✅ Config, Events, and Metrics tabs all link to Message Trace
+- ✅ E2E Traced badges on all messages
+- ✅ Tooltips guide users ("Track end-to-end message flow")
+- ✅ redis-commander works on Apple Silicon via Rosetta 2
+
+### Visual Design
+
+**Color Scheme:**
+- **Feature banners:** Blue gradient (`from-blue-50 to-purple-50`)
+- **CTA buttons:** Blue→purple gradient (`from-blue-600 to-purple-600`)
+- **E2E badges:** Purple (`bg-purple-100 text-purple-700`)
+- **Config cards:** Blue theme (`border-blue-200 bg-blue-50`)
+- **Metrics cards:** Purple theme (`border-purple-200 bg-purple-50`)
+
+**Interaction Patterns:**
+- Gradient buttons with hover effects (darker shades)
+- Arrow animation on hover (`group-hover:translate-x-1`)
+- Tooltips positioned above buttons
+- Cross-tab navigation via `onSwitchTab("messages")` callback
+- Modal dismissal via `setShowDemoTrace(false)`
+
+### Build Status
+
+✅ TypeScript build passed - 0 errors or warnings
+✅ Portal health check passed ("✓ Ready in 71ms")
+✅ Docker compose up successful (no platform warnings)
+
+---
+
+## Previous Releases
+
+### v1.8.0 Update - GenAI Session Persistence & UI Fixes
 
 ### Critical Fixes ✅ COMPLETE
 

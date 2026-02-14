@@ -2,9 +2,24 @@
 
 **Polymorphic Messaging Architecture for LI HIE**
 
-**Version:** 2.0 (Phase 4)
-**Design Date:** February 10, 2026
-**Status:** Proposed Architecture Enhancement
+**Version:** 2.2 (Phase 4 — Layer 1: In-Memory Transport)
+**Design Date:** February 10, 2026 (Revised February 13, 2026)
+**Status:** Proposed Architecture Enhancement (Layer 1 only)
+
+> **Architecture Note (Feb 13, 2026):** This document describes **Layer 1: In-Memory Transport** — the
+> `MessageEnvelope` / `MessageHeader` / `MessageBody` objects that travel with messages between hosts
+> in memory. This layer is **unchanged** by the IRIS message model implementation.
+>
+> **Layer 2: Persisted Trace is now ✅ IMPLEMENTED.** The `message_headers` + `message_bodies` database
+> tables power the Visual Trace / Sequence Diagram. For Layer 2, see:
+> - [MESSAGE_HEADER_BODY_REDESIGN.md](MESSAGE_HEADER_BODY_REDESIGN.md) — Master consolidated design (✅ Implemented)
+> - [MESSAGE_MODEL.md](MESSAGE_MODEL.md) §Persisted Trace Layer (✅ Implemented)
+> - [SESSION_ID_DESIGN.md](SESSION_ID_DESIGN.md) §4 Implementation Design (✅ Implemented)
+>
+> **Host lifecycle is completely unchanged.** Each host still runs as a standalone async worker loop
+> with configurable pool_size, queue-based message reception, and full callback support
+> (`on_init`, `on_start`, `on_stop`, `on_message`, `send_to_targets`, `send_request_sync/async`).
+> The trace writes are a storage concern inside the host's message handler, not in the base lifecycle.
 
 ---
 

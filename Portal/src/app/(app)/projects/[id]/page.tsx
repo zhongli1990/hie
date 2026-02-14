@@ -4,6 +4,8 @@ import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
+import { ReactFlowProvider } from 'reactflow';
+import { ProductionDiagram } from '@/components/ProductionDiagram';
 import {
   getProject,
   deployProject,
@@ -41,7 +43,7 @@ export default function ProjectDetailPage() {
   const [error, setError] = useState<string | null>(null);
   const [selectedItem, setSelectedItem] = useState<ProjectItem | null>(null);
   const [showAddItemModal, setShowAddItemModal] = useState(false);
-  const [activeTab, setActiveTab] = useState<'items' | 'connections' | 'routing' | 'settings'>('items');
+  const [activeTab, setActiveTab] = useState<'items' | 'connections' | 'routing' | 'topology' | 'settings'>('items');
 
   const loadProject = async () => {
     if (!currentWorkspace || !projectId) return;
@@ -224,7 +226,7 @@ export default function ProjectDetailPage() {
 
         {/* Tabs */}
         <div className="mt-4 flex gap-4 border-b -mb-px">
-          {(['items', 'connections', 'routing', 'settings'] as const).map((tab) => (
+          {(['items', 'connections', 'routing', 'topology', 'settings'] as const).map((tab) => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
@@ -234,7 +236,7 @@ export default function ProjectDetailPage() {
                   : 'text-gray-500 border-transparent hover:text-gray-700'
               }`}
             >
-              {tab === 'routing' ? 'Routing Rules' : tab.charAt(0).toUpperCase() + tab.slice(1)}
+              {tab === 'routing' ? 'Routing Rules' : tab === 'topology' ? '⭐ Topology' : tab.charAt(0).toUpperCase() + tab.slice(1)}
               {tab === 'items' && ` (${project.items.length})`}
               {tab === 'connections' && ` (${project.connections.length})`}
               {tab === 'routing' && ` (${project.routing_rules?.length || 0})`}
@@ -333,6 +335,25 @@ export default function ProjectDetailPage() {
               projectId={projectId}
               onUpdate={loadProject}
             />
+          </div>
+        )}
+
+        {activeTab === 'topology' && (
+          <div className="flex-1 overflow-y-auto p-6">
+            <ReactFlowProvider>
+              <ProductionDiagram
+                items={project.items}
+                connections={project.connections}
+                routingRules={project.routing_rules || []}
+                onUpdatePosition={async (itemId, x, y) => {
+                  try {
+                    await updateItem(projectId, itemId, { position: { x, y } });
+                  } catch (err) {
+                    console.error('Failed to update item position:', err);
+                  }
+                }}
+              />
+            </ReactFlowProvider>
           </div>
         )}
 

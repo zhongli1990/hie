@@ -15,6 +15,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
 from typing import Any, Callable, TYPE_CHECKING
+from uuid import UUID
 
 import structlog
 
@@ -505,47 +506,84 @@ class HL7RoutingEngine(BusinessProcess):
             targets=result.targets,
         )
         
-        # Route to targets
-        if result.matched and result.targets:
-            for target in result.targets:
-                await self._route_to_target(message, target, result.transform)
-        
-        # Store message in portal_messages for visibility
+        # Store per-leg headers BEFORE routing (so header_id is available)
+        target_headers: dict[str, Any] = {}
         project_id = getattr(self, 'project_id', None)
-        if project_id:
-            import asyncio
-            asyncio.create_task(self._store_routing_message(
+        if project_id and result.matched and result.targets:
+            target_headers = await self._store_routing_headers(
                 project_id=project_id,
                 message=message,
                 result=result,
-            ))
+            )
+
+        # Route to targets with per-target header_id
+        if result.matched and result.targets:
+            for target in result.targets:
+                # Create a message copy with this target's header_id
+                routed_msg = message
+                target_hdr = target_headers.get(target)
+                if target_hdr and isinstance(message, HL7Message):
+                    routed_msg = message.with_header_id(target_hdr)
+                await self._route_to_target(routed_msg, target, result.transform)
         
         return result
     
-    async def _store_routing_message(
+    async def _store_routing_headers(
         self,
         project_id: UUID,
         message: HL7Message,
         result: RoutingResult,
-    ) -> None:
-        """Store routing decision in portal_messages for UI visibility."""
+    ) -> dict[str, "UUID | None"]:
+        """
+        Store routing decision using IRIS-convention per-leg trace model.
+
+        Creates ONE header per matched target (not comma-joined).
+        Each header has parent_header_id pointing to the inbound header.
+
+        Returns dict mapping target_name -> header_id for downstream propagation.
+        """
+        target_headers: dict[str, "UUID | None"] = {}
         try:
-            from Engine.api.services.message_store import store_and_complete_message
-            raw = message.raw if isinstance(message.raw, bytes) else str(message.raw).encode()
-            status = "completed" if result.matched else "no_match"
-            dest = ",".join(result.targets) if result.targets else None
-            await store_and_complete_message(
-                project_id=project_id,
-                item_name=self.name,
-                item_type="process",
-                direction="inbound",
-                raw_content=raw,
-                status=status,
-                source_item=getattr(message, 'source', None),
-                destination_item=dest,
-            )
+            from Engine.api.services.message_store import store_message_header
+
+            session_id = getattr(message, 'session_id', None)
+            correlation_id = getattr(message, 'correlation_id', None)
+            parent_header_id = getattr(message, 'header_id', None)
+            body_id = getattr(message, 'body_id', None)
+
+            if not session_id or not result.targets:
+                return target_headers
+
+            for target_name in result.targets:
+                # Determine target business type
+                target_type = 'operation'
+                if self._production:
+                    target_host = self._production.get_host(target_name)
+                    if target_host:
+                        from Engine.api.services.message_store import get_business_type
+                        target_type = get_business_type(target_host)
+
+                header_id = await store_message_header(
+                    project_id=project_id,
+                    session_id=session_id,
+                    source_config_name=self.name,
+                    target_config_name=target_name,
+                    source_business_type='process',
+                    target_business_type=target_type,
+                    message_body_id=body_id,
+                    parent_header_id=parent_header_id,
+                    message_type=message.message_type,
+                    body_class_name='EnsLib.HL7.Message',
+                    status='Created',
+                    correlation_id=correlation_id,
+                    description=f"Rule: {result.rule_name}" if result.rule_name else None,
+                )
+                target_headers[target_name] = header_id
+
         except Exception as e:
-            self._log.warning("routing_message_storage_failed", error=str(e))
+            self._log.warning("routing_header_storage_failed", error=str(e))
+
+        return target_headers
 
     def _evaluate_rules(self, message: HL7Message) -> RoutingResult:
         """

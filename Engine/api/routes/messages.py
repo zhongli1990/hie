@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import base64
 from datetime import datetime
+from decimal import Decimal
 from typing import Optional
 from uuid import UUID
 
@@ -30,6 +31,8 @@ def _serialize_message(msg: dict) -> dict:
         elif isinstance(value, bytes):
             # Don't include raw bytes in list responses
             continue
+        elif isinstance(value, Decimal):
+            result[key] = float(value)
         elif isinstance(value, (int, float)) and value is not None:
             result[key] = value
         else:
@@ -257,9 +260,92 @@ async def resend_message(request: web.Request) -> web.Response:
         return web.json_response({"error": str(e)}, status=500)
 
 
+async def list_sessions(request: web.Request) -> web.Response:
+    """List message sessions for a project.
+
+    GET /api/projects/{project_id}/sessions
+    Query params: item, limit, offset
+    """
+    project_id = request.match_info.get("project_id")
+
+    try:
+        proj_uuid = UUID(project_id)
+    except ValueError:
+        return web.json_response({"error": "Invalid project ID"}, status=400)
+
+    # Get query parameters
+    item_name = request.query.get("item")
+
+    try:
+        limit = min(int(request.query.get("limit", 50)), 100)
+        offset = int(request.query.get("offset", 0))
+    except ValueError:
+        limit, offset = 50, 0
+
+    pool = request.app.get("db_pool")
+    if not pool:
+        return web.json_response({"error": "Database not available"}, status=503)
+
+    repo = PortalMessageRepository(pool)
+
+    try:
+        sessions = await repo.list_sessions(
+            project_id=proj_uuid,
+            item_name=item_name,
+            limit=limit,
+            offset=offset,
+        )
+
+        return web.json_response({
+            "sessions": [_serialize_message(s) for s in sessions],
+            "total": len(sessions),
+        })
+    except Exception as e:
+        logger.error("list_sessions_failed", error=str(e), project_id=project_id)
+        return web.json_response({"error": str(e)}, status=500)
+
+
+async def get_session_trace(request: web.Request) -> web.Response:
+    """Get message trace data for a session.
+
+    GET /api/sessions/{session_id}/trace
+    """
+    session_id = request.query.get("session_id") or request.match_info.get("session_id")
+
+    if not session_id:
+        return web.json_response({"error": "Session ID required"}, status=400)
+
+    pool = request.app.get("db_pool")
+    if not pool:
+        return web.json_response({"error": "Database not available"}, status=503)
+
+    repo = PortalMessageRepository(pool)
+
+    try:
+        trace_data = await repo.get_session_trace(session_id)
+
+        if not trace_data:
+            return web.json_response({"error": "Session not found"}, status=404)
+
+        # Serialize the trace data
+        result = {
+            "session_id": session_id,
+            "messages": [_serialize_message(m) for m in trace_data.get("messages", [])],
+            "items": trace_data.get("items", []),
+            "started_at": trace_data.get("started_at").isoformat() if trace_data.get("started_at") else None,
+            "ended_at": trace_data.get("ended_at").isoformat() if trace_data.get("ended_at") else None,
+            "trace_version": trace_data.get("trace_version", "v2"),
+        }
+
+        return web.json_response(result)
+    except Exception as e:
+        logger.error("get_session_trace_failed", error=str(e), session_id=session_id)
+        return web.json_response({"error": str(e)}, status=500)
+
+
 async def delete_old_messages(request: web.Request) -> web.Response:
     """Delete old messages (housekeeping).
-    
+
     DELETE /api/messages/housekeeping?days=30
     """
     try:
@@ -268,13 +354,13 @@ async def delete_old_messages(request: web.Request) -> web.Response:
             days = 30
     except ValueError:
         days = 30
-    
+
     pool = request.app.get("db_pool")
     if not pool:
         return web.json_response({"error": "Database not available"}, status=503)
-    
+
     repo = PortalMessageRepository(pool)
-    
+
     try:
         deleted = await repo.delete_old_messages(days)
         return web.json_response({
@@ -289,12 +375,15 @@ async def delete_old_messages(request: web.Request) -> web.Response:
 
 def register_routes(app: web.Application) -> None:
     """Register message routes.
-    
+
     Note: Stats route must be registered before the generic {message_id} route
     to avoid pattern conflicts.
     """
     # Stats route first (more specific pattern)
     app.router.add_get("/api/projects/{project_id}/messages/stats", get_message_stats)
+    # Session routes
+    app.router.add_get("/api/projects/{project_id}/sessions", list_sessions)
+    app.router.add_get("/api/sessions/{session_id}/trace", get_session_trace)
     # Then list and detail routes
     app.router.add_get("/api/projects/{project_id}/messages", list_messages)
     app.router.add_get("/api/projects/{project_id}/messages/{message_id}", get_message)

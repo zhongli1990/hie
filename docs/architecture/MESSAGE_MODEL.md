@@ -1,24 +1,57 @@
 # HIE Message Model
 
-**Version:** 2.0 (Phase 4 Design)
-**Last Updated:** February 10, 2026
-**Status:** Phase 3 (Simple Message) → Phase 4 (Message Envelope with Schema Metadata)
+**Version:** 3.1 (Implemented)
+**Last Updated:** February 13, 2026
+**Status:** ✅ **IMPLEMENTED** — Persisted trace layer (IRIS `Ens.MessageHeader` convention) is live
+
+> **Implementation complete.** Migration `004_message_headers_bodies.sql` creates the tables.
+> `message_store.py` provides `store_message_body()`, `store_message_header()`, `update_header_status()`.
+> All HL7 hosts (`HL7TCPService`, `HL7RoutingEngine`, `HL7TCPOperation`) write per-leg headers.
+> Frontend `MessageSequenceDiagram` supports v2 trace format. See [MESSAGE_HEADER_BODY_REDESIGN.md](MESSAGE_HEADER_BODY_REDESIGN.md) for full design.
 
 ---
 
 ## Overview
 
-The HIE message model is designed for **protocol-agnostic, schema-aware messaging** at enterprise scale. It consists of two parts:
+The HIE message model operates on **two layers**:
 
-1. **MessageHeader** — Routing, delivery, governance, and **schema metadata**
-2. **MessageBody** — Raw payload + lazy-loaded parsed object + validation state
+### Layer 1: In-Memory Transport (Existing — Unchanged)
+- `Message` / `Envelope` / `Payload` (`Engine/core/message.py`) — immutable in-memory message
+- `MessageEnvelope` / `MessageHeader` / `MessageBody` (`Engine/core/message_envelope.py`) — Phase 4 envelope
+- `HL7Message` (`Engine/li/hosts/hl7.py`) — HL7-specific container
 
-This design ensures:
+### Layer 2: Persisted Trace (IRIS Convention) ✅
+- **`message_headers` table** — One row per message leg (= IRIS `Ens.MessageHeader`)
+- **`message_bodies` table** — Shared message content (= IRIS `Ens.MessageBody`, Option C Hybrid: single table with `body_class_name` discriminator)
+- Powers the **Visual Trace / Sequence Diagram** — each row = one arrow
+
+### Why Two Layers?
+
+IRIS separates these concerns identically:
+- **In-memory**: `Ens.Request` / `Ens.Response` objects flow between hosts
+- **Persisted**: `Ens.MessageHeader` rows are written to `^Ens.MessageHeaderD` at each hop
+
+The previous `portal_messages` table was a flat activity log (one row per item). This has been replaced by the per-leg `message_headers` table. The repository falls back to `portal_messages` for legacy data.
+
+### Host Lifecycle — Unchanged by Design
+
+The message trace layer is purely a **storage concern**. The host lifecycle is completely unchanged:
+- Each host runs as a standalone async worker loop (`_worker_loop`)
+- Hosts are dynamically invoked with configurable `pool_size` workers
+- Hosts receive messages via `submit()` → async queue → `_process_message()`
+- Hosts can call other hosts via `send_to_targets()`, `send_request_async()`, `send_request_sync()`
+- Lifecycle callbacks (`on_init`, `on_start`, `on_stop`, `on_teardown`) are untouched
+- Message hooks (`on_before_process`, `on_after_process`, `on_process_error`) are untouched
+- The trace writes happen inside the host's message handler (e.g., `on_message_received`), not in the base lifecycle
+
+### Design Principles
 - **Raw content preserved end-to-end** (audit trail)
+- **One row per message leg** — router sending to 3 targets = 3 header rows
 - **Schema metadata enables runtime dynamic parsing** (HL7 v2.x, FHIR R4/R5, SOAP, JSON, custom)
-- **No implicit transformations** (explicit parsing on demand)
+- **Parent→child chain** for tree-structured message lineage
+- **Global sequence number** for unambiguous ordering
 - **Protocol-agnostic** (any message type to any service)
-- **Unlimited extensibility** (custom_properties in header and body)
+- **Unlimited extensibility** (custom_properties / metadata JSONB)
 
 ---
 
@@ -62,6 +95,239 @@ This design ensures:
 │      └── custom_properties (Dict[str, Any])                         │
 └─────────────────────────────────────────────────────────────────────┘
 ```
+
+---
+
+## Persisted Trace Layer (NEW — IRIS Convention) ⭐
+
+### The Missing Piece
+
+The existing `portal_messages` table stores **one row per item that touched a message**. IRIS stores **one row per message leg** (source→target pair). This difference is why our sequence diagram is broken.
+
+**Current (broken):** ADT^A01 through PAS-In → ADT_Router → EPR_Out + RIS_Out:
+```
+portal_messages:
+Row 1: item=PAS-In,      type=service,   source=NULL,  dest=NULL,              session=SES-abc
+Row 2: item=ADT_Router,   type=process,   source=PAS-In, dest="EPR_Out,RIS_Out", session=SES-abc
+Row 3: item=EPR_Out,      type=operation, source=NULL,  dest=NULL,              session=SES-abc
+Row 4: item=RIS_Out,      type=operation, source=NULL,  dest=NULL,              session=SES-abc
+
+Problems:
+  - Row 2 has comma-joined dest → ghost swimlane "EPR_Out,RIS_Out"
+  - Row 3/4 have no source → no arrows can be drawn
+  - All rows have same timestamp → no ordering
+```
+
+**IRIS convention (correct):** Same flow creates these `Ens.MessageHeader` rows:
+```
+message_headers:
+Row 1: seq=1, source=PAS-In(service),     target=ADT_Router(process),  parent=NULL
+Row 2: seq=2, source=ADT_Router(process),  target=EPR_Out(operation),   parent=Row1
+Row 3: seq=3, source=ADT_Router(process),  target=RIS_Out(operation),   parent=Row1
+Row 4: seq=4, source=EPR_Out(operation),   target=EPR_System(external), parent=Row2, type=Response
+Row 5: seq=5, source=RIS_Out(operation),   target=RIS_System(external), parent=Row3, type=Response
+
+Each row = one arrow on the Visual Trace diagram.
+```
+
+### Persisted MessageHeader (= IRIS Ens.MessageHeader)
+
+```python
+@dataclass
+class PersistedMessageHeader:
+    """
+    One row per message leg in the production.
+    
+    IRIS equivalent: Ens.MessageHeader
+    Each row represents a message crossing from one item to another.
+    The Visual Trace draws one arrow per row.
+    """
+    
+    # ─── Identity & Ordering ────────────────────────────────────
+    id: UUID                              # Primary key
+    sequence_num: int                     # Auto-increment (= IRIS MessageId)
+    project_id: UUID                      # HIE project scope
+    
+    # ─── Session & Lineage ──────────────────────────────────────
+    session_id: str                       # Groups entire journey (= IRIS SessionId)
+    parent_header_id: UUID | None         # Header that caused this leg (tree)
+    corresponding_header_id: UUID | None  # Links request↔response (= IRIS CorrespondingMessageId)
+    super_session_id: str | None          # Groups multiple sessions (= IRIS SuperSession)
+    
+    # ─── Routing (one source → one target per row) ──────────────
+    source_config_name: str               # Item that SENT (= IRIS SourceConfigName)
+    target_config_name: str               # Item that RECEIVED (= IRIS TargetConfigName)
+    source_business_type: str             # "service"|"process"|"operation"
+    target_business_type: str             # "service"|"process"|"operation"
+    
+    # ─── Message Classification ─────────────────────────────────
+    message_type: str | None              # "ADT^A01" (= IRIS body.Name)
+    body_class_name: str                  # FQ class (= IRIS MessageBodyClassName)
+    message_body_id: UUID | None          # FK to message_bodies (= IRIS MessageBodyId)
+    
+    # ─── Invocation ─────────────────────────────────────────────
+    type: str = "Request"                 # "Request"|"Response" (= IRIS Type)
+    invocation: str = "Queue"             # "Queue"|"InProc" (= IRIS Invocation)
+    priority: str = "Async"               # "Async"|"Sync" (= IRIS Priority)
+    
+    # ─── Status & Timing ────────────────────────────────────────
+    status: str = "created"               # Lifecycle state
+    is_error: bool = False                # (= IRIS IsError)
+    error_status: str | None = None       # Error text (= IRIS ErrorStatus)
+    time_created: datetime                # (= IRIS TimeCreated)
+    time_processed: datetime | None       # (= IRIS TimeProcessed)
+    
+    # ─── Extensibility ──────────────────────────────────────────
+    description: str | None = None        # Human-readable
+    metadata: dict = field(default_factory=dict)  # JSONB
+```
+
+### Persisted MessageBody Hierarchy (= IRIS Ens.MessageBody)
+
+```
+MessageBody (abstract base — stored in message_bodies table)
+│   id: UUID
+│   body_class_name: str              # Self-describing class name
+│   content_type: str                 # MIME type
+│   raw_content: bytes                # Authoritative raw bytes
+│   content_size: int
+│   checksum: str                     # SHA-256
+│   created_at: datetime
+│
+├── HL7v2MessageBody(MessageBody)     # HL7 v2.x ER7/XML
+│       schema_category: str          # "2.3", "2.4", "2.5.1"
+│       schema_name: str              # "ADT_A01"
+│       message_control_id: str       # MSH-10
+│       sending_application: str      # MSH-3
+│       sending_facility: str         # MSH-4
+│
+├── FHIRMessageBody(MessageBody)      # FHIR R4/R5
+│       fhir_version: str             # "R4", "R5"
+│       resource_type: str            # "Patient", "Bundle"
+│       resource_id: str
+│
+├── CSVMessageBody(MessageBody)       # CSV/flat files
+├── XMLMessageBody(MessageBody)       # Generic XML
+├── JSONMessageBody(MessageBody)      # Generic JSON
+├── StreamBody(MessageBody)           # Binary streams
+└── GenericMessageBody(MessageBody)   # Catch-all
+```
+
+**Key design:** Multiple headers can reference the same body (e.g., router sends to 3 targets — all 3 header rows point to the same body row). No content duplication.
+
+### Database Schema
+
+```sql
+-- message_bodies: Stores actual message content (one per unique message)
+CREATE TABLE message_bodies (
+    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    body_class_name VARCHAR(255) NOT NULL DEFAULT 'GenericMessageBody',
+    content_type    VARCHAR(100) NOT NULL DEFAULT 'application/octet-stream',
+    raw_content     BYTEA,
+    content_preview TEXT,
+    content_size    INTEGER NOT NULL DEFAULT 0,
+    checksum        VARCHAR(64),
+    -- HL7-specific indexed fields
+    schema_category VARCHAR(20),
+    schema_name     VARCHAR(100),
+    message_control_id VARCHAR(100),
+    sending_application VARCHAR(100),
+    sending_facility VARCHAR(100),
+    -- FHIR-specific indexed fields
+    fhir_version    VARCHAR(10),
+    resource_type   VARCHAR(100),
+    resource_id     VARCHAR(255),
+    -- Generic
+    metadata        JSONB DEFAULT '{}'::jsonb,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- message_headers: One row per message leg (the core Visual Trace table)
+CREATE TABLE message_headers (
+    id                      UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    sequence_num            BIGSERIAL,
+    project_id              UUID NOT NULL,
+    -- Session & Lineage
+    session_id              VARCHAR(255) NOT NULL,
+    parent_header_id        UUID REFERENCES message_headers(id),
+    corresponding_header_id UUID REFERENCES message_headers(id),
+    super_session_id        VARCHAR(255),
+    -- Routing (one source → one target per row)
+    source_config_name      VARCHAR(255) NOT NULL,
+    target_config_name      VARCHAR(255) NOT NULL,
+    source_business_type    VARCHAR(50) NOT NULL,
+    target_business_type    VARCHAR(50) NOT NULL,
+    -- Message Classification
+    message_type            VARCHAR(100),
+    body_class_name         VARCHAR(255) NOT NULL DEFAULT 'GenericMessageBody',
+    message_body_id         UUID REFERENCES message_bodies(id),
+    -- Invocation
+    type                    VARCHAR(20) NOT NULL DEFAULT 'Request',
+    invocation              VARCHAR(20) NOT NULL DEFAULT 'Queue',
+    priority                VARCHAR(20) NOT NULL DEFAULT 'Async',
+    -- Status & Timing
+    status                  VARCHAR(50) NOT NULL DEFAULT 'created',
+    is_error                BOOLEAN NOT NULL DEFAULT FALSE,
+    error_status            TEXT,
+    time_created            TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    time_processed          TIMESTAMPTZ,
+    -- Extensibility
+    description             TEXT,
+    metadata                JSONB DEFAULT '{}'::jsonb,
+    -- Denormalized ACK
+    ack_content             BYTEA,
+    ack_type                VARCHAR(20)
+);
+
+CREATE INDEX idx_mh_session ON message_headers(session_id);
+CREATE INDEX idx_mh_project ON message_headers(project_id);
+CREATE INDEX idx_mh_sequence ON message_headers(sequence_num);
+CREATE INDEX idx_mh_parent ON message_headers(parent_header_id);
+CREATE INDEX idx_mh_time ON message_headers(time_created DESC);
+CREATE INDEX idx_mh_body ON message_headers(message_body_id);
+```
+
+### How the Visual Trace / Sequence Diagram Works
+
+```
+Query: SELECT * FROM message_headers WHERE session_id = $1 ORDER BY sequence_num
+
+Each row IS one arrow:
+  source_config_name (swimlane) ──arrow──→ target_config_name (swimlane)
+
+Swimlanes derived from DISTINCT source/target pairs with their business_type.
+Ordering from sequence_num (no timestamp collisions).
+Tree structure from parent_header_id (indent child messages).
+Request/Response pairing from corresponding_header_id.
+```
+
+### IRIS Field Mapping
+
+| IRIS Ens.MessageHeader | HIE message_headers | Notes |
+|------------------------|---------------------|-------|
+| MessageId (auto-increment) | sequence_num (BIGSERIAL) | Global ordering |
+| SessionId | session_id | Groups entire journey |
+| CorrespondingMessageId | corresponding_header_id | Request↔Response |
+| SourceConfigName | source_config_name | Item that SENT |
+| TargetConfigName | target_config_name | Item that RECEIVED |
+| SourceBusinessType | source_business_type | "service"/"process"/"operation" |
+| TargetBusinessType | target_business_type | "service"/"process"/"operation" |
+| MessageBodyClassName | body_class_name | Polymorphic body reference |
+| MessageBodyId | message_body_id | FK to message_bodies |
+| Type | type | "Request"/"Response" |
+| Status | status | Lifecycle state |
+| IsError | is_error | Boolean |
+| ErrorStatus | error_status | Error text |
+| TimeCreated | time_created | Creation timestamp |
+| TimeProcessed | time_processed | Completion timestamp |
+| SuperSession | super_session_id | Batch grouping |
+| Description | description | Human-readable |
+
+---
+
+## Layer 1: In-Memory Transport (Existing)
+
+The following sections describe the **in-memory transport model** (Layer 1). This is the `MessageEnvelope` / `MessageHeader` / `MessageBody` design from Phase 4 that travels with the message between hosts. It is **separate from** the persisted trace layer above.
 
 ---
 

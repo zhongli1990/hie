@@ -1,7 +1,7 @@
 # OpenLI HIE — Documentation Index
 
-**Version:** 1.7.5
-**Last Updated:** February 11, 2026
+**Version:** 1.8.2
+**Last Updated:** February 13, 2026
 
 ---
 
@@ -9,13 +9,15 @@
 
 ```
 docs/
-├── INDEX.md                          ← You are here
+├── index.md                          ← You are here
+├── api/                              ← API endpoint documentation
 ├── architecture/                     ← Technical architecture & engine design
-├── design/                           ← Product vision, roadmaps, design proposals
+├── design/                           ← Product vision, roadmaps, UX/UI design
 ├── guides/                           ← User-facing how-to guides & tutorials
 ├── internal/                         ← Dev-only: phase status, checklists, migration
-├── reference/                        ← Settings, specs, API, testing
-└── releases/                         ← Release notes per version
+├── reference/                        ← Settings, specs, testing guides
+├── releases/                         ← Release notes per version
+└── requirements/                     ← Requirements specifications
 ```
 
 ---
@@ -41,6 +43,9 @@ docs/
 | [Scalability Architecture](architecture/SCALABILITY_ARCHITECTURE.md) | Scaling strategy & assessment |
 | [Message Model](architecture/MESSAGE_MODEL.md) | Message envelope design (Phase 4) |
 | [Message Envelope Design](architecture/MESSAGE_ENVELOPE_DESIGN.md) | Polymorphic messaging architecture |
+| [Message Model Session Analysis](architecture/MESSAGE_MODEL_SESSION_ANALYSIS.md) | Session tracking gaps & meta message model architecture |
+| [Session ID Design](architecture/SESSION_ID_DESIGN.md) | Enterprise session ID tracking for sequence diagram visualization |
+| [**MessageHeader & Body Redesign**](architecture/MESSAGE_HEADER_BODY_REDESIGN.md) | **Revised message model: IRIS/Rhapsody/Mirth-compatible, one-row-per-leg design** |
 | [Engine Implementation Plan](architecture/ENGINE_IMPLEMENTATION_PLAN.md) | LI Engine implementation plan |
 | [Optimization Plan](architecture/OPTIMIZATION_PLAN.md) | Phase 4-6 optimization strategy |
 | [Meta-Instantiation Plan](architecture/META_INSTANTIATION_PLAN.md) | Meta-instantiation & message uplift |
@@ -56,6 +61,17 @@ docs/
 | [Fullstack Integration Design](design/FULLSTACK_INTEGRATION_DESIGN.md) | Full-stack integration proposal |
 | [UI Design Specification](design/UI_DESIGN_SPECIFICATION.md) | Enterprise UI design spec |
 | [User Management](design/USER_MANAGEMENT.md) | Identity & access management design |
+| [Topology Viewer UX/UI Design](design/TOPOLOGY_VIEWER_UXUI_DESIGN.md) | Production topology viewer design |
+| [Visual Production Diagram](design/VISUAL_PRODUCTION_DIAGRAM.md) | Visual production diagram design |
+| [Message Trace Swimlanes](design/MESSAGE_TRACE_SWIMLANES.md) | IRIS-style message trace swimlane design |
+| [Enterprise Topology Executive Summary](design/ENTERPRISE_TOPOLOGY_EXECUTIVE_SUMMARY.md) | Enterprise-grade topology visualization overview |
+| [Implementation Gap Analysis](design/IMPLEMENTATION_GAP_ANALYSIS.md) | Gap analysis between design and implementation |
+
+## API
+
+| Document | Description |
+|----------|-------------|
+| [Message Trace API](api/MESSAGE_TRACE_API.md) | Session trace and message sequence diagram API |
 
 ## Reference
 
@@ -68,15 +84,25 @@ docs/
 | [Requirements Specification](reference/REQUIREMENTS_SPECIFICATION.md) | Technical requirements |
 | [Skills Compatibility](reference/SKILLS_COMPATIBILITY.md) | Claude & Codex skill format compatibility |
 | [Testing Guide](reference/TESTING_GUIDE.md) | Test suites & Docker-based testing |
+| [Testing Sequence Diagram](reference/TESTING_SEQUENCE_DIAGRAM.md) | Sequence diagram test strategy & procedures |
+
+## Requirements
+
+| Document | Description |
+|----------|-------------|
+| [Topology Viewer Requirements](requirements/TOPOLOGY_VIEWER_REQUIREMENTS.md) | Topology viewer feature requirements |
 
 ## Releases
 
 | Document | Version | Date |
 |----------|---------|------|
+| [Release Notes v1.8.2](releases/RELEASE_NOTES_v1.8.2.md) | 1.8.2 | 2026-02-13 |
+| [Sequence Diagram Delivery](releases/SEQUENCE_DIAGRAM_DELIVERY.md) | 1.8.1 | 2026-02-12 |
+| [Release Notes v1.8.1](releases/RELEASE_NOTES_v1.8.1.md) | 1.8.1 | 2026-02-12 |
+| [Release Notes v1.8.0](releases/RELEASE_NOTES_v1.8.0.md) | 1.8.0 | 2026-02-11 |
 | [Release Notes v1.7.5](releases/RELEASE_NOTES_v1.7.5.md) | 1.7.5 | 2026-02-11 |
 | [Release Notes v1.7.4](releases/RELEASE_NOTES_v1.7.4.md) | 1.7.4 | 2026-02-11 |
-| [Release Notes v1.8.0](releases/RELEASE_NOTES_v1.8.0.md) | 1.8.0 | 2026-02-11 |
-| [Release Notes v1.0–v1.3](releases/RELEASE_NOTES_v1.0-v1.3.md) | 1.0–1.3 | 2026-01-25 |
+| [Release Notes v1.0-v1.3](releases/RELEASE_NOTES_v1.0-v1.3.md) | 1.0-1.3 | 2026-01-25 |
 
 ## Internal (Dev-Only)
 
@@ -88,56 +114,14 @@ docs/
 | [Phase 4 Status](internal/PHASE4_STATUS.md) | Phase 4 completion report |
 | [Implementation Progress](internal/IMPLEMENTATION_PROGRESS.md) | Sprint-level progress tracking |
 | [Implementation Status](internal/IMPLEMENTATION_STATUS.md) | Feature-level status tracking |
+| [Message Model Implementation Complete](internal/MESSAGE_MODEL_IMPLEMENTATION_COMPLETE.md) | Message model metadata implementation report |
+| [Session ID Implementation Summary](internal/SESSION_ID_IMPLEMENTATION_SUMMARY.md) | Session ID propagation implementation report |
 | [Mandatory Guidelines](internal/MANDATORY_IMPLEMENTATION_GUIDELINES.md) | Technical implementation requirements |
 | [Due Diligence Summary](internal/DUE_DILIGENCE_SUMMARY.md) | v0.3.0 due diligence checks |
 | [Import Verification](internal/IMPORT_VERIFICATION_REPORT.md) | Python import verification (v0.3.0) |
 | [Documentation Checklist](internal/DOCUMENTATION_UPDATE_CHECKLIST.md) | v0.3.0 doc update checklist |
-| [Migration Guide v0.3](internal/MIGRATION_GUIDE_v0.3.md) | v0.2 → v0.3 migration |
+| [Migration Guide v0.3](internal/MIGRATION_GUIDE_v0.3.md) | v0.2 to v0.3 migration |
 | [Restructure v0.3 Detail](internal/RESTRUCTURE_v0.3_DETAILED.md) | v0.3.0 restructuring details |
-
----
-
-## Consolidation Plan
-
-The following documents have significant overlap and should be consolidated in a future cleanup pass:
-
-### High Priority — Merge
-
-| Action | Documents | Rationale |
-|--------|-----------|-----------|
-| **Merge** | `design/PRODUCT_ROADMAP.md` + `design/DEVELOPMENT_ROADMAP.md` | Both are roadmaps — one is product-level, one is dev-level. Consolidate into a single `design/ROADMAP.md`. |
-| **Merge** | `architecture/MESSAGE_MODEL.md` + `architecture/MESSAGE_ENVELOPE_DESIGN.md` | Both describe the message model/envelope. MESSAGE_MODEL is the Phase 4 design; MESSAGE_ENVELOPE_DESIGN is the polymorphic architecture. Consolidate into `architecture/MESSAGE_MODEL.md`. |
-| **Merge** | `internal/IMPLEMENTATION_PROGRESS.md` + `internal/IMPLEMENTATION_STATUS.md` | Both track implementation status at different granularities. Consolidate into a single `internal/IMPLEMENTATION_STATUS.md`. |
-| **Merge** | `architecture/ENGINE_IMPLEMENTATION_PLAN.md` + `architecture/OPTIMIZATION_PLAN.md` + `architecture/META_INSTANTIATION_PLAN.md` | Three overlapping implementation/uplift plans. Consolidate into `architecture/ENGINE_IMPLEMENTATION_PLAN.md`. |
-
-### Medium Priority — Review & Prune
-
-| Action | Documents | Rationale |
-|--------|-----------|-----------|
-| **Review** | `internal/PHASE1_STATUS.md` through `PHASE4_STATUS.md` | Historical phase reports. Consider archiving or merging into a single `internal/PHASE_HISTORY.md` since all phases are complete. |
-| **Review** | `internal/DUE_DILIGENCE_SUMMARY.md`, `IMPORT_VERIFICATION_REPORT.md`, `DOCUMENTATION_UPDATE_CHECKLIST.md` | One-time v0.3.0 artifacts. Consider archiving to `internal/archive/` or removing. |
-| **Review** | `internal/RESTRUCTURE_v0.3_DETAILED.md`, `MIGRATION_GUIDE_v0.3.md` | v0.3 migration docs — no longer needed for current users. Archive. |
-| **Review** | `reference/FEATURE_SPECIFICATION.md` + `reference/REQUIREMENTS_SPECIFICATION.md` | Significant overlap between features and requirements. Consider merging into `reference/PRODUCT_SPECIFICATION.md`. |
-
-### Low Priority — Keep As-Is
-
-| Document | Rationale |
-|----------|-----------|
-| All `guides/*` | Each serves a distinct audience/purpose. No overlap. |
-| All `releases/*` | Version-specific, should remain separate per release. |
-| `architecture/ARCHITECTURE_OVERVIEW.md` | Standalone executive summary. |
-| `architecture/CLASS_HIERARCHY_DESIGN.md` | Unique technical reference. |
-| `architecture/SCALABILITY_ARCHITECTURE.md` | Unique scaling assessment. |
-| `reference/MESSAGE_ROUTING_WORKFLOW.md` | New v1.7.5 doc, no overlap. |
-| `reference/CONFIGURATION_REFERENCE.md` | Unique settings reference. |
-
-### Summary
-
-| Priority | Merges | Files Reduced |
-|----------|--------|---------------|
-| High | 4 merges | 45 → 38 (−7 files) |
-| Medium | 3 archives | 38 → 32 (−6 files to archive) |
-| **Total** | | **45 → 32 files** |
 
 ---
 

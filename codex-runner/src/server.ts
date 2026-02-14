@@ -67,7 +67,7 @@ app.use(express.json({ limit: "2mb" }));
 
 // Health check - identical contract to agent-runner
 app.get("/health", (_req: Request, res: Response) => {
-  res.json({ status: "ok", runner: "codex", version: "1.7.4" });
+  res.json({ status: "ok", runner: "codex", version: "1.8.1" });
 });
 
 // Create thread - identical contract to agent-runner

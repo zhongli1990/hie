@@ -669,53 +669,134 @@ class PortalMessageRepository:
         limit: int = 50,
         offset: int = 0,
     ) -> tuple[list[dict], int]:
-        """List messages for a project with filters."""
-        conditions = ["project_id = $1"]
-        params = [project_id]
+        """List messages for a project with filters.
+
+        Queries message_headers (v2) as primary source, with portal_messages
+        as fallback for old data.  The two tables are UNIONed into a common
+        shape that the frontend already understands.
+        """
+        # ── Build dynamic WHERE fragments ──────────────────────────────
+        # v2 conditions (message_headers)
+        v2_conds = ["h.project_id = $1"]
+        # v1 conditions (portal_messages)
+        v1_conds = ["pm.project_id = $1"]
+        params: list = [project_id]
         idx = 2
-        
+
         if item_name:
-            conditions.append(f"item_name = ${idx}")
+            v2_conds.append(f"(h.source_config_name = ${idx} OR h.target_config_name = ${idx})")
+            v1_conds.append(f"pm.item_name = ${idx}")
             params.append(item_name)
             idx += 1
-        
+
         if status:
-            conditions.append(f"status = ${idx}")
+            v2_conds.append(f"h.status = ${idx}")
+            v1_conds.append(f"pm.status = ${idx}")
             params.append(status)
             idx += 1
-        
+
         if message_type:
-            conditions.append(f"message_type ILIKE ${idx}")
+            v2_conds.append(f"h.message_type ILIKE ${idx}")
+            v1_conds.append(f"pm.message_type ILIKE ${idx}")
             params.append(f"%{message_type}%")
             idx += 1
-        
+
         if direction:
-            conditions.append(f"direction = ${idx}")
-            params.append(direction)
+            # v2 has no direction column; map inbound→type='Request', outbound→type='Response'
+            v2_dir_map = {'inbound': 'Request', 'outbound': 'Response'}
+            v2_conds.append(f"h.type = ${idx}")
+            v1_conds.append(f"pm.direction = ${idx}")
+            params.append(v2_dir_map.get(direction, direction))
             idx += 1
-        
-        where_clause = " AND ".join(conditions)
-        
-        # Get total count
-        count_query = f"SELECT COUNT(*) FROM portal_messages WHERE {where_clause}"
-        total = await self._pool.fetchval(count_query, *params)
-        
-        # Get paginated results
-        query = f"""
-            SELECT id, project_id, item_name, item_type, direction, message_type,
-                   correlation_id, status, content_preview, content_size,
-                   source_item, destination_item, remote_host, remote_port,
-                   ack_type, error_message, latency_ms, retry_count,
-                   received_at, completed_at
-            FROM portal_messages
-            WHERE {where_clause}
+
+        v2_where = " AND ".join(v2_conds)
+        v1_where = " AND ".join(v1_conds)
+
+        # ── Count ──────────────────────────────────────────────────────
+        count_query = f"""
+            SELECT (
+                (SELECT COUNT(*) FROM message_headers h WHERE {v2_where})
+                +
+                (SELECT COUNT(*) FROM portal_messages pm WHERE {v1_where})
+            )
+        """
+        try:
+            total = await self._pool.fetchval(count_query, *params) or 0
+        except Exception:
+            # message_headers may not exist yet
+            total = await self._pool.fetchval(
+                f"SELECT COUNT(*) FROM portal_messages pm WHERE {v1_where}", *params
+            ) or 0
+
+        # ── Paginated results (UNION ALL) ──────────────────────────────
+        union_query = f"""
+            (
+                SELECT
+                    h.id, h.project_id,
+                    h.source_config_name AS item_name,
+                    h.source_business_type AS item_type,
+                    CASE WHEN h.type = 'Response' THEN 'outbound' ELSE 'inbound' END AS direction,
+                    COALESCE(h.message_type, b.hl7_message_type) AS message_type,
+                    h.correlation_id,
+                    h.session_id,
+                    h.status,
+                    b.content_preview,
+                    b.content_size,
+                    h.source_config_name AS source_item,
+                    h.target_config_name AS destination_item,
+                    NULL::text AS remote_host,
+                    NULL::int AS remote_port,
+                    NULL::text AS ack_type,
+                    h.error_status AS error_message,
+                    CASE WHEN h.time_created IS NOT NULL AND h.time_processed IS NOT NULL
+                         THEN EXTRACT(EPOCH FROM (h.time_processed - h.time_created))::int * 1000
+                         ELSE NULL END AS latency_ms,
+                    0 AS retry_count,
+                    h.body_class_name,
+                    NULL::text AS schema_name,
+                    NULL::text AS schema_namespace,
+                    h.time_created AS received_at,
+                    h.time_processed AS completed_at
+                FROM message_headers h
+                LEFT JOIN message_bodies b ON h.message_body_id = b.id
+                WHERE {v2_where}
+            )
+            UNION ALL
+            (
+                SELECT
+                    pm.id, pm.project_id, pm.item_name, pm.item_type, pm.direction,
+                    pm.message_type, pm.correlation_id, pm.session_id, pm.status,
+                    pm.content_preview, pm.content_size,
+                    pm.source_item, pm.destination_item, pm.remote_host, pm.remote_port,
+                    pm.ack_type, pm.error_message, pm.latency_ms, pm.retry_count,
+                    pm.body_class_name, pm.schema_name, pm.schema_namespace,
+                    pm.received_at, pm.completed_at
+                FROM portal_messages pm
+                WHERE {v1_where}
+            )
             ORDER BY received_at DESC
             LIMIT ${idx} OFFSET ${idx + 1}
         """
         params.extend([limit, offset])
-        rows = await self._pool.fetch(query, *params)
-        
-        return [dict(r) for r in rows], total or 0
+        try:
+            rows = await self._pool.fetch(union_query, *params)
+        except Exception:
+            # Fallback if message_headers doesn't exist
+            fallback = f"""
+                SELECT id, project_id, item_name, item_type, direction, message_type,
+                       correlation_id, session_id, status, content_preview, content_size,
+                       source_item, destination_item, remote_host, remote_port,
+                       ack_type, error_message, latency_ms, retry_count,
+                       body_class_name, schema_name, schema_namespace,
+                       received_at, completed_at
+                FROM portal_messages pm
+                WHERE {v1_where}
+                ORDER BY received_at DESC
+                LIMIT ${idx} OFFSET ${idx + 1}
+            """
+            rows = await self._pool.fetch(fallback, *params)
+
+        return [dict(r) for r in rows], total
     
     async def get_content(self, message_id: UUID) -> Optional[dict]:
         """Get full message content including raw bytes."""
@@ -735,10 +816,255 @@ class PortalMessageRepository:
         result = await self._pool.execute(query)
         return int(result.split()[1]) if result else 0
     
+    async def list_sessions(
+        self,
+        project_id: UUID,
+        item_name: str | None = None,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> list[dict]:
+        """List message sessions grouped by session_id.
+
+        Queries message_headers (v2) as primary source, with portal_messages
+        as fallback for old data.
+        """
+        # ── v2: message_headers ────────────────────────────────────────
+        v2_conds = ["h.project_id = $1", "h.session_id IS NOT NULL"]
+        v1_conds = ["pm.project_id = $1", "pm.session_id IS NOT NULL"]
+        params: list = [project_id]
+        idx = 2
+
+        if item_name:
+            v2_conds.append(f"(h.source_config_name = ${idx} OR h.target_config_name = ${idx})")
+            v1_conds.append(f"pm.item_name = ${idx}")
+            params.append(item_name)
+            idx += 1
+
+        v2_where = " AND ".join(v2_conds)
+        v1_where = " AND ".join(v1_conds)
+
+        query = f"""
+            SELECT session_id, message_count, started_at, ended_at, success_rate, message_types
+            FROM (
+                SELECT
+                    h.session_id,
+                    COUNT(*) AS message_count,
+                    MIN(h.time_created) AS started_at,
+                    MAX(COALESCE(h.time_processed, h.time_created)) AS ended_at,
+                    ROUND(
+                        COUNT(*) FILTER (WHERE h.status IN ('Completed', 'sent', 'completed'))::numeric /
+                        NULLIF(COUNT(*)::numeric, 0), 2
+                    ) AS success_rate,
+                    array_agg(DISTINCT h.message_type) FILTER (WHERE h.message_type IS NOT NULL) AS message_types
+                FROM message_headers h
+                WHERE {v2_where}
+                GROUP BY h.session_id
+
+                UNION ALL
+
+                SELECT
+                    pm.session_id,
+                    COUNT(*) AS message_count,
+                    MIN(pm.received_at) AS started_at,
+                    MAX(COALESCE(pm.completed_at, pm.received_at)) AS ended_at,
+                    ROUND(
+                        COUNT(*) FILTER (WHERE pm.status IN ('sent', 'completed'))::numeric /
+                        NULLIF(COUNT(*)::numeric, 0), 2
+                    ) AS success_rate,
+                    array_agg(DISTINCT pm.message_type) FILTER (WHERE pm.message_type IS NOT NULL) AS message_types
+                FROM portal_messages pm
+                WHERE {v1_where}
+                  AND pm.session_id NOT IN (SELECT DISTINCT session_id FROM message_headers WHERE project_id = $1 AND session_id IS NOT NULL)
+                GROUP BY pm.session_id
+            ) combined
+            ORDER BY started_at DESC
+            LIMIT ${idx} OFFSET ${idx + 1}
+        """
+        params.extend([limit, offset])
+        try:
+            rows = await self._pool.fetch(query, *params)
+        except Exception:
+            # Fallback if message_headers doesn't exist
+            fallback_conds = ["project_id = $1", "session_id IS NOT NULL"]
+            fallback_params: list = [project_id]
+            f_idx = 2
+            if item_name:
+                fallback_conds.append(f"item_name = ${f_idx}")
+                fallback_params.append(item_name)
+                f_idx += 1
+            fw = " AND ".join(fallback_conds)
+            fallback = f"""
+                SELECT session_id, COUNT(*) as message_count,
+                    MIN(received_at) as started_at,
+                    MAX(COALESCE(completed_at, received_at)) as ended_at,
+                    ROUND(COUNT(*) FILTER (WHERE status IN ('sent','completed'))::numeric / NULLIF(COUNT(*)::numeric,0), 2) as success_rate,
+                    array_agg(DISTINCT message_type) FILTER (WHERE message_type IS NOT NULL) as message_types
+                FROM portal_messages WHERE {fw}
+                GROUP BY session_id ORDER BY started_at DESC
+                LIMIT ${f_idx} OFFSET ${f_idx + 1}
+            """
+            fallback_params.extend([limit, offset])
+            rows = await self._pool.fetch(fallback, *fallback_params)
+
+        return [dict(r) for r in rows]
+
+    async def get_session_trace(self, session_id: str) -> Optional[dict]:
+        """
+        Get trace data for a session to build the Visual Trace / sequence diagram.
+
+        Primary path: message_headers (v2, IRIS convention: one row per leg).
+        Fallback path: portal_messages (v1, read-only for historical data).
+        """
+        # ── V2: message_headers (primary) ──────────────────────────────
+        try:
+            headers_query = """
+                SELECT
+                    h.id, h.sequence_num, h.session_id,
+                    h.source_config_name, h.target_config_name,
+                    h.source_business_type, h.target_business_type,
+                    h.message_type, h.body_class_name, h.message_body_id,
+                    h.type, h.status, h.is_error, h.error_status,
+                    h.time_created, h.time_processed,
+                    h.parent_header_id, h.corresponding_header_id,
+                    h.correlation_id, h.description,
+                    b.content_preview, b.hl7_message_type, b.hl7_doc_type
+                FROM message_headers h
+                LEFT JOIN message_bodies b ON h.message_body_id = b.id
+                WHERE h.session_id = $1
+                ORDER BY h.sequence_num ASC
+            """
+            headers = await self._pool.fetch(headers_query, session_id)
+
+            if headers:
+                # Extract unique items from source/target pairs with their business_type
+                items_set: dict[str, str] = {}
+                for h in headers:
+                    src = h['source_config_name']
+                    tgt = h['target_config_name']
+                    if src and src not in items_set:
+                        items_set[src] = h['source_business_type']
+                    if tgt and tgt not in items_set:
+                        items_set[tgt] = h['target_business_type']
+
+                type_order = {'service': 0, 'process': 1, 'operation': 2}
+                items = [
+                    {"item_name": name, "item_type": btype}
+                    for name, btype in sorted(
+                        items_set.items(),
+                        key=lambda x: (type_order.get(x[1], 3), x[0])
+                    )
+                ]
+
+                # Build messages list — each header IS one arrow
+                messages = []
+                for h in headers:
+                    latency_ms = None
+                    if h['time_created'] and h['time_processed']:
+                        delta = h['time_processed'] - h['time_created']
+                        latency_ms = int(delta.total_seconds() * 1000)
+
+                    messages.append({
+                        "id": h['id'],
+                        "sequence_num": h['sequence_num'],
+                        "source_config_name": h['source_config_name'],
+                        "target_config_name": h['target_config_name'],
+                        "source_business_type": h['source_business_type'],
+                        "target_business_type": h['target_business_type'],
+                        "message_type": h['message_type'] or h['hl7_message_type'],
+                        "body_class_name": h['body_class_name'],
+                        "type": h['type'],
+                        "status": h['status'],
+                        "is_error": h['is_error'],
+                        "error_status": h['error_status'],
+                        "time_created": h['time_created'],
+                        "time_processed": h['time_processed'],
+                        "latency_ms": latency_ms,
+                        "content_preview": h['content_preview'],
+                        "correlation_id": h['correlation_id'],
+                        "description": h['description'],
+                        "parent_header_id": h['parent_header_id'],
+                        "corresponding_header_id": h['corresponding_header_id'],
+                        "session_id": session_id,
+                        "hl7_doc_type": h['hl7_doc_type'],
+                    })
+
+                return {
+                    "messages": messages,
+                    "items": items,
+                    "started_at": headers[0]['time_created'] if headers else None,
+                    "ended_at": headers[-1]['time_processed'] or headers[-1]['time_created'] if headers else None,
+                    "trace_version": "v2",
+                }
+        except Exception:
+            pass  # message_headers table may not exist yet — fall through
+
+        # ── V1: portal_messages (read-only fallback for historical data) ──
+        messages_query = """
+            SELECT
+                id, item_name, item_type, direction, message_type,
+                status, source_item, destination_item,
+                received_at, completed_at, latency_ms,
+                correlation_id, session_id, content_preview,
+                body_class_name, schema_name, schema_namespace
+            FROM portal_messages
+            WHERE session_id = $1
+            ORDER BY received_at ASC
+        """
+        messages = await self._pool.fetch(messages_query, session_id)
+
+        # If no match by session_id, try matching by message id (UUID).
+        # The frontend falls back to msg.id when msg.session_id is NULL.
+        if not messages:
+            try:
+                from uuid import UUID as _UUID
+                _UUID(session_id)  # validate it's a UUID
+                messages = await self._pool.fetch(
+                    """
+                    SELECT
+                        id, item_name, item_type, direction, message_type,
+                        status, source_item, destination_item,
+                        received_at, completed_at, latency_ms,
+                        correlation_id, session_id, content_preview,
+                        body_class_name, schema_name, schema_namespace
+                    FROM portal_messages
+                    WHERE id = $1::uuid
+                    ORDER BY received_at ASC
+                    """,
+                    session_id,
+                )
+            except (ValueError, Exception):
+                pass
+
+        if not messages:
+            return None
+
+        items_set_legacy = set()
+        for msg in messages:
+            if msg['item_name']:
+                items_set_legacy.add((msg['item_name'], msg['item_type']))
+            if msg['source_item']:
+                items_set_legacy.add((msg['source_item'], 'process'))
+            if msg['destination_item']:
+                items_set_legacy.add((msg['destination_item'], 'process'))
+
+        type_order = {'service': 0, 'process': 1, 'operation': 2, 'unknown': 3}
+        items = [
+            {"item_name": name, "item_type": itype}
+            for name, itype in sorted(items_set_legacy, key=lambda x: (type_order.get(x[1], 3), x[0]))
+        ]
+
+        return {
+            "messages": [dict(m) for m in messages],
+            "items": items,
+            "started_at": messages[0]['received_at'] if messages else None,
+            "ended_at": messages[-1]['completed_at'] or messages[-1]['received_at'] if messages else None,
+            "trace_version": "v1",
+        }
+
     async def get_stats(self, project_id: UUID) -> dict:
         """Get message statistics for a project."""
         query = """
-            SELECT 
+            SELECT
                 COUNT(*) as total,
                 COUNT(*) FILTER (WHERE status = 'completed' OR status = 'sent') as successful,
                 COUNT(*) FILTER (WHERE status = 'failed' OR status = 'error') as failed,

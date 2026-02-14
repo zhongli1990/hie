@@ -157,7 +157,8 @@ class Envelope(BaseModel):
     message_id: UUID = Field(default_factory=uuid4, description="Unique message identifier")
     correlation_id: UUID = Field(default_factory=uuid4, description="Groups related messages")
     causation_id: UUID | None = Field(default=None, description="ID of causing message")
-    
+    session_id: str | None = Field(default=None, description="Session tracking ID (e.g., SES-{uuid})")
+
     # Temporal
     created_at: datetime = Field(
         default_factory=lambda: datetime.now(timezone.utc),
@@ -168,6 +169,7 @@ class Envelope(BaseModel):
     
     # Classification
     message_type: str = Field(default="", description="Logical message type (e.g., ADT^A01)")
+    body_class_name: str = Field(default="Engine.core.message.GenericMessage", description="Fully qualified message class name for meta-instantiation")
     priority: Priority = Field(default=Priority.NORMAL, description="Processing priority")
     tags: tuple[str, ...] = Field(default=(), description="Arbitrary tags for filtering")
     
@@ -229,13 +231,15 @@ class Envelope(BaseModel):
 class Payload:
     """
     Message payload containing the raw content.
-    
+
     Key principle: The raw bytes are AUTHORITATIVE. Any parsed representation
     is transient and disposable. The raw content is preserved end-to-end.
     """
     raw: bytes
     content_type: str = "application/octet-stream"
     encoding: str = "utf-8"
+    schema_name: str = "GenericMessage"  # Logical schema name (e.g., "ADT_A01", "Patient")
+    schema_namespace: str = "urn:hie:generic"  # Schema namespace/URI
     _properties: dict[str, Property] = field(default_factory=dict)
     
     @property
@@ -263,9 +267,11 @@ class Payload:
             raw=raw,
             content_type=self.content_type,
             encoding=self.encoding,
+            schema_name=self.schema_name,
+            schema_namespace=self.schema_namespace,
             _properties=self._properties.copy(),
         )
-    
+
     def with_property(self, key: str, prop: Property) -> Payload:
         """Return new Payload with added/updated property."""
         new_props = self._properties.copy()
@@ -274,9 +280,11 @@ class Payload:
             raw=self.raw,
             content_type=self.content_type,
             encoding=self.encoding,
+            schema_name=self.schema_name,
+            schema_namespace=self.schema_namespace,
             _properties=new_props,
         )
-    
+
     def with_properties(self, properties: dict[str, Property]) -> Payload:
         """Return new Payload with updated properties."""
         new_props = self._properties.copy()
@@ -285,6 +293,8 @@ class Payload:
             raw=self.raw,
             content_type=self.content_type,
             encoding=self.encoding,
+            schema_name=self.schema_name,
+            schema_namespace=self.schema_namespace,
             _properties=new_props,
         )
     

@@ -6,6 +6,10 @@ Provides adapter base classes for protocol-specific communication:
 - OutboundAdapter: Sends data to external systems
 - MLLPInboundAdapter: MLLP/TCP inbound for HL7v2
 - MLLPOutboundAdapter: MLLP/TCP outbound for HL7v2
+- InboundFileAdapter: File polling inbound
+- OutboundFileAdapter: File writing outbound
+- InboundHTTPAdapter: HTTP server inbound
+- OutboundHTTPAdapter: HTTP client outbound
 """
 
 from Engine.li.adapters.base import (
@@ -29,6 +33,18 @@ from Engine.li.adapters.mllp import (
     MLLP_END_BLOCK,
     MLLP_CARRIAGE_RETURN,
 )
+from Engine.li.adapters.file import (
+    InboundFileAdapter,
+    OutboundFileAdapter,
+    FileAdapterError,
+)
+from Engine.li.adapters.http import (
+    InboundHTTPAdapter,
+    OutboundHTTPAdapter,
+    HTTPAdapterError,
+    HTTPRequest,
+    HTTPResponse,
+)
 
 __all__ = [
     # Base classes
@@ -40,7 +56,6 @@ __all__ = [
     # MLLP adapters
     "MLLPInboundAdapter",
     "MLLPOutboundAdapter",
-    # MLLP utilities
     "MLLPFrameError",
     "MLLPConnectionError",
     "MLLPTimeoutError",
@@ -51,4 +66,14 @@ __all__ = [
     "MLLP_START_BLOCK",
     "MLLP_END_BLOCK",
     "MLLP_CARRIAGE_RETURN",
+    # File adapters
+    "InboundFileAdapter",
+    "OutboundFileAdapter",
+    "FileAdapterError",
+    # HTTP adapters
+    "InboundHTTPAdapter",
+    "OutboundHTTPAdapter",
+    "HTTPAdapterError",
+    "HTTPRequest",
+    "HTTPResponse",
 ]

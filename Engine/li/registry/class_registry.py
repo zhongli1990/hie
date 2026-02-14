@@ -448,6 +448,15 @@ class ClassRegistry:
             "EnsLib.HL7.MsgRouter.RoutingEngine": "li.hosts.routing.HL7RoutingEngine",
             "EnsLib.HL7.SequenceManager": "li.hosts.hl7.HL7SequenceManager",
             
+            # FHIR Services
+            "HS.FHIRServer.Interop.Service": "li.hosts.fhir.FHIRRESTService",
+            
+            # FHIR Operations
+            "HS.FHIR.REST.Operation": "li.hosts.fhir.FHIRRESTOperation",
+            
+            # FHIR Processes
+            "HS.FHIRServer.Interop.Process": "li.hosts.fhir_routing.FHIRRoutingEngine",
+            
             # Generic
             "EnsLib.MsgRouter.RoutingEngine": "li.hosts.routing.RoutingEngine",
             "EnsLib.EMail.AlertOperation": "li.hosts.email.EmailAlertOperation",

@@ -1,5 +1,3 @@
-version: '3.8'
-
 # Complete HIE Stack for E2E Testing
 # Usage: docker-compose -f docker-compose.full.yml up --build
 #
@@ -309,6 +307,7 @@ services:
   # ==========================================================================
   redis-commander:
     image: rediscommander/redis-commander:latest
+    platform: linux/amd64
     container_name: hie-redis-commander
     ports:
       - "9331:8081"

@@ -17,7 +17,9 @@ import {
   ArrowUpRight,
   ArrowDownLeft,
   Inbox,
+  Activity,
 } from "lucide-react";
+import { MessageSequenceDiagram } from "@/components/ProductionDiagram/MessageSequenceDiagram";
 import {
   listMessages,
   getMessage,
@@ -91,6 +93,7 @@ export default function MessagesPage() {
   const [directionFilter, setDirectionFilter] = useState<string>("all");
   const [workspacesLoading, setWorkspacesLoading] = useState(true);
   const [projectsLoading, setProjectsLoading] = useState(false);
+  const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
   const pageSize = 50;
 
   // Load workspaces on mount
@@ -466,6 +469,13 @@ export default function MessagesPage() {
                     <td className="px-4 py-3 text-right">
                       <div className="flex items-center justify-end gap-1">
                         <button
+                          className="rounded p-1 text-nhs-blue hover:bg-blue-50 hover:text-blue-700"
+                          title="View Sequence Diagram"
+                          onClick={(e) => { e.stopPropagation(); setSelectedSessionId(msg.session_id || msg.id); }}
+                        >
+                          <Activity className="h-4 w-4" />
+                        </button>
+                        <button
                           className="rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600"
                           title="View details"
                           onClick={(e) => { e.stopPropagation(); handleSelectMessage(msg); }}
@@ -702,6 +712,15 @@ export default function MessagesPage() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Message Sequence Diagram Modal */}
+      {selectedSessionId && (
+        <MessageSequenceDiagram
+          sessionId={selectedSessionId}
+          projectId={selectedProjectId}
+          onClose={() => setSelectedSessionId(null)}
+        />
       )}
     </div>
   );

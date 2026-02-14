@@ -1,13 +1,218 @@
 # HIE Implementation Progress Report
 **Current Branch: main**
 
-**Date:** February 11, 2026
-**Sprint:** v1.8.0 - GenAI Session Persistence & UI Fixes
-**Status:** 🟢 **COMPLETE** (All critical UX issues resolved)
+**Date:** February 12, 2026
+**Sprint:** v1.8.1 - Message Trace Discoverability & Platform Compatibility
+**Status:** 🟢 **COMPLETE** (Message Trace UX overhaul + ARM64 fix)
 
 ---
 
-## Executive Summary - v1.8.0
+## Executive Summary - v1.8.1
+
+Successfully implemented **7 critical UX improvements** to make the Message Trace Swimlanes feature discoverable and intuitive, plus resolved Docker platform compatibility on Apple Silicon Macs.
+
+**What Was Fixed:**
+- ✅ Message Trace feature now discoverable with prominent blue gradient banners
+- ✅ Always-on demo mode with "🎯 Demo Trace" button
+- ✅ Enhanced message rows with gradient "View Trace" buttons and E2E badges
+- ✅ Cross-tab navigation from Config, Events, and Metrics tabs
+- ✅ Docker ARM64 compatibility for redis-commander on Apple Silicon
+
+**Files Changed:** 2 files (ItemDetailPanel.tsx, docker-compose.yml)
+**Lines Added:** 260+ lines of UI enhancements
+**Build Status:** ✅ Clean build - 0 TypeScript errors, Portal health check passed
+
+---
+
+## v1.8.1 Implementation Details
+
+### ✅ Enhancement #1: Message Trace Feature Banner (COMPLETED)
+
+**Issue:** User manual testing couldn't find Message Trace Swimlanes feature - hidden behind empty states and not intuitively discoverable.
+
+**Solution:** Added prominent blue gradient banner at top of Messages tab:
+```typescript
+<div className="px-4 py-3 bg-gradient-to-r from-blue-50 to-purple-50 border-b border-blue-200">
+  <h3 className="text-sm font-semibold text-blue-900 mb-1">
+    End-to-End Message Tracing
+  </h3>
+  <p className="text-xs text-blue-700 leading-relaxed">
+    Track messages through the entire integration pipeline...
+    Click <strong>"View Trace →"</strong> on any message...
+  </p>
+  <button onClick={() => setShowDemoTrace(true)}
+    className="flex-shrink-0 px-3 py-1.5 text-xs font-semibold text-white bg-blue-600 rounded-lg">
+    🎯 Demo Trace
+  </button>
+</div>
+```
+
+**Files Changed:**
+- `Portal/src/components/ProductionDiagram/ItemDetailPanel.tsx:512-694`
+
+---
+
+### ✅ Enhancement #2: Enhanced Message Row UI (COMPLETED)
+
+**Solution:** Added gradient "View Trace" button to every message row:
+```typescript
+<button onClick={onViewTrace}
+  className="flex-shrink-0 group relative px-4 py-2.5 text-sm font-semibold text-white bg-gradient-to-r from-blue-600 to-purple-600 rounded-lg hover:from-blue-700 hover:to-purple-700 transition-all shadow-sm hover:shadow-md">
+  <span className="flex items-center gap-2">
+    <svg>...</svg>
+    View Trace
+    <svg className="group-hover:translate-x-1 transition-transform">→</svg>
+  </span>
+  {/* Tooltip */}
+  <span className="absolute -top-10 left-1/2 -translate-x-1/2 px-3 py-1 text-xs font-medium text-white bg-gray-900 rounded-lg opacity-0 group-hover:opacity-100">
+    Track end-to-end message flow
+  </span>
+</button>
+```
+
+**Features:**
+- Blue→purple gradient for prominent CTAs
+- "E2E Traced" purple badge on all messages
+- Tooltip on hover
+- Arrow animation on hover
+
+**Files Changed:**
+- `Portal/src/components/ProductionDiagram/ItemDetailPanel.tsx:697-784`
+
+---
+
+### ✅ Enhancement #3: Always-On Demo Mode (COMPLETED)
+
+**Solution:** Modified mock data generator to always produce sample messages:
+```typescript
+function generateMockMessages(item: ProjectItem, forceSamples: boolean = false): MessageItem[] {
+  // Determine message count
+  let messageCount = 0;
+  if (item.metrics && (item.metrics as any).messages_received) {
+    messageCount = Math.min((item.metrics as any).messages_received, 20);
+  } else if (forceSamples) {
+    // Always generate 5-10 sample messages for UX demonstration
+    messageCount = Math.floor(Math.random() * 6) + 5;
+  }
+  // ...
+}
+```
+
+**Result:**
+- Users can always access demo mode even without real data
+- "View Sample Message Trace" button in empty states
+- 5-10 realistic HL7 messages generated (ADT^A01, ADT^A02, ORU^R01, etc.)
+
+**Files Changed:**
+- `Portal/src/components/ProductionDiagram/ItemDetailPanel.tsx:793-839`
+
+---
+
+### ✅ Enhancement #4: Config Tab Cross-Reference (COMPLETED)
+
+**Solution:** Added "Message Tracing Available" card in Config tab:
+```typescript
+<div className="rounded-lg border-2 border-blue-200 bg-blue-50 p-4">
+  <h3 className="text-sm font-semibold text-blue-900 mb-2 flex items-center gap-2">
+    <svg>...</svg>
+    Message Tracing Available
+  </h3>
+  <p className="text-xs text-blue-700 mb-3">
+    Track messages flowing through <strong>{item.name}</strong> with end-to-end swimlane visualization.
+  </p>
+  <button onClick={() => onSwitchTab("messages")}
+    className="w-full px-3 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg">
+    <MessageSquare className="h-4 w-4" />
+    View Messages & Traces
+  </button>
+</div>
+```
+
+**Files Changed:**
+- `Portal/src/components/ProductionDiagram/ItemDetailPanel.tsx:136-157`
+
+---
+
+### ✅ Enhancement #5: Events Tab Cross-Reference (COMPLETED)
+
+**Solution:** Added "View Message Traces" button in Events tab footer:
+```typescript
+<div className="pt-2 border-t">
+  <button onClick={() => onSwitchTab("messages")}
+    className="w-full flex items-center justify-between px-3 py-2 text-xs font-medium text-blue-700 bg-blue-50 rounded-lg hover:bg-blue-100">
+    <span className="flex items-center gap-2">
+      <svg>...</svg>
+      View Message Traces
+    </span>
+    <svg>→</svg>
+  </button>
+</div>
+```
+
+**Files Changed:**
+- `Portal/src/components/ProductionDiagram/ItemDetailPanel.tsx:286-301`
+
+---
+
+### ✅ Enhancement #6: Metrics Tab Cross-Reference (COMPLETED)
+
+**Solution:** Added purple "Messages Processed" card when metrics show message count:
+```typescript
+{messagesReceived > 0 && (
+  <div className="rounded-lg border-2 border-purple-200 bg-purple-50 p-4">
+    <div className="flex items-start justify-between gap-3">
+      <div className="flex-1">
+        <h4 className="text-sm font-semibold text-purple-900 mb-1 flex items-center gap-2">
+          <svg>...</svg>
+          {messagesReceived.toLocaleString()} Messages Processed
+        </h4>
+        <p className="text-xs text-purple-700">
+          View individual message traces with swimlane visualization
+        </p>
+      </div>
+      <button onClick={() => onSwitchTab("messages")}
+        className="flex-shrink-0 px-3 py-1.5 text-xs font-medium text-white bg-purple-600 rounded-lg">
+        View Traces
+      </button>
+    </div>
+  </div>
+)}
+```
+
+**Files Changed:**
+- `Portal/src/components/ProductionDiagram/ItemDetailPanel.tsx:908-930`
+
+---
+
+### ✅ Fix #7: Docker ARM64 Compatibility (COMPLETED)
+
+**Issue:** redis-commander Docker image platform mismatch on Apple Silicon Macs:
+```
+! redis-commander The requested image's platform (linux/amd64) does not match the detected host platform (linux/arm64/v8)
+```
+
+**Solution:** Added explicit platform specification:
+```yaml
+redis-commander:
+  image: rediscommander/redis-commander:latest
+  platform: linux/amd64  # Added for ARM64 compatibility via Rosetta 2
+  container_name: hie-redis-commander
+  # ...
+```
+
+**Result:**
+- Docker automatically uses Rosetta 2 emulation on Apple Silicon
+- No impact on AMD64 systems (native execution)
+- No platform mismatch warnings
+
+**Files Changed:**
+- `docker-compose.yml:312`
+
+---
+
+## Previous Releases
+
+### Executive Summary - v1.8.0
 
 Successfully resolved **4 critical UX issues** in GenAI Agents and Chat pages identified post-release v1.7.3. All sessions now persist to database, UI layout follows saas-codex reference pattern, and session history loads correctly.
 
