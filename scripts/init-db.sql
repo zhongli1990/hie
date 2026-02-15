@@ -406,7 +406,12 @@ CREATE TABLE IF NOT EXISTS portal_messages (
     completed_at TIMESTAMPTZ,
     metadata JSONB DEFAULT '{}'::jsonb,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    -- v1.8.2+ columns (session tracking & message model metadata)
+    session_id VARCHAR(255),
+    body_class_name VARCHAR(500) DEFAULT 'Engine.core.message.GenericMessage',
+    schema_name VARCHAR(255) DEFAULT 'GenericMessage',
+    schema_namespace VARCHAR(500) DEFAULT 'urn:hie:generic'
 );
 
 -- Indexes for portal message queries
@@ -417,6 +422,9 @@ CREATE INDEX IF NOT EXISTS idx_portal_messages_type ON portal_messages(message_t
 CREATE INDEX IF NOT EXISTS idx_portal_messages_direction ON portal_messages(direction);
 CREATE INDEX IF NOT EXISTS idx_portal_messages_received ON portal_messages(received_at DESC);
 CREATE INDEX IF NOT EXISTS idx_portal_messages_correlation ON portal_messages(correlation_id);
+CREATE INDEX IF NOT EXISTS idx_portal_messages_session ON portal_messages(session_id) WHERE session_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_portal_messages_body_class ON portal_messages(body_class_name);
+CREATE INDEX IF NOT EXISTS idx_portal_messages_schema ON portal_messages(schema_name);
 
 -- Trigger for auto-updating timestamps
 DROP TRIGGER IF EXISTS update_portal_messages_updated_at ON portal_messages;
@@ -620,3 +628,133 @@ CREATE INDEX IF NOT EXISTS idx_template_usage_user ON template_usage_log(user_id
 CREATE INDEX IF NOT EXISTS idx_template_usage_tenant ON template_usage_log(tenant_id);
 CREATE INDEX IF NOT EXISTS idx_template_usage_template ON template_usage_log(template_id);
 CREATE INDEX IF NOT EXISTS idx_template_usage_skill ON template_usage_log(skill_id);
+
+-- ============================================================================
+-- GenAI Session Tables (v1.8.0 — Agents & Chat pages)
+-- These are the tables actually used by GenAISessionRepository.
+-- The older agent_sessions/agent_runs/agent_messages tables above are from
+-- the v1.6.0 agent-runner integration and remain for backward compatibility.
+-- ============================================================================
+
+CREATE TABLE IF NOT EXISTS genai_sessions (
+    session_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    workspace_id UUID NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+    project_id UUID REFERENCES projects(id) ON DELETE SET NULL,
+    runner_type VARCHAR(50) NOT NULL CHECK (runner_type IN ('claude', 'codex', 'gemini', 'azure', 'bedrock', 'openli', 'custom')),
+    thread_id VARCHAR(255),
+    title VARCHAR(500) NOT NULL,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS genai_messages (
+    message_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    session_id UUID NOT NULL REFERENCES genai_sessions(session_id) ON DELETE CASCADE,
+    run_id VARCHAR(255),
+    role VARCHAR(50) NOT NULL CHECK (role IN ('user', 'assistant', 'tool', 'system')),
+    content TEXT NOT NULL,
+    metadata JSONB,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_genai_sessions_workspace ON genai_sessions(workspace_id);
+CREATE INDEX IF NOT EXISTS idx_genai_sessions_project ON genai_sessions(project_id);
+CREATE INDEX IF NOT EXISTS idx_genai_sessions_created ON genai_sessions(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_genai_messages_session ON genai_messages(session_id);
+CREATE INDEX IF NOT EXISTS idx_genai_messages_created ON genai_messages(created_at ASC);
+
+DROP TRIGGER IF EXISTS update_genai_sessions_updated_at ON genai_sessions;
+CREATE TRIGGER update_genai_sessions_updated_at
+    BEFORE UPDATE ON genai_sessions
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+-- ============================================================================
+-- IRIS Message Model Tables (v1.9.0 — Visual Trace per-leg tracing)
+-- message_bodies: stores actual message content (one per unique message)
+-- message_headers: one row per message leg (source→target), the core Visual Trace table
+-- ============================================================================
+
+CREATE TABLE IF NOT EXISTS message_bodies (
+    id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    body_class_name     VARCHAR(255) NOT NULL DEFAULT 'Ens.MessageBody',
+    content_type        VARCHAR(100) NOT NULL DEFAULT 'application/octet-stream',
+    raw_content         BYTEA,
+    content_preview     TEXT,
+    content_size        INTEGER NOT NULL DEFAULT 0,
+    checksum            VARCHAR(64),
+    -- HL7v2-specific columns (NULL for non-HL7 messages)
+    hl7_version         VARCHAR(10),
+    hl7_doc_type        VARCHAR(100),
+    hl7_message_type    VARCHAR(50),
+    hl7_control_id      VARCHAR(100),
+    hl7_sending_app     VARCHAR(100),
+    hl7_sending_fac     VARCHAR(100),
+    hl7_receiving_app   VARCHAR(100),
+    hl7_receiving_fac   VARCHAR(100),
+    -- FHIR-specific columns (NULL for non-FHIR messages)
+    fhir_version        VARCHAR(10),
+    fhir_resource_type  VARCHAR(100),
+    fhir_resource_id    VARCHAR(255),
+    -- HTTP/Stream-specific columns (NULL for non-HTTP messages)
+    http_method         VARCHAR(10),
+    http_url            TEXT,
+    original_filename   VARCHAR(500),
+    -- Extensibility
+    metadata            JSONB DEFAULT '{}'::jsonb,
+    created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_mb_checksum ON message_bodies(checksum);
+CREATE INDEX IF NOT EXISTS idx_mb_class ON message_bodies(body_class_name);
+CREATE INDEX IF NOT EXISTS idx_mb_created ON message_bodies(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_mb_hl7_type ON message_bodies(hl7_message_type) WHERE body_class_name = 'EnsLib.HL7.Message';
+CREATE INDEX IF NOT EXISTS idx_mb_hl7_control ON message_bodies(hl7_control_id) WHERE body_class_name = 'EnsLib.HL7.Message';
+CREATE INDEX IF NOT EXISTS idx_mb_hl7_sending ON message_bodies(hl7_sending_fac, hl7_sending_app) WHERE body_class_name = 'EnsLib.HL7.Message';
+CREATE INDEX IF NOT EXISTS idx_mb_fhir_resource ON message_bodies(fhir_resource_type, fhir_resource_id) WHERE body_class_name LIKE 'EnsLib.FHIR.%';
+
+CREATE TABLE IF NOT EXISTS message_headers (
+    id                      UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    sequence_num            BIGSERIAL,
+    project_id              UUID NOT NULL,
+    -- Session & Lineage
+    session_id              VARCHAR(255) NOT NULL,
+    parent_header_id        UUID REFERENCES message_headers(id),
+    corresponding_header_id UUID REFERENCES message_headers(id),
+    super_session_id        VARCHAR(255),
+    -- Routing: one source → one target per row
+    source_config_name      VARCHAR(255) NOT NULL,
+    target_config_name      VARCHAR(255) NOT NULL,
+    source_business_type    VARCHAR(50) NOT NULL,
+    target_business_type    VARCHAR(50) NOT NULL,
+    -- Message Classification
+    message_type            VARCHAR(100),
+    body_class_name         VARCHAR(255) NOT NULL DEFAULT 'Ens.MessageBody',
+    message_body_id         UUID REFERENCES message_bodies(id),
+    -- Invocation
+    type                    VARCHAR(20) NOT NULL DEFAULT 'Request',
+    invocation              VARCHAR(20) NOT NULL DEFAULT 'Queue',
+    priority                VARCHAR(20) NOT NULL DEFAULT 'Async',
+    -- Status & Timing
+    status                  VARCHAR(50) NOT NULL DEFAULT 'Created',
+    is_error                BOOLEAN NOT NULL DEFAULT FALSE,
+    error_status            TEXT,
+    time_created            TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    time_processed          TIMESTAMPTZ,
+    -- Extensibility
+    description             TEXT,
+    correlation_id          VARCHAR(255),
+    metadata                JSONB DEFAULT '{}'::jsonb
+);
+
+CREATE INDEX IF NOT EXISTS idx_mh_session ON message_headers(session_id);
+CREATE INDEX IF NOT EXISTS idx_mh_project ON message_headers(project_id);
+CREATE INDEX IF NOT EXISTS idx_mh_sequence ON message_headers(sequence_num);
+CREATE INDEX IF NOT EXISTS idx_mh_parent ON message_headers(parent_header_id);
+CREATE INDEX IF NOT EXISTS idx_mh_corresponding ON message_headers(corresponding_header_id);
+CREATE INDEX IF NOT EXISTS idx_mh_time ON message_headers(time_created DESC);
+CREATE INDEX IF NOT EXISTS idx_mh_body ON message_headers(message_body_id);
+CREATE INDEX IF NOT EXISTS idx_mh_source ON message_headers(source_config_name);
+CREATE INDEX IF NOT EXISTS idx_mh_target ON message_headers(target_config_name);
+CREATE INDEX IF NOT EXISTS idx_mh_status ON message_headers(status);
+CREATE INDEX IF NOT EXISTS idx_mh_project_session ON message_headers(project_id, session_id);
+CREATE INDEX IF NOT EXISTS idx_mh_type ON message_headers(message_type);
