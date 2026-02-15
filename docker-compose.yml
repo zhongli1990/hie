@@ -64,6 +64,8 @@ services:
       context: .
       dockerfile: Dockerfile.manager
     container_name: hie-manager
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     ports:
       - "9302:8081"           # Management API
       - "10001-10020:10001-10020"  # MLLP/TCP ports for HL7 services (20 ports)
