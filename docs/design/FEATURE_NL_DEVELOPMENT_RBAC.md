@@ -120,28 +120,28 @@ These guardrails make the NL development lifecycle safe for NHS production. They
 
 | Feature Requirement | Status Today | What's Needed |
 |-------------------|-------------|--------------|
-| FR-1 Design | **Working** — AI proposes architecture via skills | Guided workflow templates (Phase 5) |
+| FR-1 Design | **Working** — AI proposes architecture via skills; QuickStartPanel templates delivered | **DONE** — Phase 1 |
 | FR-2 Build | **Working** — 19 HIE tools create all config objects | Already functional |
 | FR-3 Configure | **Working** — `hie_create_item` accepts adapter/host settings | Already functional |
 | FR-4 Test | **Working** — `hie_test_item` sends test messages | Already functional |
 | FR-5 Review | **Working** — `clinical-safety-review` skill runs 32-item checklist | Already functional |
 | FR-6 Compliance | **Working** — `nhs-compliance-check` skill validates standards | Already functional |
-| FR-7 Deploy | **Working but unsafe** — anyone can deploy anywhere | **Needs GR-1 (RBAC) + GR-3 (Approvals)** |
+| FR-7 Deploy | **Partially safe** — RBAC blocks developer deploy (GR-1 done); approval workflow pending | **Needs GR-3 (Approvals) — Phase 4** |
 | FR-8 Monitor | **Working** — `hie_project_status` returns runtime metrics | Already functional |
 | FR-9 Debug | **Partial** — status available but no message trace integration | Future: integrate with Visual Trace |
 | FR-10 Modify | **Working** — AI can add items/connections/rules to existing projects | Already functional |
-| FR-11 Extend | **Working** — `write_file` + `hie_reload_custom_classes` | **Needs GR-6 (namespace enforcement)** |
+| FR-11 Extend | **Working + guarded** — `write_file` + `hie_reload_custom_classes` + GR-6 namespace enforcement | **DONE** — Phase 1 |
 | FR-12 Rollback | **Not implemented** | **Needs GR-4 (snapshots) + new `hie_rollback_project` tool** |
 | FR-13 Discover | **Working** — `hie_list_item_types` + ClassRegistry | Already functional |
 | FR-14 Teach | **Working** — system prompt includes full architecture context | Already functional |
-| GR-1 RBAC | **Not implemented** | **Phase 1** |
-| GR-2 Audit | **Not implemented** (hooks log to stdout only) | **Phase 2** |
-| GR-3 Approvals | **Not implemented** | **Phase 3** |
-| GR-4 Snapshots | **Not implemented** | **Phase 4** |
-| GR-5 Tenant Isolation | **Partial** — workspaces exist but not enforced per-user | **Phase 1 (hooks)** |
-| GR-6 Namespace Enforcement | **Partial** — ClassRegistry enforces `li.*` read-only, but `write_file` is unrestricted | **Phase 1 (hooks)** |
+| GR-1 RBAC | **IMPLEMENTED** — `roles.py` + Layer 1 tool filtering + Layer 2 hook validation | Delivered in Phase 1 commit `bbb0b3c` |
+| GR-2 Audit | **Partial** — hooks log to stdout with role/tenant context; DB audit table not yet implemented | **Phase 3** |
+| GR-3 Approvals | **Not implemented** | **Phase 4** |
+| GR-4 Snapshots | **Not implemented** | **Phase 5** |
+| GR-5 Tenant Isolation | **IMPLEMENTED** — JWT tenant_id extracted and passed through hook context | Delivered in Phase 1 |
+| GR-6 Namespace Enforcement | **IMPLEMENTED** — `is_class_name_writable()` + `is_file_path_writable()` enforce `custom.*` only for non-admin roles | Delivered in Phase 1 |
 
-**Key takeaway:** 10 of 14 feature requirements already work today. The platform is already GenAI-native. What's missing are the guardrails (GR-1 through GR-6) that make it safe for production, plus FR-12 (Rollback) and FR-9 improvements.
+**Key takeaway:** 10 of 14 feature requirements work. GR-1, GR-5, and GR-6 guardrails are now implemented. Remaining work: GR-2 (audit DB), GR-3 (approvals), GR-4 (snapshots), FR-12 (rollback), and FR-9 improvements.
 
 ### Gap Analysis: What Blocks Production Readiness
 
@@ -776,47 +776,63 @@ Added to `agent-runner/app/tools.py`:
 
 ## 10. Implementation Phases & Priority
 
+| Phase | Description | Status | Commit |
+|-------|-------------|--------|--------|
+| **Phase 1** | RBAC Guardrails + Portal NL Experience — roles.py, JWT auth, Layer 1+2 enforcement, namespace protection, QuickStartPanel, role badge, capabilities sidebar | **DONE** | `bbb0b3c` on `feature/nl-development-rbac` |
+| **Phase 2** | *(renumbered)* — see below | | |
+
+### Remaining Phases
+
 | Phase | Description | Effort | Impact | Priority |
 |-------|-------------|--------|--------|----------|
-| **Phase 1** | Portal NL Experience — QuickStart templates, role badge, skill sidebar | 2 days | **High** — User-facing feature, makes NL development discoverable | **P0** |
-| **Phase 2** | Role-Based Tool Filtering — RBAC guardrails for safe NL development | 1-2 days | **Critical** — Prevents unsafe tool access in production | **P0** |
-| **Phase 3** | Audit Logging — NHS DCB0129/DCB0160 compliance | 1 day | **High** — Regulatory requirement | **P1** |
-| **Phase 4** | Approval Workflows — Production deployment change management | 2 days | **High** — Human review gate | **P1** |
-| **Phase 5** | Configuration Snapshots & Rollback — Enables FR-12 | 1 day | **Medium** — Safety net for deployments | **P2** |
+| **Phase 3** | Audit Logging — `AuditLog` model, `/audit` API, PII sanitisation, Portal audit viewer | 1-2 days | **High** — NHS DCB0129/DCB0160 compliance | **P1** |
+| **Phase 4** | Approval Workflows — `DeploymentApproval` model, `/approvals` API, Portal approval UI, hook intercept on production deploy | 2 days | **High** — Change management gate | **P1** |
+| **Phase 5** | Configuration Snapshots & Rollback — `ConfigSnapshot` model, `hie_rollback_project` tool, auto-snapshot on deploy | 1 day | **Medium** — Safety net for FR-12 | **P2** |
 
-**Recommendation:** Phases 1-2 together (3-4 days) deliver the core product: NL development with RBAC safety. Phases 3-4 (3 days) add the NHS compliance layer. Phase 5 (1 day) enables rollback.
+### Phase 1 Delivery Summary (Completed)
 
-**Note:** The NL development lifecycle (FR-1 through FR-14) is 70% functional today. The primary work is making it safe (guardrails) and discoverable (Portal UX).
+**Branch:** `feature/nl-development-rbac`
+**Files delivered:** 7 files, 856 insertions
 
-**All work will be done on a dedicated feature branch** (e.g., `feature/nl-development-rbac`) to allow isolated review before merging to main.
+| Component | File | What Was Built |
+|-----------|------|---------------|
+| RBAC Engine | `agent-runner/app/roles.py` (NEW) | 5-role hierarchy, tool/skill permission matrices, `is_class_name_writable()`, `is_file_path_writable()` |
+| JWT Auth | `agent-runner/app/main.py` | `extract_user_context()`, `/roles`, `/roles/me` endpoints |
+| Layer 1 Enforcement | `agent-runner/app/agent.py` | `filter_tools()` + `filter_skills()` before Claude API call; role preamble with namespace instructions |
+| Layer 2 Enforcement | `agent-runner/app/hooks.py` | RBAC validation, namespace enforcement, lifecycle protection, audit logging with role context |
+| NL Workflow Templates | `Portal/src/components/AgentWorkflows/QuickStartPanel.tsx` (NEW) | 11 role-filtered template cards across 5 categories |
+| Portal UX | `Portal/src/app/(app)/agents/page.tsx` | Role badge, capabilities panel, QuickStartPanel, JWT forwarding, namespace hint |
+| Dependency | `agent-runner/requirements.txt` | `python-jose[cryptography]` |
+
+**All work on feature branch** `feature/nl-development-rbac` for isolated review before merging to main.
 
 ---
 
 ## 11. Critical File Inventory
 
-### New Files
+### Delivered Files (Phase 1)
+
+| File | Status | Purpose |
+|------|--------|---------|
+| `agent-runner/app/roles.py` | **NEW** | Role definitions, tool/skill permission matrices, namespace enforcement |
+| `Portal/src/components/AgentWorkflows/QuickStartPanel.tsx` | **NEW** | 11 NL workflow template cards with role filtering |
+| `agent-runner/app/main.py` | **MODIFIED** | JWT extraction, `/roles` + `/roles/me` endpoints |
+| `agent-runner/app/agent.py` | **MODIFIED** | Layer 1 tool/skill filtering, role preamble in system prompt |
+| `agent-runner/app/hooks.py` | **MODIFIED** | Layer 2 RBAC, namespace enforcement, lifecycle protection, audit logging |
+| `agent-runner/requirements.txt` | **MODIFIED** | Added `python-jose[cryptography]` |
+| `Portal/src/app/(app)/agents/page.tsx` | **MODIFIED** | Role badge, capabilities panel, QuickStartPanel, JWT forwarding |
+
+### Pending Files (Phases 3-5)
 
 | File | Phase | Purpose |
 |------|-------|---------|
-| `agent-runner/app/roles.py` | 1 | Role definitions, tool/skill permission matrices, filter functions |
-| `prompt-manager/app/routers/audit.py` | 2 | Audit log CRUD API endpoints |
-| `prompt-manager/app/routers/approvals.py` | 3 | Deployment approval workflow API |
-| `Portal/src/app/(app)/admin/audit/page.tsx` | 2 | Audit log viewer with filters and CSV export |
-| `Portal/src/app/(app)/admin/approvals/page.tsx` | 3 | Approval review and approve/reject UI |
-| `Portal/src/components/AgentWorkflows/QuickStartPanel.tsx` | 5 | NL workflow template cards |
-
-### Modified Files
-
-| File | Phase | Change Summary |
-|------|-------|---------------|
-| `agent-runner/app/main.py` | 1 | JWT extraction, pass role to agent loop (~20 lines) |
-| `agent-runner/app/agent.py` | 1 | Tool/skill filtering by role, role in system prompt (~15 lines) |
-| `agent-runner/app/hooks.py` | 1,2,3 | Role validation, tenant isolation, namespace enforcement, audit logging, deploy interception (~50 lines total) |
-| `agent-runner/app/tools.py` | 4 | Add `hie_rollback_project` tool (~20 lines) |
-| `agent-runner/requirements.txt` | 1 | Add `python-jose[cryptography]` dependency |
-| `prompt-manager/app/models.py` | 2,3,4 | Add AuditLog, DeploymentApproval, ConfigSnapshot models (~60 lines) |
-| `prompt-manager/app/main.py` | 2,3 | Register audit + approvals routers (~4 lines) |
-| `Portal/src/app/(app)/agents/page.tsx` | 5 | Role badge, skill sidebar, capability hints (~40 lines) |
+| `prompt-manager/app/routers/audit.py` | 3 | Audit log CRUD API endpoints |
+| `prompt-manager/app/routers/approvals.py` | 4 | Deployment approval workflow API |
+| `Portal/src/app/(app)/admin/audit/page.tsx` | 3 | Audit log viewer with filters and CSV export |
+| `Portal/src/app/(app)/admin/approvals/page.tsx` | 4 | Approval review and approve/reject UI |
+| `prompt-manager/app/models.py` | 3,4,5 | Add AuditLog, DeploymentApproval, ConfigSnapshot models |
+| `prompt-manager/app/main.py` | 3,4 | Register audit + approvals routers |
+| `agent-runner/app/tools.py` | 5 | Add `hie_rollback_project` tool |
 
 ---
 
