@@ -88,6 +88,9 @@ services:
       - NEXT_PUBLIC_API_URL=http://hie-manager:8081
       - PROMPT_MANAGER_URL=http://hie-prompt-manager:8083
       - AGENT_RUNNER_URL=http://hie-agent-runner:8082
+      - WORKSPACES_ROOT=/workspaces
+    volumes:
+      - hie_workspaces:/workspaces
     depends_on:
       - hie-manager
       - hie-agent-runner

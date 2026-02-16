@@ -1,20 +1,30 @@
 import { NextRequest, NextResponse } from "next/server";
 import { writeFile, mkdir } from "fs/promises";
-import { join } from "path";
+import { join, resolve } from "path";
 import { existsSync } from "fs";
 
-const PROJECT_FILES_BASE = process.env.PROJECT_FILES_PATH || "/app/data/project-files";
+const WORKSPACES_ROOT = process.env.WORKSPACES_ROOT || "/workspaces";
+
+function validatePath(base: string, target: string): string {
+  const resolvedBase = resolve(base);
+  const resolvedTarget = resolve(target);
+  if (!resolvedTarget.startsWith(resolvedBase)) {
+    throw new Error("Path traversal detected");
+  }
+  return resolvedTarget;
+}
 
 export async function POST(request: NextRequest) {
   try {
     const formData = await request.formData();
     const workspace_id = formData.get("workspace_id") as string;
     const project_id = formData.get("project_id") as string;
+    const targetPath = (formData.get("path") as string) || "/";
     const files = formData.getAll("files") as File[];
 
-    if (!workspace_id || !project_id) {
+    if (!workspace_id) {
       return NextResponse.json(
-        { error: "workspace_id and project_id are required" },
+        { error: "workspace_id is required" },
         { status: 400 }
       );
     }
@@ -23,10 +33,15 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "No files provided" }, { status: 400 });
     }
 
-    // Create project directory if it doesn't exist
-    const projectDir = join(PROJECT_FILES_BASE, workspace_id, project_id);
-    if (!existsSync(projectDir)) {
-      await mkdir(projectDir, { recursive: true });
+    // Build workspace directory path
+    const wsDir = project_id
+      ? join(WORKSPACES_ROOT, workspace_id, project_id)
+      : join(WORKSPACES_ROOT, workspace_id);
+
+    const uploadDir = validatePath(WORKSPACES_ROOT, join(wsDir, targetPath));
+
+    if (!existsSync(uploadDir)) {
+      await mkdir(uploadDir, { recursive: true });
     }
 
     const uploadedFiles: string[] = [];
@@ -35,9 +50,15 @@ export async function POST(request: NextRequest) {
       const bytes = await file.arrayBuffer();
       const buffer = Buffer.from(bytes);
 
-      // Sanitize filename to prevent directory traversal
-      const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
-      const filepath = join(projectDir, safeName);
+      // Preserve original filename but sanitize path components
+      const safeName = file.name.split("/").pop()?.replace(/[<>:"|?*]/g, "_") || "unnamed";
+      const filepath = validatePath(WORKSPACES_ROOT, join(uploadDir, safeName));
+
+      // Ensure parent directory exists (for nested paths from webkitdirectory)
+      const parentDir = filepath.substring(0, filepath.lastIndexOf("/"));
+      if (!existsSync(parentDir)) {
+        await mkdir(parentDir, { recursive: true });
+      }
 
       await writeFile(filepath, buffer);
       uploadedFiles.push(safeName);

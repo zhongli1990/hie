@@ -1,59 +1,80 @@
 import { NextRequest, NextResponse } from "next/server";
 import { readdir, readFile, stat } from "fs/promises";
-import { join } from "path";
+import { join, resolve } from "path";
 import { existsSync } from "fs";
 import archiver from "archiver";
 import { Readable } from "stream";
 
-const PROJECT_FILES_BASE = process.env.PROJECT_FILES_PATH || "/app/data/project-files";
+const WORKSPACES_ROOT = process.env.WORKSPACES_ROOT || "/workspaces";
+
+function validatePath(base: string, target: string): string {
+  const resolvedBase = resolve(base);
+  const resolvedTarget = resolve(target);
+  if (!resolvedTarget.startsWith(resolvedBase)) {
+    throw new Error("Path traversal detected");
+  }
+  return resolvedTarget;
+}
 
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
     const workspace_id = searchParams.get("workspace_id");
     const project_id = searchParams.get("project_id");
+    const filePath = searchParams.get("path");
 
-    if (!workspace_id || !project_id) {
+    if (!workspace_id) {
       return NextResponse.json(
-        { error: "workspace_id and project_id are required" },
+        { error: "workspace_id is required" },
         { status: 400 }
       );
     }
 
-    const projectDir = join(PROJECT_FILES_BASE, workspace_id, project_id);
+    // Build workspace directory path
+    const wsDir = project_id
+      ? join(WORKSPACES_ROOT, workspace_id, project_id)
+      : join(WORKSPACES_ROOT, workspace_id);
 
-    if (!existsSync(projectDir)) {
+    const targetDir = filePath
+      ? validatePath(WORKSPACES_ROOT, join(wsDir, filePath))
+      : validatePath(WORKSPACES_ROOT, wsDir);
+
+    if (!existsSync(targetDir)) {
       return NextResponse.json(
-        { error: "Project directory not found" },
+        { error: "Directory not found" },
         { status: 404 }
       );
     }
 
-    // Create a zip archive
-    const archive = archiver("zip", { zlib: { level: 9 } });
-
-    // Convert archive stream to web stream
-    const stream = Readable.toWeb(archive) as ReadableStream;
-
-    // Add all files from the project directory
-    const files = await readdir(projectDir);
-    for (const filename of files) {
-      const filepath = join(projectDir, filename);
-      const fileStat = await stat(filepath);
-
-      if (fileStat.isFile()) {
-        const content = await readFile(filepath);
-        archive.append(content, { name: filename });
-      }
+    // Check if it's a single file download
+    const fileStat = await stat(targetDir);
+    if (fileStat.isFile()) {
+      const content = await readFile(targetDir);
+      const filename = targetDir.split("/").pop() || "file";
+      return new NextResponse(content, {
+        headers: {
+          "Content-Type": "application/octet-stream",
+          "Content-Disposition": `attachment; filename="${filename}"`,
+        },
+      });
     }
 
-    // Finalize the archive
+    // Directory download as ZIP
+    const archive = archiver("zip", { zlib: { level: 9 } });
+    const stream = Readable.toWeb(archive) as ReadableStream;
+
+    // Recursively add all files
+    archive.directory(targetDir, false);
     archive.finalize();
+
+    const zipName = project_id
+      ? `${project_id}-files.zip`
+      : `${workspace_id}-files.zip`;
 
     return new NextResponse(stream, {
       headers: {
         "Content-Type": "application/zip",
-        "Content-Disposition": `attachment; filename="project-${project_id}-files.zip"`,
+        "Content-Disposition": `attachment; filename="${zipName}"`,
       },
     });
   } catch (error) {

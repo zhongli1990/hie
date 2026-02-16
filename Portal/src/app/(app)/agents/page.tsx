@@ -12,7 +12,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Bot, Play, Square, RotateCcw, ChevronDown, ChevronRight, Terminal, FileCode, Loader2, Send, Sparkles, Upload, Download } from "lucide-react";
+import { Bot, Play, Square, RotateCcw, ChevronDown, ChevronRight, Terminal, FileCode, Loader2, Send, Sparkles, Upload, Download, FolderOpen, File, Eye, ArrowLeft, X } from "lucide-react";
 import { useAppContext } from "@/contexts/AppContext";
 import { useWorkspace } from "@/contexts/WorkspaceContext";
 import { listProjects, type Project } from "@/lib/api-v2";
@@ -82,6 +82,11 @@ export default function AgentsPage() {
   const eventSourceRef = useRef<EventSource | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
+  const [fileItems, setFileItems] = useState<{ name: string; path: string; type: "file" | "directory"; size: number | null; modified_at: string }[]>([]);
+  const [currentFilePath, setCurrentFilePath] = useState("/");
+  const [parentFilePath, setParentFilePath] = useState<string | null>(null);
+  const [fileLoading, setFileLoading] = useState(false);
+  const [viewingFile, setViewingFile] = useState<{ name: string; content: string } | null>(null);
 
   // Use agentStatus from context as primary status
   const status = agentStatus;
@@ -342,6 +347,30 @@ export default function AgentsPage() {
             if (currentSessionId && assistantText) {
               persistMessage(currentSessionId, "assistant", assistantText, runId);
             }
+
+          // ── Codex runner events ───────────────────────────────────────
+          } else if (eventType === "item.completed" && parsed.item) {
+            const item = parsed.item;
+            if (item.type === "command_execution") {
+              // Persist tool message to database
+              if (currentSessionId) {
+                persistMessage(currentSessionId, "tool",
+                  item.status === "completed" ? "Command executed" : "Command failed",
+                  runId, {
+                    tool_name: "shell",
+                    tool_input: item.command,
+                    tool_output: item.aggregated_output || `Exit code: ${item.exit_code}`,
+                  });
+              }
+            } else if (item.type === "agent_message" || item.text) {
+              setStreamingText("");
+              // Persist assistant message to database
+              if (currentSessionId && item.text) {
+                persistMessage(currentSessionId, "assistant", item.text, runId);
+              }
+            }
+          } else if (eventType === "run.started") {
+            // Codex run started
           }
 
           // Handle tool call indicators
@@ -461,6 +490,62 @@ export default function AgentsPage() {
       alert(err instanceof Error ? err.message : "Download failed");
     }
   }
+
+  // ─── File Browser ──────────────────────────────────────────────────────────
+
+  const fetchFileList = useCallback(async (browsePath: string = "/") => {
+    if (!currentWorkspace) return;
+    setFileLoading(true);
+    try {
+      const params = new URLSearchParams({
+        workspace_id: currentWorkspace.id,
+        path: browsePath,
+      });
+      if (selectedProjectId) params.set("project_id", selectedProjectId);
+
+      const res = await fetch(`/api/project-files/list?${params.toString()}`);
+      if (!res.ok) throw new Error("Failed to list files");
+      const data = await res.json();
+      setFileItems(data.items || []);
+      setCurrentFilePath(data.current_path || "/");
+      setParentFilePath(data.parent_path);
+    } catch (err) {
+      console.error("File list error:", err);
+      setFileItems([]);
+    } finally {
+      setFileLoading(false);
+    }
+  }, [currentWorkspace, selectedProjectId]);
+
+  async function handleViewFile(filePath: string) {
+    if (!currentWorkspace) return;
+    try {
+      const params = new URLSearchParams({
+        workspace_id: currentWorkspace.id,
+        path: filePath,
+        action: "view",
+      });
+      if (selectedProjectId) params.set("project_id", selectedProjectId);
+
+      const res = await fetch(`/api/project-files/list?${params.toString()}`);
+      if (!res.ok) throw new Error("Failed to view file");
+      const data = await res.json();
+      if (data.is_binary) {
+        alert("Binary file - cannot view in browser");
+        return;
+      }
+      setViewingFile({ name: data.name, content: data.content || "" });
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Failed to view file");
+    }
+  }
+
+  // Load file list when switching to files tab
+  useEffect(() => {
+    if (viewMode === "files" && currentWorkspace) {
+      fetchFileList("/");
+    }
+  }, [viewMode, currentWorkspace, selectedProjectId, fetchFileList]);
 
   // Cleanup EventSource on unmount
   useEffect(() => {
@@ -727,46 +812,108 @@ export default function AgentsPage() {
               </pre>
             ) : (
               <div className="space-y-4">
+                {/* File Viewer Modal */}
+                {viewingFile && (
+                  <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+                    <div className="bg-white dark:bg-zinc-800 rounded-lg w-full max-w-3xl mx-4 max-h-[80vh] flex flex-col border border-gray-200 dark:border-zinc-700">
+                      <div className="flex items-center justify-between p-4 border-b border-gray-200 dark:border-zinc-700">
+                        <span className="font-medium text-sm text-gray-900 dark:text-white">{viewingFile.name}</span>
+                        <button onClick={() => setViewingFile(null)} className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200">
+                          <X className="h-4 w-4" />
+                        </button>
+                      </div>
+                      <pre className="flex-1 overflow-auto p-4 text-xs font-mono text-gray-800 dark:text-gray-200 whitespace-pre-wrap">
+                        {viewingFile.content}
+                      </pre>
+                    </div>
+                  </div>
+                )}
+
+                {/* Toolbar */}
                 <div className="flex items-center justify-between">
-                  <h3 className="text-sm font-medium text-gray-900 dark:text-white">Project Files</h3>
-                  {selectedProject && (
-                    <span className="text-xs text-gray-500 dark:text-gray-400">
-                      Project: {selectedProject.name}
+                  <div className="flex items-center gap-2">
+                    {parentFilePath !== null && (
+                      <button
+                        onClick={() => fetchFileList(parentFilePath!)}
+                        className="flex items-center gap-1 px-2 py-1 text-xs text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white border border-gray-200 dark:border-zinc-600 rounded"
+                      >
+                        <ArrowLeft className="h-3 w-3" /> Back
+                      </button>
+                    )}
+                    <span className="text-xs text-gray-500 dark:text-gray-400 font-mono truncate max-w-[200px]">
+                      {currentFilePath}
                     </span>
-                  )}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      multiple
+                      className="hidden"
+                      onChange={handleFileUpload}
+                    />
+                    <button
+                      onClick={() => fileInputRef.current?.click()}
+                      disabled={!currentWorkspace || uploading}
+                      className="flex items-center gap-1 px-2 py-1 text-xs border border-gray-200 dark:border-zinc-600 rounded text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-zinc-700 disabled:opacity-50"
+                    >
+                      <Upload className="h-3 w-3" />
+                      {uploading ? "..." : "Upload"}
+                    </button>
+                    <button
+                      onClick={handleFileDownload}
+                      disabled={!currentWorkspace}
+                      className="flex items-center gap-1 px-2 py-1 text-xs border border-gray-200 dark:border-zinc-600 rounded text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-zinc-700 disabled:opacity-50"
+                    >
+                      <Download className="h-3 w-3" /> ZIP
+                    </button>
+                  </div>
                 </div>
-                <div className="space-y-3">
-                  <input
-                    ref={fileInputRef}
-                    type="file"
-                    multiple
-                    className="hidden"
-                    onChange={handleFileUpload}
-                  />
-                  <button
-                    onClick={() => fileInputRef.current?.click()}
-                    disabled={!selectedProjectId || uploading}
-                    className="w-full flex items-center gap-2 px-4 py-3 text-sm border border-gray-200 dark:border-zinc-600 rounded-lg text-gray-900 dark:text-white hover:bg-gray-50 dark:hover:bg-zinc-700/50 disabled:opacity-50 disabled:cursor-not-allowed"
-                    title={!selectedProjectId ? "Please select a project first" : "Upload files to project"}
-                  >
-                    <Upload className="h-4 w-4" />
-                    {uploading ? "Uploading..." : "Upload Folder/Files"}
-                  </button>
-                  <button
-                    onClick={handleFileDownload}
-                    disabled={!selectedProjectId}
-                    className="w-full flex items-center gap-2 px-4 py-3 text-sm border border-gray-200 dark:border-zinc-600 rounded-lg text-gray-900 dark:text-white hover:bg-gray-50 dark:hover:bg-zinc-700/50 disabled:opacity-50 disabled:cursor-not-allowed"
-                    title={!selectedProjectId ? "Please select a project first" : "Download project files as ZIP"}
-                  >
-                    <Download className="h-4 w-4" />
-                    Download Project Files
-                  </button>
-                </div>
-                <div className="mt-6 p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
-                  <p className="text-xs text-blue-800 dark:text-blue-200">
-                    File management will allow you to upload code, configuration files, and download generated outputs from the agent workspace.
-                  </p>
-                </div>
+
+                {/* File List */}
+                {fileLoading ? (
+                  <div className="flex items-center justify-center py-8">
+                    <Loader2 className="h-5 w-5 animate-spin text-gray-400" />
+                  </div>
+                ) : fileItems.length === 0 ? (
+                  <div className="text-center py-8">
+                    <FolderOpen className="h-10 w-10 mx-auto text-gray-300 dark:text-zinc-600 mb-2" />
+                    <p className="text-sm text-gray-500 dark:text-gray-400">
+                      {currentWorkspace ? "No files yet. Upload files or run an agent to generate them." : "Select a workspace to browse files."}
+                    </p>
+                  </div>
+                ) : (
+                  <div className="border border-gray-200 dark:border-zinc-700 rounded-lg overflow-hidden">
+                    {fileItems.map((item) => (
+                      <div
+                        key={item.path}
+                        className="flex items-center gap-3 px-3 py-2 text-sm hover:bg-gray-50 dark:hover:bg-zinc-700/50 border-b border-gray-100 dark:border-zinc-700/50 last:border-b-0 cursor-pointer"
+                        onClick={() => {
+                          if (item.type === "directory") {
+                            fetchFileList(item.path);
+                          } else {
+                            handleViewFile(item.path);
+                          }
+                        }}
+                      >
+                        {item.type === "directory" ? (
+                          <FolderOpen className="h-4 w-4 text-amber-500 flex-shrink-0" />
+                        ) : (
+                          <File className="h-4 w-4 text-gray-400 flex-shrink-0" />
+                        )}
+                        <span className="flex-1 truncate text-gray-900 dark:text-white">{item.name}</span>
+                        {item.size !== null && (
+                          <span className="text-xs text-gray-400 flex-shrink-0">
+                            {item.size < 1024 ? `${item.size}B` : item.size < 1024 * 1024 ? `${(item.size / 1024).toFixed(1)}KB` : `${(item.size / 1024 / 1024).toFixed(1)}MB`}
+                          </span>
+                        )}
+                        {item.type === "file" && (
+                          <Eye className="h-3 w-3 text-gray-400 flex-shrink-0" />
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
           </div>

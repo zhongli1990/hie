@@ -105,6 +105,9 @@ services:
       - PROMPT_MANAGER_URL=http://hie-prompt-manager:8083
       - AGENT_RUNNER_URL=http://hie-agent-runner:8082
       - CODEX_RUNNER_URL=http://hie-codex-runner:8081
+      - WORKSPACES_ROOT=/workspaces
+    volumes:
+      - hie_workspaces:/workspaces
     depends_on:
       - hie-manager
       - hie-agent-runner
@@ -172,9 +175,12 @@ services:
       - OPENAI_API_KEY=${OPENAI_API_KEY:-}
       - CODEX_SANDBOX_TYPE=none
       - WORKSPACES_ROOT=/workspaces
+      - HIE_MANAGER_URL=http://hie-manager:8081
+      - GLOBAL_SKILLS_PATH=/app/skills
       - PORT=8081
     volumes:
       - hie_workspaces:/workspaces
+      - ./agent-runner/skills:/app/skills:ro
     restart: unless-stopped
     networks:
       - hie-network
