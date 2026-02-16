@@ -19,14 +19,59 @@ from typing import Any
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
+from jose import JWTError, jwt
 from pydantic import BaseModel
 
 from .config import WORKSPACES_ROOT, PORT
 from .agent import run_agent_loop
 from .events import make_event, format_sse
 from .api.skills_router import router as skills_router
+from .roles import ROLE_DISPLAY_NAMES, ROLE_DESCRIPTIONS, ALL_ROLES
 
 logger = logging.getLogger(__name__)
+
+# JWT configuration — shared with prompt-manager
+JWT_SECRET_KEY = os.environ.get("JWT_SECRET_KEY", "hie-dev-secret-change-in-production")
+JWT_ALGORITHM = os.environ.get("JWT_ALGORITHM", "HS256")
+ENABLE_DEV_AUTH = os.environ.get("ENABLE_DEV_AUTH", "true").lower() == "true"
+
+
+def extract_user_context(request: Request) -> dict[str, str]:
+    """Extract user identity and role from JWT token.
+
+    Falls back to platform_admin when no token is provided AND dev auth is
+    enabled. In production (ENABLE_DEV_AUTH=false), missing token = viewer.
+    """
+    auth_header = request.headers.get("authorization", "")
+    if not auth_header.startswith("Bearer "):
+        if ENABLE_DEV_AUTH:
+            return {
+                "user_id": "00000000-0000-0000-0000-000000000001",
+                "tenant_id": "00000000-0000-0000-0000-000000000001",
+                "role": "platform_admin",
+            }
+        return {
+            "user_id": "anonymous",
+            "tenant_id": "",
+            "role": "viewer",
+        }
+
+    token = auth_header[7:]  # strip "Bearer "
+    try:
+        payload = jwt.decode(token, JWT_SECRET_KEY, algorithms=[JWT_ALGORITHM])
+        user_id = payload.get("sub") or payload.get("user_id", "unknown")
+        return {
+            "user_id": str(user_id),
+            "tenant_id": str(payload.get("tenant_id", "")),
+            "role": payload.get("role", "user"),
+        }
+    except JWTError as e:
+        logger.warning(f"JWT decode failed: {e}")
+        return {
+            "user_id": "anonymous",
+            "tenant_id": "",
+            "role": "viewer",
+        }
 
 HOOKS_CONFIG_PATH = os.environ.get("HOOKS_CONFIG_PATH", "/app/hooks_config.json")
 
@@ -91,7 +136,7 @@ def _save_hooks_config(config: dict[str, Any]) -> None:
         json.dump(config, f, indent=2)
 
 
-app = FastAPI(title="OpenLI HIE Agent Runner", version="1.8.1")
+app = FastAPI(title="OpenLI HIE Agent Runner", version="2.0.0-dev")
 app.include_router(skills_router)
 app.add_middleware(
     CORSMiddleware,
@@ -158,7 +203,7 @@ def must_resolve_workspace(path_str: str) -> str:
 
 @app.get("/health")
 async def health() -> dict[str, str]:
-    return {"status": "ok", "service": "hie-agent-runner", "version": "1.8.1"}
+    return {"status": "ok", "service": "hie-agent-runner", "version": "2.0.0-dev"}
 
 
 @app.post("/threads", response_model=CreateThreadResponse)
@@ -189,7 +234,7 @@ async def create_thread(req: CreateThreadRequest) -> CreateThreadResponse:
 
 
 @app.post("/runs", response_model=CreateRunResponse)
-async def create_run(req: CreateRunRequest) -> CreateRunResponse:
+async def create_run(req: CreateRunRequest, request: Request) -> CreateRunResponse:
     thread_record = threads.get(req.threadId)
     if not thread_record:
         raise HTTPException(status_code=404, detail="Thread not found")
@@ -197,23 +242,31 @@ async def create_run(req: CreateRunRequest) -> CreateRunResponse:
     if not req.prompt or not req.prompt.strip():
         raise HTTPException(status_code=400, detail="Prompt is required")
 
+    user_context = extract_user_context(request)
+
     run_id = str(uuid.uuid4())
     run_record = RunRecord(run_id, req.threadId, req.prompt)
     runs[run_id] = run_record
 
-    asyncio.create_task(_execute_run(run_record, thread_record))
+    asyncio.create_task(_execute_run(run_record, thread_record, user_context))
 
     return CreateRunResponse(runId=run_id)
 
 
-async def _execute_run(run_record: RunRecord, thread_record: ThreadRecord) -> None:
+async def _execute_run(
+    run_record: RunRecord,
+    thread_record: ThreadRecord,
+    user_context: dict[str, str],
+) -> None:
     """Execute the agent loop and publish events."""
     try:
         async for event_str in run_agent_loop(
             thread_record.thread_id,
             run_record.run_id,
             run_record.prompt,
-            thread_record.working_directory
+            thread_record.working_directory,
+            user_role=user_context.get("role", "viewer"),
+            tenant_id=user_context.get("tenant_id", ""),
         ):
             run_record.buffer.append(event_str)
             for queue in run_record.subscribers:
@@ -280,6 +333,31 @@ async def run_events(run_id: str, request: Request) -> StreamingResponse:
             "X-Accel-Buffering": "no"
         }
     )
+
+
+# ── Role Info API ────────────────────────────────────────────────────────────
+
+@app.get("/roles")
+async def list_roles() -> list[dict[str, str]]:
+    """List available roles with display names and descriptions."""
+    return [
+        {"role": r, "displayName": ROLE_DISPLAY_NAMES.get(r, r), "description": ROLE_DESCRIPTIONS.get(r, "")}
+        for r in ALL_ROLES
+    ]
+
+
+@app.get("/roles/me")
+async def get_my_role(request: Request) -> dict[str, str]:
+    """Return the current user's role based on their JWT token."""
+    ctx = extract_user_context(request)
+    role = ctx["role"]
+    return {
+        "userId": ctx["user_id"],
+        "tenantId": ctx["tenant_id"],
+        "role": role,
+        "displayName": ROLE_DISPLAY_NAMES.get(role, role),
+        "description": ROLE_DESCRIPTIONS.get(role, ""),
+    }
 
 
 # ── Hooks Configuration API ──────────────────────────────────────────────────

@@ -15,6 +15,7 @@ from .events import make_event, format_sse
 from .skills import load_all_skills, build_system_prompt
 from .hooks import pre_tool_use_hook, BLOCKED_BASH_PATTERNS, PATH_ESCAPE_PATTERNS
 from .tools import TOOLS, execute_tool
+from .roles import filter_tools, filter_skills, ROLE_DISPLAY_NAMES
 
 # Use basic anthropic SDK
 import anthropic
@@ -24,16 +25,31 @@ async def run_agent_loop(
     thread_id: str,
     run_id: str,
     prompt: str,
-    working_directory: str
+    working_directory: str,
+    user_role: str = "platform_admin",
+    tenant_id: str = "",
 ) -> AsyncIterator[str]:
     """Run the agent loop and yield SSE events."""
     seq = 0
 
-    # Load skills for this workspace
-    skills = load_all_skills(working_directory)
+    # Load and filter skills by role
+    all_skills = load_all_skills(working_directory)
+    skills = filter_skills(all_skills, user_role)
     skill_names = [s["name"] for s in skills]
 
-    yield format_sse(make_event(run_id, "run.started", {"threadId": thread_id, "skills": skill_names}, seq))
+    # Filter tools by role (Layer 1: proactive — AI cannot see restricted tools)
+    permitted_tools = filter_tools(TOOLS, user_role)
+    permitted_tool_names = [t["name"] for t in permitted_tools]
+
+    role_display = ROLE_DISPLAY_NAMES.get(user_role, user_role)
+
+    yield format_sse(make_event(run_id, "run.started", {
+        "threadId": thread_id,
+        "skills": skill_names,
+        "role": user_role,
+        "roleDisplayName": role_display,
+        "permittedTools": permitted_tool_names,
+    }, seq))
     seq += 1
 
     # Emit skill activation events
@@ -49,7 +65,12 @@ async def run_agent_loop(
     yield format_sse(make_event(run_id, "ui.message.user", {"text": prompt}, seq))
     seq += 1
 
-    async for event_str in _run_with_anthropic_sdk(thread_id, run_id, prompt, working_directory, skills, seq):
+    hook_context = {"user_role": user_role, "tenant_id": tenant_id}
+
+    async for event_str in _run_with_anthropic_sdk(
+        thread_id, run_id, prompt, working_directory,
+        skills, permitted_tools, user_role, hook_context, seq
+    ):
         yield event_str
 
 
@@ -59,11 +80,40 @@ async def _run_with_anthropic_sdk(
     prompt: str,
     working_directory: str,
     skills: list[dict[str, Any]],
-    seq: int
+    permitted_tools: list[dict[str, Any]],
+    user_role: str,
+    hook_context: dict[str, str],
+    seq: int,
 ) -> AsyncIterator[str]:
     """Run agent loop using Anthropic SDK with streaming."""
     client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
-    system_prompt = build_system_prompt(skills)
+
+    role_display = ROLE_DISPLAY_NAMES.get(user_role, user_role)
+    base_system_prompt = build_system_prompt(skills)
+
+    # Inject role context into system prompt
+    role_preamble = (
+        f"\n\n## Your Role: {role_display}\n\n"
+        f"You are operating as **{role_display}**. "
+        f"You can only use the tools listed below — other tools are not available to your role.\n\n"
+    )
+    if user_role == "developer":
+        role_preamble += (
+            "**CRITICAL: Class Namespace Enforcement**\n"
+            "- You MUST use the `custom.*` namespace for any new classes "
+            "(e.g., `custom.nhs.MyProcess`, `custom.sth.PatientLookup`).\n"
+            "- You CANNOT create or modify classes in `li.*`, `Engine.li.*`, or `EnsLib.*` namespaces.\n"
+            "- You CANNOT deploy to production directly. Request a deployment approval instead.\n\n"
+        )
+    elif user_role == "clinical_safety_officer":
+        role_preamble += (
+            "You have read-only access to projects and can run tests and safety reviews. "
+            "You cannot create or modify integration configurations.\n\n"
+        )
+    elif user_role == "viewer":
+        role_preamble += "You have read-only access. You can view project status and configurations.\n\n"
+
+    system_prompt = base_system_prompt + role_preamble
 
     messages: list[dict[str, Any]] = [
         {"role": "user", "content": prompt}
@@ -89,7 +139,7 @@ async def _run_with_anthropic_sdk(
                 max_tokens=4096,
                 system=system_prompt,
                 messages=messages,
-                tools=TOOLS
+                tools=permitted_tools,
             ) as stream:
                 accumulated_text = ""
                 tool_use_blocks: list[dict[str, Any]] = []
@@ -187,11 +237,11 @@ async def _run_with_anthropic_sdk(
 
                     tool_results: list[dict[str, Any]] = []
                     for tool_block in tool_use_blocks:
-                        # Apply pre-tool-use hook
+                        # Apply pre-tool-use hook (Layer 2: defensive validation)
                         hook_result = await pre_tool_use_hook(
                             {"tool_name": tool_block["name"], "tool_input": tool_block["input"]},
                             tool_block["id"],
-                            None
+                            hook_context,
                         )
 
                         if hook_result.get("hookSpecificOutput", {}).get("permissionDecision") == "deny":

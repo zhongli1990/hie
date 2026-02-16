@@ -12,10 +12,17 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Bot, Play, Square, RotateCcw, ChevronDown, ChevronRight, Terminal, FileCode, Loader2, Send, Sparkles, Upload, Download, FolderOpen, File, Eye, ArrowLeft, X } from "lucide-react";
+import { Bot, Play, Square, RotateCcw, ChevronDown, ChevronRight, Terminal, FileCode, Loader2, Send, Sparkles, Upload, Download, FolderOpen, File, Eye, ArrowLeft, X, ShieldCheck, Zap } from "lucide-react";
 import { useAppContext } from "@/contexts/AppContext";
+import { useAuth } from "@/contexts/AuthContext";
 import { useWorkspace } from "@/contexts/WorkspaceContext";
 import { listProjects, type Project } from "@/lib/api-v2";
+import { getToken } from "@/lib/auth";
+import QuickStartPanel, {
+  mapPortalRoleToAgentRole,
+  ROLE_DISPLAY,
+  type AgentRole,
+} from "@/components/AgentWorkflows/QuickStartPanel";
 
 type RunnerType = "claude" | "codex" | "gemini" | "azure" | "bedrock" | "openli" | "custom";
 
@@ -52,6 +59,11 @@ type EventLine = {
 export default function AgentsPage() {
   // Get workspace from global WorkspaceContext
   const { currentWorkspace } = useWorkspace();
+
+  // Derive agent-runner role from Portal auth
+  const { user } = useAuth();
+  const agentRole: AgentRole = mapPortalRoleToAgentRole(user?.role_name);
+  const roleDisplay = ROLE_DISPLAY[agentRole];
 
   // Use AppContext for session persistence
   const {
@@ -291,12 +303,19 @@ export default function AgentsPage() {
     try {
       const apiBase = getRunnerApiBase(runnerType);
 
+      // Attach JWT for role-based access control in agent-runner
+      const authToken = getToken();
+      const authHeaders: Record<string, string> = {
+        "Content-Type": "application/json",
+        ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
+      };
+
       // Step 1: Create or reuse a thread
       let currentThreadId = threadId;
       if (!currentThreadId) {
         const threadRes = await fetch(`${apiBase}/threads`, {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: authHeaders,
           body: JSON.stringify({
             workspaceId: currentWorkspace!.id,
             workspaceName: currentWorkspace!.name || "default",
@@ -313,10 +332,10 @@ export default function AgentsPage() {
         setThreadId(currentThreadId);
       }
 
-      // Step 2: Create a run
+      // Step 2: Create a run (with auth header for RBAC)
       const runRes = await fetch(`${apiBase}/runs`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: authHeaders,
         body: JSON.stringify({ threadId: currentThreadId, prompt: userPrompt }),
       });
       if (!runRes.ok) {
@@ -566,8 +585,13 @@ export default function AgentsPage() {
             Agent Console
           </h1>
           <p className="mt-1 text-xs md:text-sm text-gray-600 dark:text-gray-400">
-            Instruct HIE route implementations in plain English via GenAI agents.
+            Describe your integration needs in plain English — the GenAI agent builds it for you.
           </p>
+        </div>
+        {/* Role Badge */}
+        <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium ${roleDisplay.bg} ${roleDisplay.color}`}>
+          <ShieldCheck className="h-3.5 w-3.5" />
+          {roleDisplay.label}
         </div>
       </div>
 
@@ -635,6 +659,45 @@ export default function AgentsPage() {
               </div>
             </div>
           )}
+
+          {/* Capabilities Panel */}
+          <div className="rounded-lg border border-gray-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 p-4 shadow-sm">
+            <h3 className="text-sm font-medium text-gray-900 dark:text-white mb-2 flex items-center gap-1.5">
+              <Zap className="h-3.5 w-3.5 text-nhs-blue" />
+              Your Capabilities
+            </h3>
+            <div className="space-y-1.5 text-xs text-gray-600 dark:text-gray-400">
+              {agentRole === "platform_admin" || agentRole === "tenant_admin" ? (
+                <>
+                  <div className="flex items-center gap-1"><span className="text-green-500">&#x2713;</span> Build integrations (custom.* namespace)</div>
+                  <div className="flex items-center gap-1"><span className="text-green-500">&#x2713;</span> Deploy &amp; manage projects</div>
+                  <div className="flex items-center gap-1"><span className="text-green-500">&#x2713;</span> Run tests &amp; safety reviews</div>
+                  <div className="flex items-center gap-1"><span className="text-green-500">&#x2713;</span> All tools available</div>
+                </>
+              ) : agentRole === "developer" ? (
+                <>
+                  <div className="flex items-center gap-1"><span className="text-green-500">&#x2713;</span> Build integrations (custom.* namespace)</div>
+                  <div className="flex items-center gap-1"><span className="text-green-500">&#x2713;</span> Run integration tests</div>
+                  <div className="flex items-center gap-1"><span className="text-green-500">&#x2713;</span> Read/write custom.* files</div>
+                  <div className="flex items-center gap-1"><span className="text-amber-500">&#x26A0;</span> Cannot deploy to production</div>
+                  <div className="flex items-center gap-1"><span className="text-red-400">&#x2717;</span> Cannot modify li.* / EnsLib.* core</div>
+                </>
+              ) : agentRole === "clinical_safety_officer" ? (
+                <>
+                  <div className="flex items-center gap-1"><span className="text-green-500">&#x2713;</span> Run safety reviews (DCB0129)</div>
+                  <div className="flex items-center gap-1"><span className="text-green-500">&#x2713;</span> Run integration tests</div>
+                  <div className="flex items-center gap-1"><span className="text-green-500">&#x2713;</span> View all configurations</div>
+                  <div className="flex items-center gap-1"><span className="text-red-400">&#x2717;</span> Cannot create or modify items</div>
+                </>
+              ) : (
+                <>
+                  <div className="flex items-center gap-1"><span className="text-green-500">&#x2713;</span> View project status</div>
+                  <div className="flex items-center gap-1"><span className="text-green-500">&#x2713;</span> Read configurations</div>
+                  <div className="flex items-center gap-1"><span className="text-red-400">&#x2717;</span> Read-only access</div>
+                </>
+              )}
+            </div>
+          </div>
 
           {/* Session History */}
           <div className="rounded-lg border border-gray-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 p-4 shadow-sm">
@@ -732,18 +795,15 @@ export default function AgentsPage() {
             {viewMode === "transcript" ? (
               <div className="space-y-4">
                 {transcript.length === 0 && !streamingText && status !== "running" ? (
-                  <div className="flex items-center justify-center h-full min-h-[300px]">
-                    <div className="text-center">
-                      <Bot className="h-16 w-16 mx-auto text-gray-300 dark:text-zinc-600 mb-4" />
-                      <h2 className="text-lg font-semibold text-gray-700 dark:text-gray-300 mb-2">
-                        HIE Agent Console
-                      </h2>
-                      <p className="text-sm text-gray-500 dark:text-gray-400 max-w-md">
-                        Describe your integration needs in plain English. The agent will configure
-                        HIE routes, items, and connections for you.
-                      </p>
-                    </div>
-                  </div>
+                  <QuickStartPanel
+                    agentRole={agentRole}
+                    onSelectTemplate={(tmplPrompt) => {
+                      setPrompt(tmplPrompt);
+                      // Focus the textarea after selecting a template
+                      const textarea = document.querySelector<HTMLTextAreaElement>("textarea");
+                      textarea?.focus();
+                    }}
+                  />
                 ) : (
                   <>
                     {transcript.map((msg, i) => (
@@ -920,7 +980,7 @@ export default function AgentsPage() {
 
           {/* Prompt Input */}
           <div className="border-t border-gray-200 dark:border-zinc-700 p-4 space-y-3">
-            {/* Prompt Manager Link */}
+            {/* Prompt Manager Link + Namespace hint */}
             <div className="flex items-center justify-between">
               <a
                 href="/prompts"
@@ -929,6 +989,11 @@ export default function AgentsPage() {
                 <Sparkles className="h-3.5 w-3.5" />
                 Open Prompt Manager
               </a>
+              {agentRole === "developer" && (
+                <span className="text-xs text-gray-400 dark:text-gray-500">
+                  Namespace: <span className="font-mono text-green-600 dark:text-green-400">custom.*</span> only
+                </span>
+              )}
             </div>
 
             {/* Input Area */}
