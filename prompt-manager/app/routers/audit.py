@@ -80,7 +80,7 @@ async def list_audit_entries(
     repo = AuditRepository(db)
     # Non-admin users can only see their own tenant's entries
     effective_tenant = tenant_id
-    if user.role not in ("admin", "platform_admin") and user.tenant_id:
+    if not user.is_admin and user.tenant_id:
         effective_tenant = user.tenant_id
 
     entries, total = await repo.list_entries(
@@ -108,7 +108,7 @@ async def audit_stats(
     """Get aggregate audit statistics."""
     repo = AuditRepository(db)
     effective_tenant = tenant_id
-    if user.role not in ("admin", "platform_admin") and user.tenant_id:
+    if not user.is_admin and user.tenant_id:
         effective_tenant = user.tenant_id
 
     entries, total = await repo.list_entries(

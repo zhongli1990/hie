@@ -54,7 +54,7 @@ async def on_startup():
 
 @app.get("/health")
 async def health():
-    return {"status": "ok", "service": "hie-prompt-manager", "version": "1.9.0"}
+    return {"status": "ok", "service": "hie-prompt-manager", "version": app.version}
 
 
 # ── Seed API ──────────────────────────────────────────────────────────────────

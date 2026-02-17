@@ -64,6 +64,7 @@ services:
       - HIE_API_PORT=8081
       - DATABASE_URL=postgresql://hie:hie_password@postgres:5432/hie
       - REDIS_URL=redis://redis:6379/0
+      - JWT_SECRET_KEY=hie-jwt-secret-key-change-in-production
       - PYTHONPATH=/app
       - PYTHONUNBUFFERED=1
     depends_on:

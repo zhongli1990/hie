@@ -132,3 +132,17 @@ li-python:
 
 li-clean:
 	docker-compose -f docker-compose.dev.yml down -v --remove-orphans
+
+# =============================================================================
+# E2E Tests (run inside Docker against the live stack)
+# Requires: docker compose up -d
+# =============================================================================
+
+test-e2e:
+	./scripts/run_e2e_tests.sh tests/e2e/
+
+test-e2e-v194:
+	./scripts/run_e2e_tests.sh tests/e2e/test_v194_rbac_audit_approvals.py
+
+test-e2e-smoke:
+	./scripts/run_e2e_tests.sh tests/e2e/test_api_smoke.py

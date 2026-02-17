@@ -78,7 +78,7 @@ async def list_approvals(
     """List deployment approvals. Filtered by tenant for non-admin users."""
     repo = ApprovalRepository(db)
     effective_tenant = None
-    if user.role not in ("admin", "platform_admin") and user.tenant_id:
+    if not user.is_admin and user.tenant_id:
         effective_tenant = user.tenant_id
 
     approvals, total = await repo.list_approvals(
@@ -118,9 +118,7 @@ async def approve_deployment(
     db: AsyncSession = Depends(get_db),
 ):
     """Approve a pending deployment. CSO or Admin only."""
-    if user.role not in (
-        "admin", "platform_admin", "tenant_admin", "clinical_safety_officer",
-    ):
+    if not user.is_admin and user.role != "clinical_safety_officer":
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Only Clinical Safety Officers and Admins can approve deployments",
@@ -149,9 +147,7 @@ async def reject_deployment(
     db: AsyncSession = Depends(get_db),
 ):
     """Reject a pending deployment. CSO or Admin only."""
-    if user.role not in (
-        "admin", "platform_admin", "tenant_admin", "clinical_safety_officer",
-    ):
+    if not user.is_admin and user.role != "clinical_safety_officer":
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Only Clinical Safety Officers and Admins can reject deployments",
