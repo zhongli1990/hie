@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "hie"
-version = "1.9.0"
+version = "1.9.4"
 description = "Healthcare Integration Engine - Enterprise-grade healthcare messaging platform"
 readme = "README.md"
 license = "MIT"

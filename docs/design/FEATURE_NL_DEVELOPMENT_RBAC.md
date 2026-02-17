@@ -1,9 +1,9 @@
 # Feature Design Proposal: The First GenAI-Native Integration Engine
 
 **Document:** OpenLI HIE Feature Design — Natural Language Development Platform
-**Version:** 1.1 (Draft for Review)
+**Version:** 1.2
 **Date:** 2026-02-13
-**Status:** Proposed — Awaiting Stakeholder Review
+**Status:** Phases 1-4 IMPLEMENTED (v1.9.4) — Phase 5 Pending
 **Target Release:** v2.0.0
 
 ---
@@ -126,7 +126,7 @@ These guardrails make the NL development lifecycle safe for NHS production. They
 | FR-4 Test | **Working** — `hie_test_item` sends test messages | Already functional |
 | FR-5 Review | **Working** — `clinical-safety-review` skill runs 32-item checklist | Already functional |
 | FR-6 Compliance | **Working** — `nhs-compliance-check` skill validates standards | Already functional |
-| FR-7 Deploy | **Partially safe** — RBAC blocks developer deploy (GR-1 done); approval workflow pending | **Needs GR-3 (Approvals) — Phase 4** |
+| FR-7 Deploy | **SAFE** — RBAC blocks developer deploy (GR-1), approval workflow gates production (GR-3), audit trail records all actions (GR-2) | **DONE** — Phase 1 (RBAC) + Phase 3 (Audit) + Phase 4 (Approvals) |
 | FR-8 Monitor | **Working** — `hie_project_status` returns runtime metrics | Already functional |
 | FR-9 Debug | **Partial** — status available but no message trace integration | Future: integrate with Visual Trace |
 | FR-10 Modify | **Working** — AI can add items/connections/rules to existing projects | Already functional |
@@ -134,24 +134,24 @@ These guardrails make the NL development lifecycle safe for NHS production. They
 | FR-12 Rollback | **Not implemented** | **Needs GR-4 (snapshots) + new `hie_rollback_project` tool** |
 | FR-13 Discover | **Working** — `hie_list_item_types` + ClassRegistry | Already functional |
 | FR-14 Teach | **Working** — system prompt includes full architecture context | Already functional |
-| GR-1 RBAC | **IMPLEMENTED** — `roles.py` + Layer 1 tool filtering + Layer 2 hook validation | Delivered in Phase 1 commit `bbb0b3c` |
-| GR-2 Audit | **Partial** — hooks log to stdout with role/tenant context; DB audit table not yet implemented | **Phase 3** |
-| GR-3 Approvals | **Not implemented** | **Phase 4** |
+| GR-1 RBAC | **IMPLEMENTED** — 7-role hierarchy with DB-to-agent role mapping, Layer 1 tool filtering + Layer 2 hook validation | **DONE** — Phase 1 + Phase 2 (role alignment) |
+| GR-2 Audit | **IMPLEMENTED** — `AuditLog` model, `/audit` API with PII sanitisation, Portal audit viewer with stats/filters/CSV export | **DONE** — Phase 3, commit `f75976a` |
+| GR-3 Approvals | **IMPLEMENTED** — `DeploymentApproval` model, `/approvals` API, Portal approval UI with approve/reject, hook intercept on production deploy | **DONE** — Phase 4, commit `f75976a` |
 | GR-4 Snapshots | **Not implemented** | **Phase 5** |
-| GR-5 Tenant Isolation | **IMPLEMENTED** — JWT tenant_id extracted and passed through hook context | Delivered in Phase 1 |
-| GR-6 Namespace Enforcement | **IMPLEMENTED** — `is_class_name_writable()` + `is_file_path_writable()` enforce `custom.*` only for non-admin roles | Delivered in Phase 1 |
+| GR-5 Tenant Isolation | **IMPLEMENTED** — JWT tenant_id extracted and passed through hook context | **DONE** — Phase 1 |
+| GR-6 Namespace Enforcement | **IMPLEMENTED** — `is_class_name_writable()` + `is_file_path_writable()` enforce `custom.*` only for non-admin roles | **DONE** — Phase 1 |
 
-**Key takeaway:** 10 of 14 feature requirements work. GR-1, GR-5, and GR-6 guardrails are now implemented. Remaining work: GR-2 (audit DB), GR-3 (approvals), GR-4 (snapshots), FR-12 (rollback), and FR-9 improvements.
+**Key takeaway:** 10 of 14 feature requirements work. GR-1, GR-2, GR-3, GR-5, and GR-6 guardrails are now fully implemented. Remaining work: GR-4 (snapshots), FR-12 (rollback), and FR-9 improvements.
 
-### Gap Analysis: What Blocks Production Readiness
+### Gap Analysis: Production Readiness Status
 
-| Gap | Risk | NHS Impact |
-|-----|------|-----------|
-| **No permission boundaries** — Any user can call any of the 19 HIE tools, including `hie_deploy_project` and `hie_stop_project` | A junior developer's AI session could stop a live production integration | Patient data flow interruption; clinical system downtime |
-| **No approval workflows** — AI-generated configurations go directly to production with no human review gate | AI could deploy a misconfigured HL7 route that drops or corrupts messages | Message loss, wrong patient data delivered to clinical systems |
-| **No audit trail** — No record of what the AI generated, who approved it, or what changed | Cannot demonstrate compliance or investigate incidents | Breach of DCB0129/DCB0160 clinical safety standards; regulatory risk |
-| **No rollback** — If an AI-generated integration breaks, there's no way to undo | Recovery requires manual reconstruction from memory | Extended downtime; potential patient safety incidents |
-| **No cost/usage controls** — No limits on AI API consumption per user/tenant | Unbounded API costs; potential for abuse | Budget overrun; resource exhaustion |
+| Gap | Status | Resolution |
+|-----|--------|-----------|
+| ~~**No permission boundaries**~~ | **RESOLVED** (Phase 1+2) | 7-role RBAC hierarchy with DB-to-agent role mapping, Layer 1+2 defense-in-depth enforcement. Developers cannot deploy/stop production. |
+| ~~**No approval workflows**~~ | **RESOLVED** (Phase 4) | `DeploymentApproval` model + `/approvals` API + Portal approval UI. Developers request → CSO/Admin approve/reject with notes. |
+| ~~**No audit trail**~~ | **RESOLVED** (Phase 3) | `AuditLog` model + `/audit` API with PII sanitisation (NHS numbers, postcodes). Portal audit viewer with stats, filters, CSV export. |
+| **No rollback** | **Pending** (Phase 5) | Needs `ConfigSnapshot` model + `hie_rollback_project` tool. Pre/post deploy snapshots not yet implemented. |
+| **No cost/usage controls** | **Deferred** | Rate limiting defined but not enforced. Separate effort — not an NHS compliance blocker. |
 
 ## 4. Current Architecture (What We Have)
 
@@ -336,16 +336,24 @@ Platform Admin (full access, all tenants)
   └── Tenant Admin (full access within own tenant)
        ├── Integration Developer (build + test, deploy to staging only)
        ├── Clinical Safety Officer (review + approve, read + test)
+       ├── Operator (deploy + start/stop + monitor, cannot create)
+       ├── Auditor (read-only + audit log access)
        └── Viewer (read-only monitoring)
 ```
 
-| Role | Primary Use Case |
-|------|-----------------|
-| `platform_admin` | OpenLI platform operators managing the multi-tenant environment |
-| `tenant_admin` | NHS Trust IT leads managing their own workspace |
-| `developer` | Integration engineers building routes via natural language |
-| `clinical_safety_officer` | DCB0129-qualified reviewers approving production deployments |
-| `viewer` | Monitoring dashboards, read-only status checks |
+**DB-to-Agent Role Mapping (Phase 2):**
+
+The database uses NHS-appropriate role names (e.g., `integration_engineer`), while the agent-runner uses functional role keys (e.g., `developer`). The `resolve_agent_role()` function in `roles.py` bridges this gap:
+
+| DB Role (JWT `role` claim) | Agent Role Key | Primary Use Case |
+|---|---|---|
+| `super_admin` | `platform_admin` | OpenLI platform operators managing the multi-tenant environment |
+| `tenant_admin` | `tenant_admin` | NHS Trust IT leads managing their own workspace |
+| `integration_engineer` | `developer` | Integration engineers building routes via natural language |
+| `clinical_safety_officer` | `clinical_safety_officer` | DCB0129-qualified reviewers approving production deployments |
+| `operator` | `operator` | Systems operators: deploy, start/stop, monitor — cannot create items |
+| `auditor` | `auditor` | IG auditors: read-only with audit log access |
+| `viewer` | `viewer` | Monitoring dashboards, read-only status checks |
 
 ### 6.2 Tool Permission Matrix
 
@@ -779,14 +787,14 @@ Added to `agent-runner/app/tools.py`:
 | Phase | Description | Status | Commit |
 |-------|-------------|--------|--------|
 | **Phase 1** | RBAC Guardrails + Portal NL Experience — roles.py, JWT auth, Layer 1+2 enforcement, namespace protection, QuickStartPanel, role badge, capabilities sidebar | **DONE** | `bbb0b3c` on `feature/nl-development-rbac` |
-| **Phase 2** | *(renumbered)* — see below | | |
+| **Phase 2** | Unified RBAC Role Alignment — DB-to-agent role mapping (`resolve_agent_role()`), 7-role hierarchy (added operator + auditor), Portal role mapping fix, lifecycle stepper | **DONE** | `f75976a` on `feature/nl-development-rbac` |
+| **Phase 3** | Audit Logging — `AuditLog` model, `/audit` API with PII sanitisation, Portal audit viewer with stats/filters/CSV export, agent-runner hook integration | **DONE** | `f75976a` on `feature/nl-development-rbac` |
+| **Phase 4** | Approval Workflows + Demo Onboarding — `DeploymentApproval` model, `/approvals` API, Portal approval UI, CSO role in DB, 6 demo users, demo tenant/workspace | **DONE** | `f75976a` on `feature/nl-development-rbac` |
 
 ### Remaining Phases
 
 | Phase | Description | Effort | Impact | Priority |
 |-------|-------------|--------|--------|----------|
-| **Phase 3** | Audit Logging — `AuditLog` model, `/audit` API, PII sanitisation, Portal audit viewer | 1-2 days | **High** — NHS DCB0129/DCB0160 compliance | **P1** |
-| **Phase 4** | Approval Workflows — `DeploymentApproval` model, `/approvals` API, Portal approval UI, hook intercept on production deploy | 2 days | **High** — Change management gate | **P1** |
 | **Phase 5** | Configuration Snapshots & Rollback — `ConfigSnapshot` model, `hie_rollback_project` tool, auto-snapshot on deploy | 1 day | **Medium** — Safety net for FR-12 | **P2** |
 
 ### Phase 1 Delivery Summary (Completed)
@@ -806,6 +814,53 @@ Added to `agent-runner/app/tools.py`:
 
 **All work on feature branch** `feature/nl-development-rbac` for isolated review before merging to main.
 
+### Phase 2 Delivery Summary (Completed — Unified RBAC Role Alignment)
+
+**Branch:** `feature/nl-development-rbac`
+**Commit:** `f75976a`
+
+| Component | File | What Was Built |
+|-----------|------|---------------|
+| DB-to-Agent Role Mapping | `agent-runner/app/roles.py` | `DB_ROLE_TO_AGENT_ROLE` dict, `resolve_agent_role()` function, operator + auditor permission sets in `ROLE_TOOL_PERMISSIONS`, `ROLE_SKILL_PERMISSIONS`, `ROLE_DISPLAY_NAMES`, `ROLE_DESCRIPTIONS` |
+| JWT Role Resolution | `agent-runner/app/main.py` | `extract_user_context()` now calls `resolve_agent_role()` instead of passthrough |
+| Role Preambles | `agent-runner/app/agent.py` | Operator and auditor role preambles added |
+| Portal Role Mapping | `Portal/src/components/AgentWorkflows/QuickStartPanel.tsx` | 7-role `AgentRole` type, expanded `mapPortalRoleToAgentRole()`, `ROLE_DISPLAY` for all 7 roles, 6-step lifecycle stepper with `sessionStorage` persistence |
+| Portal Capabilities | `Portal/src/app/(app)/agents/page.tsx` | Operator and auditor capability list blocks |
+
+### Phase 3 Delivery Summary (Completed — Audit Logging)
+
+**Branch:** `feature/nl-development-rbac`
+**Commit:** `f75976a`
+
+| Component | File | What Was Built |
+|-----------|------|---------------|
+| AuditLog Model | `prompt-manager/app/models.py` | `AuditLog` SQLAlchemy model with tenant_id, user_id, user_role, session_id, run_id, action, target_type/id, input/result summaries, result_status |
+| Audit Repository | `prompt-manager/app/repositories/audit_repo.py` (NEW) | CRUD operations, PII sanitisation (NHS numbers, UK postcodes), date range filtering |
+| Audit Router | `prompt-manager/app/routers/audit.py` (NEW) | `POST /audit`, `GET /audit`, `GET /audit/stats` endpoints |
+| Router Registration | `prompt-manager/app/main.py` | Audit router registered |
+| DB Migration | `prompt-manager/alembic/versions/002_audit_approvals_tables.py` (NEW) | `audit_log` + `deployment_approvals` table creation |
+| Hook Integration | `agent-runner/app/hooks.py` | `post_tool_use_hook()` POSTs to `/audit` after every tool execution |
+| Portal Audit Viewer | `Portal/src/app/(app)/admin/audit/page.tsx` (NEW) | Stats cards, filter tabs (All/Success/Denied/Error), data table with expandable rows, CSV export, pagination |
+| Sidebar Links | `Portal/src/components/Sidebar.tsx` | Audit Log and Approvals links added to admin section |
+
+### Phase 4 Delivery Summary (Completed — Approval Workflows + Demo Onboarding)
+
+**Branch:** `feature/nl-development-rbac`
+**Commit:** `f75976a`
+
+| Component | File | What Was Built |
+|-----------|------|---------------|
+| DeploymentApproval Model | `prompt-manager/app/models.py` | `DeploymentApproval` model with status (pending/approved/rejected), safety_report, config_snapshot |
+| Approval Repository | `prompt-manager/app/repositories/approval_repo.py` (NEW) | CRUD + `approve()` + `reject()` with timestamp/reviewer tracking |
+| Approval Router | `prompt-manager/app/routers/approvals.py` (NEW) | `POST /approvals`, `GET /approvals`, `GET /approvals/{id}`, `POST /approvals/{id}/approve`, `POST /approvals/{id}/reject` |
+| Router Registration | `prompt-manager/app/main.py` | Approvals router registered |
+| Hook Intercept | `agent-runner/app/hooks.py` | Production deploy by developer → creates approval request instead of deploying |
+| Portal Approval UI | `Portal/src/app/(app)/admin/approvals/page.tsx` (NEW) | Stats cards (pending/approved/rejected), filter tabs, data table, approve/reject buttons with review modal, expandable detail with config snapshot |
+| CSO Role in DB | `scripts/init-db.sql` | `clinical_safety_officer` role (UUID `000...007`) with `approvals:approve`, `approvals:reject` permissions |
+| Demo Tenant | `scripts/init-db.sql` | "St Thomas' Hospital NHS Foundation Trust" (code: STH) |
+| Demo Users | `scripts/init-db.sql` | 6 demo users (trust.admin, developer, cso, operator, viewer, auditor) all with password `Demo12345!` |
+| Demo Workspace | `scripts/init-db.sql` | "STH Integrations" workspace linked to STH tenant |
+
 ---
 
 ## 11. Critical File Inventory
@@ -822,17 +877,45 @@ Added to `agent-runner/app/tools.py`:
 | `agent-runner/requirements.txt` | **MODIFIED** | Added `python-jose[cryptography]` |
 | `Portal/src/app/(app)/agents/page.tsx` | **MODIFIED** | Role badge, capabilities panel, QuickStartPanel, JWT forwarding |
 
-### Pending Files (Phases 3-5)
+### Delivered Files (Phase 2 — Role Alignment)
+
+| File | Status | Purpose |
+|------|--------|---------|
+| `agent-runner/app/roles.py` | **MODIFIED** | DB-to-agent role mapping, operator/auditor permission sets |
+| `agent-runner/app/main.py` | **MODIFIED** | Wire `resolve_agent_role()` in JWT extraction |
+| `agent-runner/app/agent.py` | **MODIFIED** | Operator/auditor role preambles |
+| `Portal/src/components/AgentWorkflows/QuickStartPanel.tsx` | **MODIFIED** | 7-role support, lifecycle stepper |
+| `Portal/src/app/(app)/agents/page.tsx` | **MODIFIED** | Operator/auditor capabilities |
+
+### Delivered Files (Phase 3 — Audit Logging)
+
+| File | Status | Purpose |
+|------|--------|---------|
+| `prompt-manager/app/repositories/audit_repo.py` | **NEW** | Audit log CRUD with PII sanitisation |
+| `prompt-manager/app/routers/audit.py` | **NEW** | `POST /audit`, `GET /audit`, `GET /audit/stats` |
+| `prompt-manager/alembic/versions/002_audit_approvals_tables.py` | **NEW** | DB migration for audit_log + deployment_approvals tables |
+| `prompt-manager/app/models.py` | **MODIFIED** | Added `AuditLog` + `DeploymentApproval` models |
+| `prompt-manager/app/main.py` | **MODIFIED** | Registered audit + approvals routers, version 1.9.0 |
+| `agent-runner/app/hooks.py` | **MODIFIED** | Audit POST integration in `post_tool_use_hook()` |
+| `agent-runner/app/config.py` | **NEW** | `PROMPT_MANAGER_URL` config for inter-service communication |
+| `Portal/src/app/(app)/admin/audit/page.tsx` | **NEW** | Full audit log viewer with stats, filters, CSV export |
+| `Portal/src/components/Sidebar.tsx` | **MODIFIED** | Added Audit Log + Approvals sidebar links |
+
+### Delivered Files (Phase 4 — Approvals + Demo Onboarding)
+
+| File | Status | Purpose |
+|------|--------|---------|
+| `prompt-manager/app/repositories/approval_repo.py` | **NEW** | Approval CRUD with approve/reject lifecycle |
+| `prompt-manager/app/routers/approvals.py` | **NEW** | Deployment approval workflow API (5 endpoints) |
+| `Portal/src/app/(app)/admin/approvals/page.tsx` | **NEW** | Approval review UI with approve/reject, review modal |
+| `scripts/init-db.sql` | **MODIFIED** | CSO role, demo tenant, 6 demo users, demo workspace |
+
+### Pending Files (Phase 5)
 
 | File | Phase | Purpose |
 |------|-------|---------|
-| `prompt-manager/app/routers/audit.py` | 3 | Audit log CRUD API endpoints |
-| `prompt-manager/app/routers/approvals.py` | 4 | Deployment approval workflow API |
-| `Portal/src/app/(app)/admin/audit/page.tsx` | 3 | Audit log viewer with filters and CSV export |
-| `Portal/src/app/(app)/admin/approvals/page.tsx` | 4 | Approval review and approve/reject UI |
-| `prompt-manager/app/models.py` | 3,4,5 | Add AuditLog, DeploymentApproval, ConfigSnapshot models |
-| `prompt-manager/app/main.py` | 3,4 | Register audit + approvals routers |
 | `agent-runner/app/tools.py` | 5 | Add `hie_rollback_project` tool |
+| `prompt-manager/app/models.py` | 5 | Add `ConfigSnapshot` model |
 
 ---
 
@@ -887,11 +970,11 @@ docker compose -f docker-compose.dev.yml up -d --build hie-prompt-manager
 
 ### Q1: Role Granularity
 
-**Current design:** 5 fixed roles (platform_admin, tenant_admin, developer, clinical_safety_officer, viewer).
+**Current design:** 7 fixed roles (platform_admin, tenant_admin, developer, clinical_safety_officer, operator, auditor, viewer) with DB-to-agent role mapping via `resolve_agent_role()`.
 
 **Alternative:** Configurable roles where each tenant can define custom role → tool mappings.
 
-**Recommendation:** Start with 5 fixed roles. Custom roles add complexity and most NHS Trusts follow the same governance structure. Can be added later if needed.
+**Decision:** 7 fixed roles implemented. Custom roles deferred — most NHS Trusts follow the same governance structure. Can be added later if needed.
 
 ### Q2: Codex Runner RBAC
 

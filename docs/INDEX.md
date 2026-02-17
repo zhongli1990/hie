@@ -1,6 +1,6 @@
 # OpenLI HIE — Documentation Index
 
-**Version:** 1.8.2
+**Version:** 1.9.4
 **Last Updated:** February 13, 2026
 
 ---
@@ -55,6 +55,7 @@ docs/
 
 | Document | Description |
 |----------|-------------|
+| [**NL Development RBAC Feature Design**](design/FEATURE_NL_DEVELOPMENT_RBAC.md) | **Primary feature design** — GenAI-native integration, 7-role RBAC, audit, approvals (Phases 1-4 DONE) |
 | [Product Vision](design/PRODUCT_VISION.md) | Strategic positioning & market vision |
 | [Product Roadmap](design/PRODUCT_ROADMAP.md) | Technical roadmap (Phase 3-6) |
 | [Development Roadmap](design/DEVELOPMENT_ROADMAP.md) | Development status & progress |
@@ -96,6 +97,7 @@ docs/
 
 | Document | Version | Date |
 |----------|---------|------|
+| [**Release Notes v1.9.4**](releases/RELEASE_NOTES_v1.9.4.md) | **1.9.4** | **2026-02-13** |
 | [Release Notes v1.8.2](releases/RELEASE_NOTES_v1.8.2.md) | 1.8.2 | 2026-02-13 |
 | [Sequence Diagram Delivery](releases/SEQUENCE_DIAGRAM_DELIVERY.md) | 1.8.1 | 2026-02-12 |
 | [Release Notes v1.8.1](releases/RELEASE_NOTES_v1.8.1.md) | 1.8.1 | 2026-02-12 |

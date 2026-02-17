@@ -8,12 +8,25 @@ interface VersionHistory {
   features: string[];
 }
 
-const VERSION = "1.9.0";
-const BUILD_DATE = "Feb 14, 2026";
+const VERSION = "1.9.4";
+const BUILD_DATE = "Feb 13, 2026";
 const PLATFORM_NAME = "OpenLI HIE";
 const PRODUCT_NAME = "OpenLI Healthcare Integration Engine";
 
 const versionHistory: VersionHistory[] = [
+  {
+    version: "1.9.4",
+    date: "Feb 13, 2026",
+    features: [
+      "CRITICAL: Fixed role alignment bug — DB roles now correctly map to agent-runner roles via resolve_agent_role()",
+      "7-role RBAC hierarchy: platform_admin, tenant_admin, developer, clinical_safety_officer, operator, auditor, viewer",
+      "Audit logging: AuditLog model, /audit API with PII sanitisation (NHS numbers, postcodes), Portal audit viewer",
+      "Approval workflows: DeploymentApproval model, /approvals API, Portal approval UI with approve/reject",
+      "Demo onboarding: 6 demo users, St Thomas' Hospital NHS Trust tenant, STH Integrations workspace",
+      "Guided lifecycle stepper: 6-step Design > Build > Test > Review > Deploy > Monitor with role filtering",
+      "Portal: Audit Log viewer with stats/filters/CSV export, Approvals page with review modal",
+    ],
+  },
   {
     version: "1.9.0",
     date: "Feb 14, 2026",

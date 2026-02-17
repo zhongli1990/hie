@@ -5,6 +5,105 @@ All notable changes to OpenLI HIE (Healthcare Integration Engine) will be docume
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.4] - 2026-02-13
+
+### Added - Unified RBAC, Demo Onboarding & E2E Lifecycle
+
+**CRITICAL BUG FIX — Role Alignment (Phase 2):**
+- Fixed silent role fallback bug: DB roles (`integration_engineer`, `operator`, `auditor`) now correctly mapped to agent-runner role keys (`developer`, `operator`, `auditor`) via `resolve_agent_role()` in `agent-runner/app/roles.py`
+- Previously, `integration_engineer` users silently fell back to `viewer` (read-only) because the agent-runner couldn't find the DB role name
+- Added `DB_ROLE_TO_AGENT_ROLE` mapping dictionary and `resolve_agent_role()` function
+- Added `operator` role: can deploy/start/stop/monitor, but cannot create items/connections/rules
+- Added `auditor` role: read-only with audit log access
+- Full 7-role RBAC hierarchy: platform_admin → tenant_admin → developer / clinical_safety_officer / operator / auditor / viewer
+
+**Audit Logging (Phase 3 — GR-2 Complete):**
+- New `AuditLog` model in `prompt-manager/app/models.py` with tenant/user/session/run context
+- New `audit_repo.py` with PII sanitisation — strips NHS numbers (10-digit Modulus 11 pattern) and UK postcodes before storage
+- New `/audit` API: `POST /audit` (agent-runner hook), `GET /audit` (filtered list), `GET /audit/stats` (aggregate counts)
+- New `002_audit_approvals_tables.py` Alembic migration for `audit_log` + `deployment_approvals` tables
+- Agent-runner `post_tool_use_hook()` now POSTs audit entries to prompt-manager after every tool execution
+- New Portal audit viewer (`Portal/src/app/(app)/admin/audit/page.tsx`): stats cards, filter tabs (All/Success/Denied/Error), expandable detail rows, CSV export, pagination
+
+**Approval Workflows (Phase 4 — GR-3 Complete):**
+- New `DeploymentApproval` model with status lifecycle (pending → approved/rejected)
+- New `approval_repo.py` with `approve()` and `reject()` methods, reviewer and timestamp tracking
+- New `/approvals` API: create, list, get detail, approve, reject (5 endpoints)
+- Agent-runner hook intercept: developer requesting production deploy → creates approval request instead of deploying
+- New Portal approvals page (`Portal/src/app/(app)/admin/approvals/page.tsx`): stats cards (pending/approved/rejected), filter tabs, approve/reject buttons with review notes modal, expandable config snapshot detail
+- Role-gated: only CSO, Tenant Admin, and Platform Admin can approve/reject
+
+**Demo Onboarding (Phase 4):**
+- Added `clinical_safety_officer` role to `scripts/init-db.sql` (UUID `000...007`) with `approvals:approve`, `approvals:reject` permissions
+- Added demo tenant: "St Thomas' Hospital NHS Foundation Trust" (code: STH, ODS code: RJ1)
+- Added 6 demo users (all with password `Demo12345!`):
+  - `trust.admin@sth.nhs.uk` — Sarah Thompson, IT Director (tenant_admin)
+  - `developer@sth.nhs.uk` — James Chen, Integration Developer (integration_engineer)
+  - `cso@sth.nhs.uk` — Dr. Priya Patel, Clinical Safety Officer (clinical_safety_officer)
+  - `operator@sth.nhs.uk` — Mike Williams, Systems Operator (operator)
+  - `viewer@sth.nhs.uk` — Emma Davis, Service Desk Analyst (viewer)
+  - `auditor@sth.nhs.uk` — Robert Singh, IG Auditor (auditor)
+- Added demo workspace: "STH Integrations" linked to STH tenant
+- All SQL uses `ON CONFLICT DO NOTHING` for idempotent re-runs in Docker postgres entrypoint
+
+**Guided Lifecycle Stepper (Phase 2):**
+- 6-step horizontal stepper in QuickStartPanel: Design → Build → Test → Review → Deploy → Monitor
+- Each step auto-generates contextual prompt when clicked
+- Steps role-filtered: developers see steps 1-3+6, CSOs see steps 3-4+6, operators see steps 5-6
+- State persisted in `sessionStorage` within tab session
+- Integration pattern picker (ADT/ORM/ORU/FHIR/Custom) for Design step
+
+**Portal Enhancements:**
+- Sidebar: added Approvals (CheckCircle icon) and Audit Log (ClipboardList icon) links
+- QuickStartPanel: expanded `AgentRole` type to 7 roles, added `ROLE_DISPLAY` entries for operator (cyan) and auditor (indigo)
+- Agents page: explicit capability list blocks for operator and auditor roles
+
+### Changed
+
+- `agent-runner/app/roles.py` — Expanded from 5 to 7 roles with DB-to-agent mapping layer
+- `agent-runner/app/main.py` — `extract_user_context()` now resolves DB role names via `resolve_agent_role()`
+- `agent-runner/app/agent.py` — Added operator and auditor role preambles
+- `agent-runner/app/hooks.py` — Added audit POST integration and approval workflow intercept
+- `prompt-manager/app/main.py` — Registered audit and approvals routers
+- `scripts/init-db.sql` — Added CSO role, demo tenant, 6 demo users, demo workspace (885 lines total)
+
+### Version Bumps
+
+All services bumped to **1.9.4**:
+- `pyproject.toml`
+- `Portal/package.json`
+- `AboutModal.tsx` VERSION constant + version history entry
+- `prompt-manager/app/main.py`
+
+### Migration Notes
+
+**Database Recreation Required (for demo users):**
+```bash
+# If existing data can be reset:
+docker compose down -v  # removes postgres_data volume
+docker compose up -d    # init-db.sql runs automatically on fresh postgres
+
+# If existing data must be preserved:
+docker exec -i hie-postgres psql -U hie -d hie < scripts/init-db.sql
+# (ON CONFLICT DO NOTHING ensures idempotency)
+```
+
+**Docker Rebuild Required:**
+```bash
+docker compose build --no-cache hie-agent-runner hie-prompt-manager hie-portal
+docker compose up -d
+```
+
+### Breaking Changes
+
+None — 100% backward compatible. All SQL uses ON CONFLICT DO NOTHING.
+
+### Files Changed
+
+19 files changed, +2365 / -48 lines (12 modified + 7 new)
+
+---
+
 ## [1.9.0] - 2026-02-14
 
 ### Added - IRIS Message Model, Multi-Protocol Hosts, FHIR REST Stack, Unified Message Tracing
