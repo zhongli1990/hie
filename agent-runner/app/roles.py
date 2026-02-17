@@ -11,11 +11,18 @@ Class Namespace Enforcement (CRITICAL):
   DEVELOPER (writable):   custom.*
 
 Role Hierarchy:
-  platform_admin  → full access, all tenants
-  tenant_admin    → full access within own tenant
-  developer       → build + test, staging deploy only, custom.* writes only
-  clinical_safety_officer → read + test + review skills only
-  viewer          → read-only monitoring
+  platform_admin           → full access, all tenants
+  tenant_admin             → full access within own tenant
+  developer                → build + test, no prod deploy, custom.* writes only
+  clinical_safety_officer  → read + test + review skills, approve deployments
+  operator                 → deploy + start/stop + monitor, no build
+  auditor                  → read-only + audit log visibility
+  viewer                   → read-only monitoring
+
+DB Role Mapping:
+  The PostgreSQL hie_roles table uses NHS-appropriate job titles.
+  JWT tokens carry DB role names. This module maps them to agent role keys
+  via resolve_agent_role().
 """
 
 from typing import Any
@@ -41,6 +48,37 @@ PROTECTED_FILE_PATHS = (
     "Engine/",       # Engine internals
     "EnsLib/",       # IRIS compatibility layer
 )
+
+
+# =============================================================================
+# DB ROLE NAME → AGENT ROLE MAPPING
+#
+# The PostgreSQL hie_roles table uses NHS-appropriate job titles.
+# JWT tokens carry the DB role name verbatim (e.g., "integration_engineer").
+# This map bridges DB role names → agent-runner functional role keys.
+# =============================================================================
+
+DB_ROLE_TO_AGENT_ROLE: dict[str, str] = {
+    # DB role name              → Agent-runner role key
+    "super_admin":                "platform_admin",
+    "tenant_admin":               "tenant_admin",
+    "integration_engineer":       "developer",
+    "clinical_safety_officer":    "clinical_safety_officer",
+    "operator":                   "operator",
+    "viewer":                     "viewer",
+    "auditor":                    "auditor",
+    # Identity mappings for dev-auth and direct agent-runner role names
+    "platform_admin":             "platform_admin",
+    "developer":                  "developer",
+}
+
+
+def resolve_agent_role(db_role_name: str) -> str:
+    """Map a DB role name (from JWT) to the agent-runner role key.
+
+    Falls back to 'viewer' for unknown roles (defense-in-depth).
+    """
+    return DB_ROLE_TO_AGENT_ROLE.get(db_role_name, "viewer")
 
 
 # =============================================================================
@@ -92,6 +130,25 @@ ROLE_TOOL_PERMISSIONS: dict[str, set[str]] = {
         "read_file", "list_files",
     },
 
+    "operator": {
+        # Operators can deploy/start/stop/monitor but CANNOT build or create
+        "hie_list_workspaces", "hie_list_projects", "hie_get_project",
+        # Production lifecycle — their primary function
+        "hie_deploy_project", "hie_start_project", "hie_stop_project",
+        "hie_project_status",
+        # Registry and read-only file access for troubleshooting
+        "hie_list_item_types",
+        "read_file", "list_files",
+    },
+
+    "auditor": {
+        # Read-only access — same as viewer
+        # Portal separately grants them audit log page visibility
+        "hie_list_workspaces", "hie_list_projects", "hie_get_project",
+        "hie_project_status", "hie_list_item_types",
+        "read_file", "list_files",
+    },
+
     "viewer": {
         # Read-only monitoring
         "hie_list_workspaces", "hie_list_projects", "hie_get_project",
@@ -122,7 +179,9 @@ ROLE_SKILL_PERMISSIONS: dict[str, set[str]] = {
         "integration-test",
     },
 
-    "viewer": set(),  # No skills — read-only
+    "operator": set(),   # No AI skills — operators use tools directly
+    "auditor": set(),    # No AI skills — read-only audit access
+    "viewer": set(),     # No skills — read-only
 }
 
 
@@ -227,6 +286,8 @@ ROLE_DISPLAY_NAMES: dict[str, str] = {
     "tenant_admin": "Tenant Admin",
     "developer": "Integration Developer",
     "clinical_safety_officer": "Clinical Safety Officer",
+    "operator": "Operator",
+    "auditor": "Auditor",
     "viewer": "Viewer",
 }
 
@@ -240,6 +301,14 @@ ROLE_DESCRIPTIONS: dict[str, str] = {
     "clinical_safety_officer": (
         "Review integrations for DCB0129/DCB0160 compliance. "
         "Run safety reviews and approve production deployments."
+    ),
+    "operator": (
+        "Deploy, start, and stop productions. Monitor message flow. "
+        "Cannot create or modify integration configurations."
+    ),
+    "auditor": (
+        "Read-only access with full audit log visibility. "
+        "Review all AI agent actions for NHS compliance."
     ),
     "viewer": "Read-only access to project status and monitoring.",
 }

@@ -686,8 +686,24 @@ export default function AgentsPage() {
                 <>
                   <div className="flex items-center gap-1"><span className="text-green-500">&#x2713;</span> Run safety reviews (DCB0129)</div>
                   <div className="flex items-center gap-1"><span className="text-green-500">&#x2713;</span> Run integration tests</div>
+                  <div className="flex items-center gap-1"><span className="text-green-500">&#x2713;</span> Approve/reject deployments</div>
                   <div className="flex items-center gap-1"><span className="text-green-500">&#x2713;</span> View all configurations</div>
                   <div className="flex items-center gap-1"><span className="text-red-400">&#x2717;</span> Cannot create or modify items</div>
+                </>
+              ) : agentRole === "operator" ? (
+                <>
+                  <div className="flex items-center gap-1"><span className="text-green-500">&#x2713;</span> Deploy &amp; start/stop projects</div>
+                  <div className="flex items-center gap-1"><span className="text-green-500">&#x2713;</span> Monitor message flow</div>
+                  <div className="flex items-center gap-1"><span className="text-green-500">&#x2713;</span> View project status</div>
+                  <div className="flex items-center gap-1"><span className="text-red-400">&#x2717;</span> Cannot build integrations</div>
+                  <div className="flex items-center gap-1"><span className="text-red-400">&#x2717;</span> Cannot create or modify items</div>
+                </>
+              ) : agentRole === "auditor" ? (
+                <>
+                  <div className="flex items-center gap-1"><span className="text-green-500">&#x2713;</span> View project status</div>
+                  <div className="flex items-center gap-1"><span className="text-green-500">&#x2713;</span> Read all configurations</div>
+                  <div className="flex items-center gap-1"><span className="text-green-500">&#x2713;</span> Access audit logs</div>
+                  <div className="flex items-center gap-1"><span className="text-red-400">&#x2717;</span> Read-only access</div>
                 </>
               ) : (
                 <>

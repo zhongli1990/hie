@@ -26,7 +26,7 @@ from .config import WORKSPACES_ROOT, PORT
 from .agent import run_agent_loop
 from .events import make_event, format_sse
 from .api.skills_router import router as skills_router
-from .roles import ROLE_DISPLAY_NAMES, ROLE_DESCRIPTIONS, ALL_ROLES
+from .roles import ROLE_DISPLAY_NAMES, ROLE_DESCRIPTIONS, ALL_ROLES, resolve_agent_role
 
 logger = logging.getLogger(__name__)
 
@@ -60,10 +60,11 @@ def extract_user_context(request: Request) -> dict[str, str]:
     try:
         payload = jwt.decode(token, JWT_SECRET_KEY, algorithms=[JWT_ALGORITHM])
         user_id = payload.get("sub") or payload.get("user_id", "unknown")
+        db_role = payload.get("role", "viewer")
         return {
             "user_id": str(user_id),
             "tenant_id": str(payload.get("tenant_id", "")),
-            "role": payload.get("role", "user"),
+            "role": resolve_agent_role(db_role),
         }
     except JWTError as e:
         logger.warning(f"JWT decode failed: {e}")

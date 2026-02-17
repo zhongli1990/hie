@@ -13,9 +13,14 @@ Hook Categories:
 """
 
 from typing import Any
+import json
 import logging
+import re
+import traceback
 
-from .config import ENABLE_HOOKS
+import httpx
+
+from .config import ENABLE_HOOKS, PROMPT_MANAGER_URL
 from .roles import is_tool_permitted, is_class_name_writable, is_file_path_writable
 
 logger = logging.getLogger(__name__)
@@ -110,6 +115,112 @@ RATE_LIMITS = {
 }
 
 
+# =============================================================================
+# PII SANITISATION & AUDIT HELPERS
+# =============================================================================
+
+_NHS_RE = re.compile(r"\b\d{3}\s?\d{3}\s?\d{4}\b")
+_POSTCODE_RE = re.compile(r"\b[A-Z]{1,2}\d[A-Z\d]?\s*\d[A-Z]{2}\b", re.IGNORECASE)
+
+
+def _sanitise(text: str | None) -> str | None:
+    """Strip NHS numbers and UK postcodes from text before audit storage."""
+    if not text:
+        return text
+    text = _NHS_RE.sub("[NHS_NUMBER]", text)
+    text = _POSTCODE_RE.sub("[POSTCODE]", text)
+    return text[:2000]  # Cap length for storage
+
+
+def _summarise_input(tool_input: dict) -> str:
+    """Create a short, PII-free summary of tool input for audit."""
+    try:
+        raw = json.dumps(tool_input, default=str)
+    except Exception:
+        raw = str(tool_input)
+    return _sanitise(raw) or ""
+
+
+def _summarise_result(result: Any) -> str:
+    """Create a short, PII-free summary of tool result for audit."""
+    try:
+        if isinstance(result, dict):
+            raw = json.dumps(result, default=str)
+        else:
+            raw = str(result)
+    except Exception:
+        raw = str(result)
+    return _sanitise(raw[:1000]) or ""
+
+
+async def _post_audit_entry(
+    user_id: str,
+    user_role: str,
+    action: str,
+    result_status: str,
+    tenant_id: str | None = None,
+    session_id: str | None = None,
+    run_id: str | None = None,
+    target_type: str | None = None,
+    target_id: str | None = None,
+    input_summary: str | None = None,
+    result_summary: str | None = None,
+) -> None:
+    """Fire-and-forget POST to prompt-manager /audit endpoint."""
+    try:
+        payload = {
+            "user_id": user_id,
+            "user_role": user_role,
+            "action": action,
+            "result_status": result_status,
+            "tenant_id": tenant_id,
+            "session_id": session_id,
+            "run_id": run_id,
+            "target_type": target_type,
+            "target_id": target_id,
+            "input_summary": input_summary,
+            "result_summary": result_summary,
+        }
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            resp = await client.post(f"{PROMPT_MANAGER_URL}/audit", json=payload)
+            if resp.status_code != 201:
+                logger.warning(f"Audit POST failed ({resp.status_code}): {resp.text[:200]}")
+    except Exception:
+        logger.warning(f"Audit POST error: {traceback.format_exc()}")
+
+
+async def _post_approval_request(
+    requested_by: str,
+    requested_role: str,
+    tenant_id: str | None,
+    workspace_id: str | None,
+    project_id: str | None,
+    project_name: str | None,
+    environment: str,
+    config_snapshot: dict | None = None,
+) -> dict | None:
+    """POST to prompt-manager /approvals endpoint. Returns approval record or None."""
+    try:
+        payload = {
+            "requested_by": requested_by,
+            "requested_role": requested_role,
+            "tenant_id": tenant_id,
+            "workspace_id": workspace_id,
+            "project_id": project_id,
+            "project_name": project_name,
+            "environment": environment,
+            "config_snapshot": config_snapshot,
+        }
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            resp = await client.post(f"{PROMPT_MANAGER_URL}/approvals", json=payload)
+            if resp.status_code == 201:
+                return resp.json()
+            logger.warning(f"Approval POST failed ({resp.status_code}): {resp.text[:200]}")
+    except Exception:
+        logger.warning(f"Approval POST error: {traceback.format_exc()}")
+    return None
+
+
 async def pre_tool_use_hook(input_data: dict[str, Any], tool_use_id: str, context: Any) -> dict[str, Any]:
     """
     Hook called before tool execution.
@@ -179,13 +290,28 @@ async def pre_tool_use_hook(input_data: dict[str, Any], tool_use_id: str, contex
                 return _deny(reason)
 
     # ── Lifecycle: Developer cannot deploy/start/stop ────────────────────
+    # For developers, intercept deploy requests and create an approval record.
     if tool_name in ("hie_deploy_project", "hie_start_project", "hie_stop_project"):
         if user_role == "developer":
+            # Create approval request so CSO/Admin can review
+            tenant_id_ctx = context.get("tenant_id", "") if isinstance(context, dict) else ""
+            user_id = context.get("user_id", "unknown") if isinstance(context, dict) else "unknown"
+            approval = await _post_approval_request(
+                requested_by=user_id,
+                requested_role=user_role,
+                tenant_id=tenant_id_ctx or None,
+                workspace_id=tool_input.get("workspace_id") or tool_input.get("workspace"),
+                project_id=tool_input.get("project_id") or tool_input.get("project"),
+                project_name=tool_input.get("project_name") or tool_input.get("name"),
+                environment="production",
+                config_snapshot=tool_input,
+            )
+            approval_id = approval.get("id", "unknown") if approval else "unknown"
             return _deny(
                 f"Role 'developer' cannot use '{tool_name}' directly. "
-                f"Production deployments require approval from a Clinical Safety Officer "
-                f"or Tenant Admin. Your integration has been built successfully — "
-                f"request a deployment review to proceed."
+                f"A deployment approval request (#{approval_id}) has been created. "
+                f"A Clinical Safety Officer or Tenant Admin must review and approve "
+                f"before the deployment can proceed."
             )
 
     return {}  # Allow
@@ -195,7 +321,10 @@ async def post_tool_use_hook(input_data: dict[str, Any], tool_use_id: str, resul
     """
     Hook called after tool execution.
 
-    Used for audit logging, result validation, namespace verification.
+    Responsibilities:
+    1. POST audit entry to prompt-manager /audit API (NHS compliance)
+    2. Log locally for immediate debugging
+    3. Track namespace events (class creation)
     """
     if not ENABLE_HOOKS:
         return {}
@@ -203,27 +332,59 @@ async def post_tool_use_hook(input_data: dict[str, Any], tool_use_id: str, resul
     tool_name = input_data.get("tool_name", "")
     tool_input = input_data.get("tool_input", {})
 
-    # Extract role from context
+    # Extract context
     user_role = "unknown"
-    tenant_id = ""
+    user_id = "unknown"
+    tenant_id = None
+    session_id = None
+    run_id = None
     if isinstance(context, dict):
         user_role = context.get("user_role", "unknown")
-        tenant_id = context.get("tenant_id", "")
+        user_id = context.get("user_id", "unknown")
+        tenant_id = context.get("tenant_id") or None
+        session_id = context.get("session_id")
+        run_id = context.get("run_id")
 
-    # Audit logging with role context
+    # Determine result status
+    result_status = "success"
+    if isinstance(result, dict):
+        if result.get("error") or result.get("is_error"):
+            result_status = "error"
+
+    # Determine target type/id for HIE tools
+    target_type = None
+    target_id = None
+    if tool_name.startswith("hie_"):
+        if "project" in tool_name:
+            target_type = "project"
+            target_id = tool_input.get("project_id") or tool_input.get("project")
+        elif "workspace" in tool_name:
+            target_type = "workspace"
+            target_id = tool_input.get("workspace_id") or tool_input.get("workspace")
+        elif "item" in tool_name:
+            target_type = "item"
+            target_id = tool_input.get("name") or tool_input.get("item_id")
+
+    # Local log (always)
     logger.info(
         f"[AUDIT] tool={tool_name} role={user_role} tenant={tenant_id} "
-        f"tool_use_id={tool_use_id}"
+        f"status={result_status} tool_use_id={tool_use_id}"
     )
 
-    # Log class creation events for namespace audit trail
-    if tool_name == "hie_create_item":
-        class_name = tool_input.get("class_name", "")
-        item_name = tool_input.get("name", "")
-        logger.info(
-            f"[AUDIT:CLASS] item={item_name} class={class_name} "
-            f"role={user_role} tenant={tenant_id}"
-        )
+    # POST to prompt-manager audit API (fire-and-forget, non-blocking)
+    await _post_audit_entry(
+        user_id=user_id,
+        user_role=user_role,
+        action=tool_name,
+        result_status=result_status,
+        tenant_id=tenant_id,
+        session_id=session_id,
+        run_id=run_id,
+        target_type=target_type,
+        target_id=target_id,
+        input_summary=_summarise_input(tool_input),
+        result_summary=_summarise_result(result),
+    )
 
     return {}
 

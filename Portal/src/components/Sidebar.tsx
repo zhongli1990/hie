@@ -30,6 +30,8 @@ import {
   BookOpen,
   Webhook,
   Sparkles,
+  CheckCircle,
+  ClipboardList,
 } from "lucide-react";
 import { VERSION } from "./AboutModal";
 
@@ -52,6 +54,8 @@ const agentItems = [
 
 const adminItems = [
   { href: "/admin/users", label: "Users", icon: Users },
+  { href: "/admin/approvals", label: "Approvals", icon: CheckCircle },
+  { href: "/admin/audit", label: "Audit Log", icon: ClipboardList },
   { href: "/admin/skills", label: "Skills", icon: BookOpen },
   { href: "/admin/hooks", label: "Hooks", icon: Webhook },
 ];

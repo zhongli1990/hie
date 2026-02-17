@@ -113,7 +113,9 @@ INSERT INTO hie_roles (id, tenant_id, name, display_name, description, is_system
     ('00000000-0000-0000-0000-000000000005', NULL, 'viewer', 'Viewer', 'Read-only access to all resources', TRUE,
      '["users:read","productions:read","messages:read","config:read","settings:read"]'),
     ('00000000-0000-0000-0000-000000000006', NULL, 'auditor', 'Auditor', 'Read-only access plus audit log viewing', TRUE,
-     '["users:read","productions:read","messages:read","config:read","settings:read","audit:read"]')
+     '["users:read","productions:read","messages:read","config:read","settings:read","audit:read"]'),
+    ('00000000-0000-0000-0000-000000000007', NULL, 'clinical_safety_officer', 'Clinical Safety Officer', 'Review integrations for DCB0129/DCB0160 compliance, approve deployments', TRUE,
+     '["users:read","productions:read","messages:read","config:read","settings:read","audit:read","approvals:approve","approvals:reject"]')
 ON CONFLICT (tenant_id, name) DO NOTHING;
 
 -- ============================================================================
@@ -121,10 +123,132 @@ ON CONFLICT (tenant_id, name) DO NOTHING;
 -- ============================================================================
 
 INSERT INTO hie_users (id, tenant_id, email, display_name, password_hash, status, role_id, approved_at, password_changed_at) VALUES
-    ('00000000-0000-0000-0000-000000000001', NULL, 'admin@hie.nhs.uk', 'System Administrator', 
-     '$2b$12$v0ffmoq9NEa5B.Kh8ZpgWeZx343uT4NC3d7YNgZJTnzCaWiipf2qm', 'active', 
+    ('00000000-0000-0000-0000-000000000001', NULL, 'admin@hie.nhs.uk', 'System Administrator',
+     '$2b$12$v0ffmoq9NEa5B.Kh8ZpgWeZx343uT4NC3d7YNgZJTnzCaWiipf2qm', 'active',
      '00000000-0000-0000-0000-000000000001', NOW(), NOW())
 ON CONFLICT (email) DO NOTHING;
+
+-- ============================================================================
+-- Demo Tenant: St Thomas' Hospital NHS Foundation Trust
+-- ============================================================================
+-- A real NHS Trust name used as the demo organisation for onboarding walkthroughs.
+-- All demo users below are assigned to this tenant.
+
+INSERT INTO hie_tenants (id, name, code, status, admin_email, support_email, max_users, max_productions, settings) VALUES
+    ('10000000-0000-0000-0000-000000000001',
+     'St Thomas'' Hospital NHS Foundation Trust',
+     'STH',
+     'active',
+     'trust.admin@sth.nhs.uk',
+     'it.support@sth.nhs.uk',
+     50, 25,
+     '{"region": "London", "ods_code": "RJ1", "tier": "enterprise"}'::jsonb)
+ON CONFLICT (code) DO NOTHING;
+
+-- ============================================================================
+-- Demo Users (password for ALL demo users: Demo12345!)
+-- ============================================================================
+-- One user per role enables a complete end-to-end demo of the platform's
+-- RBAC model across all seven roles.  The bcrypt hash below was generated
+-- with 12 rounds, matching Engine/auth/security.py defaults.
+--
+-- Login credentials summary:
+--   admin@hie.nhs.uk         / Admin123!   → Super Administrator (platform-wide)
+--   trust.admin@sth.nhs.uk   / Demo12345!  → Tenant Administrator
+--   developer@sth.nhs.uk     / Demo12345!  → Integration Engineer (developer)
+--   cso@sth.nhs.uk           / Demo12345!  → Clinical Safety Officer
+--   operator@sth.nhs.uk      / Demo12345!  → Operator
+--   viewer@sth.nhs.uk        / Demo12345!  → Viewer
+--   auditor@sth.nhs.uk       / Demo12345!  → Auditor
+
+INSERT INTO hie_users (id, tenant_id, email, display_name, title, department, password_hash, status, role_id, approved_at, password_changed_at) VALUES
+    -- Tenant Admin: manages the Trust's HIE instance
+    ('10000000-0000-0000-0000-000000000101',
+     '10000000-0000-0000-0000-000000000001',
+     'trust.admin@sth.nhs.uk',
+     'Sarah Thompson',
+     'IT Director',
+     'Digital Health',
+     '$2b$12$TdtsKl48b0RgdGYQFZzVr.V990.oHycDBC/ZDfp1WqRF5QH3KhQUi',
+     'active',
+     '00000000-0000-0000-0000-000000000002',
+     NOW(), NOW()),
+
+    -- Integration Engineer (agent role: developer): builds integrations via NL
+    ('10000000-0000-0000-0000-000000000102',
+     '10000000-0000-0000-0000-000000000001',
+     'developer@sth.nhs.uk',
+     'James Chen',
+     'Integration Developer',
+     'Integration Services',
+     '$2b$12$TdtsKl48b0RgdGYQFZzVr.V990.oHycDBC/ZDfp1WqRF5QH3KhQUi',
+     'active',
+     '00000000-0000-0000-0000-000000000003',
+     NOW(), NOW()),
+
+    -- Clinical Safety Officer: reviews integrations for DCB0129/DCB0160
+    ('10000000-0000-0000-0000-000000000103',
+     '10000000-0000-0000-0000-000000000001',
+     'cso@sth.nhs.uk',
+     'Dr. Priya Patel',
+     'Clinical Safety Officer',
+     'Clinical Informatics',
+     '$2b$12$TdtsKl48b0RgdGYQFZzVr.V990.oHycDBC/ZDfp1WqRF5QH3KhQUi',
+     'active',
+     '00000000-0000-0000-0000-000000000007',
+     NOW(), NOW()),
+
+    -- Operator: deploys, starts/stops, monitors productions
+    ('10000000-0000-0000-0000-000000000104',
+     '10000000-0000-0000-0000-000000000001',
+     'operator@sth.nhs.uk',
+     'Mike Williams',
+     'Systems Operator',
+     'IT Operations',
+     '$2b$12$TdtsKl48b0RgdGYQFZzVr.V990.oHycDBC/ZDfp1WqRF5QH3KhQUi',
+     'active',
+     '00000000-0000-0000-0000-000000000004',
+     NOW(), NOW()),
+
+    -- Viewer: read-only access to dashboards and status
+    ('10000000-0000-0000-0000-000000000105',
+     '10000000-0000-0000-0000-000000000001',
+     'viewer@sth.nhs.uk',
+     'Emma Davis',
+     'Service Desk Analyst',
+     'IT Service Management',
+     '$2b$12$TdtsKl48b0RgdGYQFZzVr.V990.oHycDBC/ZDfp1WqRF5QH3KhQUi',
+     'active',
+     '00000000-0000-0000-0000-000000000005',
+     NOW(), NOW()),
+
+    -- Auditor: read-only + audit log visibility for IG compliance
+    ('10000000-0000-0000-0000-000000000106',
+     '10000000-0000-0000-0000-000000000001',
+     'auditor@sth.nhs.uk',
+     'Robert Singh',
+     'IG Auditor',
+     'Information Governance',
+     '$2b$12$TdtsKl48b0RgdGYQFZzVr.V990.oHycDBC/ZDfp1WqRF5QH3KhQUi',
+     'active',
+     '00000000-0000-0000-0000-000000000006',
+     NOW(), NOW())
+ON CONFLICT (email) DO NOTHING;
+
+-- ============================================================================
+-- Demo Workspace for St Thomas' Trust
+-- ============================================================================
+-- Links to the demo tenant so agent-runner can scope tools by tenant.
+
+INSERT INTO workspaces (id, name, display_name, description, tenant_id, created_by, settings) VALUES
+    ('10000000-0000-0000-0000-000000000201',
+     'sth-integrations',
+     'STH Integrations',
+     'Integration workspace for St Thomas'' Hospital NHS Foundation Trust',
+     '10000000-0000-0000-0000-000000000001',
+     '10000000-0000-0000-0000-000000000101',
+     '{"actorPoolSize": 4, "gracefulShutdownTimeout": 30}'::jsonb)
+ON CONFLICT (name) DO NOTHING;
 
 -- ============================================================================
 -- Message Tables

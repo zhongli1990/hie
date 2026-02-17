@@ -5,6 +5,8 @@ Tables:
 - prompt_templates: Versioned prompt templates with RBAC
 - skills: DB-backed skills with versioning
 - template_usage_log: Usage tracking for analytics
+- audit_log: Every AI agent tool call recorded for NHS compliance
+- deployment_approvals: Human review gate for production deployments
 """
 import uuid
 from datetime import datetime, timezone
@@ -89,3 +91,61 @@ class TemplateUsageLog(Base):
     variables_used = Column(JSON, nullable=True)
     model_used = Column(String(128), nullable=True)
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+
+class AuditLog(Base):
+    """Every AI agent tool call — who, what, when, result.
+
+    NHS DCB0129/DCB0160 compliance: all AI-driven actions must be auditable.
+    Input/output fields are PII-sanitised before storage.
+    """
+    __tablename__ = "audit_log"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id = Column(UUID(as_uuid=True), nullable=True, index=True)
+    user_id = Column(String(128), nullable=False, index=True)
+    user_role = Column(String(32), nullable=False)
+    session_id = Column(String(128), nullable=True, index=True)
+    run_id = Column(String(128), nullable=True)
+    action = Column(String(128), nullable=False, index=True)        # tool name
+    target_type = Column(String(64), nullable=True)                 # workspace/project/item
+    target_id = Column(String(128), nullable=True)
+    input_summary = Column(Text, nullable=True)                     # sanitised (no PII)
+    result_status = Column(String(16), nullable=False, index=True)  # success/denied/error
+    result_summary = Column(Text, nullable=True)                    # sanitised
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+    __table_args__ = (
+        Index("ix_audit_log_tenant_created", "tenant_id", "created_at"),
+        Index("ix_audit_log_action_status", "action", "result_status"),
+    )
+
+
+class DeploymentApproval(Base):
+    """Human review gate for production deployments.
+
+    When a developer requests production deploy, a record is created here.
+    A Clinical Safety Officer or Tenant Admin must approve before the
+    deployment executes.
+    """
+    __tablename__ = "deployment_approvals"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id = Column(UUID(as_uuid=True), nullable=True, index=True)
+    requested_by = Column(String(128), nullable=False, index=True)
+    requested_role = Column(String(32), nullable=False)
+    workspace_id = Column(String(128), nullable=True)
+    project_id = Column(String(128), nullable=True)
+    project_name = Column(String(256), nullable=True)
+    environment = Column(String(32), nullable=False, default="production")
+    status = Column(String(16), nullable=False, default="pending", index=True)
+    reviewed_by = Column(String(128), nullable=True)
+    review_notes = Column(Text, nullable=True)
+    safety_report = Column(JSON, nullable=True)
+    config_snapshot = Column(JSON, nullable=True)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    reviewed_at = Column(DateTime(timezone=True), nullable=True)
+
+    __table_args__ = (
+        Index("ix_deployment_approvals_tenant_status", "tenant_id", "status"),
+    )

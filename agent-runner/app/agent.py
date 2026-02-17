@@ -110,6 +110,16 @@ async def _run_with_anthropic_sdk(
             "You have read-only access to projects and can run tests and safety reviews. "
             "You cannot create or modify integration configurations.\n\n"
         )
+    elif user_role == "operator":
+        role_preamble += (
+            "You can deploy, start, and stop productions. You can monitor message flow "
+            "and check project status. You cannot create or modify integration configurations.\n\n"
+        )
+    elif user_role == "auditor":
+        role_preamble += (
+            "You have read-only access for audit and compliance purposes. "
+            "You can view project status and configurations but cannot modify anything.\n\n"
+        )
     elif user_role == "viewer":
         role_preamble += "You have read-only access. You can view project status and configurations.\n\n"
 

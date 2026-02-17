@@ -15,3 +15,6 @@ MAX_AGENT_TURNS = int(os.environ.get("MAX_AGENT_TURNS", "20"))
 
 # HIE-specific configuration
 HIE_MANAGER_URL = os.environ.get("HIE_MANAGER_URL", "http://hie-manager:8081")
+
+# Prompt Manager (audit + approvals API)
+PROMPT_MANAGER_URL = os.environ.get("PROMPT_MANAGER_URL", "http://hie-prompt-manager:9341")

@@ -19,7 +19,7 @@ from sqlalchemy import text
 
 from .database import engine, async_session
 from .models import Base
-from .routers import templates, skills, usage, categories
+from .routers import templates, skills, usage, categories, audit, approvals
 from .repositories.template_repo import TemplateRepository
 from .repositories.skill_repo import SkillRepository
 
@@ -27,7 +27,7 @@ logger = logging.getLogger(__name__)
 
 SEED_DIR = os.environ.get("SEED_DIR", "/app/seeds")
 
-app = FastAPI(title="OpenLI HIE Prompt Manager", version="1.8.1")
+app = FastAPI(title="OpenLI HIE Prompt Manager", version="1.9.0")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -40,6 +40,8 @@ app.include_router(templates.router)
 app.include_router(skills.router)
 app.include_router(usage.router)
 app.include_router(categories.router)
+app.include_router(audit.router)
+app.include_router(approvals.router)
 
 
 @app.on_event("startup")
@@ -52,7 +54,7 @@ async def on_startup():
 
 @app.get("/health")
 async def health():
-    return {"status": "ok", "service": "hie-prompt-manager", "version": "1.8.1"}
+    return {"status": "ok", "service": "hie-prompt-manager", "version": "1.9.0"}
 
 
 # ── Seed API ──────────────────────────────────────────────────────────────────

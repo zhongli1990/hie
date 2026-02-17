@@ -137,3 +137,90 @@ class CategoryResponse(BaseModel):
     name: str
     template_count: int = 0
     skill_count: int = 0
+
+
+# ── Audit Log ─────────────────────────────────────────────────────────────
+
+class AuditLogCreate(BaseModel):
+    """Posted by agent-runner after every tool execution."""
+    tenant_id: Optional[str] = None
+    user_id: str
+    user_role: str
+    session_id: Optional[str] = None
+    run_id: Optional[str] = None
+    action: str                                     # tool name
+    target_type: Optional[str] = None               # workspace/project/item
+    target_id: Optional[str] = None
+    input_summary: Optional[str] = None             # PII-sanitised
+    result_status: str = "success"                   # success/denied/error
+    result_summary: Optional[str] = None            # PII-sanitised
+
+
+class AuditLogResponse(BaseModel):
+    id: str
+    tenant_id: Optional[str] = None
+    user_id: str
+    user_role: str
+    session_id: Optional[str] = None
+    run_id: Optional[str] = None
+    action: str
+    target_type: Optional[str] = None
+    target_id: Optional[str] = None
+    input_summary: Optional[str] = None
+    result_status: str
+    result_summary: Optional[str] = None
+    created_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+
+class AuditLogListResponse(BaseModel):
+    entries: list[AuditLogResponse]
+    total: int
+
+
+# ── Deployment Approvals ──────────────────────────────────────────────────
+
+class ApprovalCreate(BaseModel):
+    """Posted by agent-runner when a developer requests production deploy."""
+    tenant_id: Optional[str] = None
+    requested_by: str
+    requested_role: str
+    workspace_id: Optional[str] = None
+    project_id: Optional[str] = None
+    project_name: Optional[str] = None
+    environment: str = "production"
+    config_snapshot: Optional[dict] = None
+
+
+class ApprovalReview(BaseModel):
+    """Posted by CSO/Admin to approve or reject."""
+    review_notes: Optional[str] = None
+    safety_report: Optional[dict] = None
+
+
+class ApprovalResponse(BaseModel):
+    id: str
+    tenant_id: Optional[str] = None
+    requested_by: str
+    requested_role: str
+    workspace_id: Optional[str] = None
+    project_id: Optional[str] = None
+    project_name: Optional[str] = None
+    environment: str
+    status: str
+    reviewed_by: Optional[str] = None
+    review_notes: Optional[str] = None
+    safety_report: Optional[dict] = None
+    config_snapshot: Optional[dict] = None
+    created_at: Optional[datetime] = None
+    reviewed_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+
+class ApprovalListResponse(BaseModel):
+    approvals: list[ApprovalResponse]
+    total: int
