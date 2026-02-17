@@ -2,7 +2,7 @@
 
 **Release Date:** 2026-02-13
 **Branch:** `feature/nl-development-rbac`
-**Commit:** `f75976a` (implementation) + release commit (docs/version bumps)
+**Commits:** `f75976a` (implementation) → `883caac` (docs/version bumps) → `bc272d4` (bug fixes + E2E tests)
 **Type:** Feature Release — Unified RBAC, Demo Onboarding & E2E Lifecycle
 
 ---
@@ -125,50 +125,6 @@ Pre-seeded NHS Trust demo environment for testing and demonstrations:
 
 ---
 
-## Files Changed
-
-### New Files (7)
-
-| File | Lines | Purpose |
-|------|-------|---------|
-| `prompt-manager/app/repositories/audit_repo.py` | ~150 | Audit log CRUD with PII sanitisation |
-| `prompt-manager/app/repositories/approval_repo.py` | ~120 | Approval lifecycle CRUD |
-| `prompt-manager/app/routers/audit.py` | ~80 | Audit API endpoints |
-| `prompt-manager/app/routers/approvals.py` | ~170 | Approval workflow API |
-| `prompt-manager/alembic/versions/002_audit_approvals_tables.py` | ~60 | DB migration |
-| `agent-runner/app/config.py` | ~10 | Inter-service config |
-| `Portal/src/app/(app)/admin/audit/page.tsx` | ~450 | Audit log viewer |
-| `Portal/src/app/(app)/admin/approvals/page.tsx` | ~500 | Approval review UI |
-
-### Modified Files (12)
-
-| File | Change |
-|------|--------|
-| `agent-runner/app/roles.py` | DB-to-agent role mapping, operator/auditor permissions |
-| `agent-runner/app/main.py` | Wire `resolve_agent_role()` |
-| `agent-runner/app/agent.py` | Operator/auditor role preambles |
-| `agent-runner/app/hooks.py` | Audit POST + approval intercept |
-| `prompt-manager/app/models.py` | AuditLog + DeploymentApproval models |
-| `prompt-manager/app/main.py` | Register audit/approvals routers |
-| `prompt-manager/app/schemas.py` | Audit + approval Pydantic schemas |
-| `scripts/init-db.sql` | CSO role, demo tenant, 6 users, workspace |
-| `Portal/src/components/AgentWorkflows/QuickStartPanel.tsx` | 7-role support, lifecycle stepper |
-| `Portal/src/app/(app)/agents/page.tsx` | Operator/auditor capabilities |
-| `Portal/src/components/Sidebar.tsx` | Audit + Approvals nav links |
-
-### Documentation Files (this release)
-
-| File | Purpose |
-|------|---------|
-| `docs/design/FEATURE_NL_DEVELOPMENT_RBAC.md` | Updated: Phases 2-4 DONE, file inventory, status table |
-| `docs/releases/RELEASE_NOTES_v1.9.4.md` | This file |
-| `docs/INDEX.md` | Updated with v1.9.4 references |
-| `CHANGELOG.md` | v1.9.4 entry |
-
-**Total:** 19 implementation files (+2365/-48 lines) + 4 documentation files
-
----
-
 ## Deployment Guide
 
 ### Fresh Installation
@@ -229,6 +185,126 @@ docker compose up -d
 | GR-6 Namespace Enforcement | **DONE** | Phase 1 |
 
 **5 of 6 guardrails implemented.** Only GR-4 (Configuration Snapshots & Rollback) remains for Phase 5.
+
+---
+
+## Bug Fixes (discovered during E2E testing)
+
+### JWT Secret Mismatch Between Services
+
+**Problem:** The `hie-manager` service (which issues JWTs) used the default secret from `Engine/auth/security.py` (`hie-dev-secret-key-change-in-production`), while `agent-runner` and `prompt-manager` both had `hie-jwt-secret-key-change-in-production` set in `docker-compose.yml`. All JWT-authenticated requests from agent-runner and prompt-manager to manager-issued tokens failed with 401.
+
+**Fix:** Added `JWT_SECRET_KEY=hie-jwt-secret-key-change-in-production` to the `hie-manager` environment in both `docker-compose.yml` and `docker-compose.dev.yml`, aligning all three services.
+
+### Prompt-Manager Auth: Null Tenant ID Handling
+
+**Problem:** When a JWT carries `"tenant_id": null` (e.g., super_admin users with no tenant), the expression `str(payload.get("tenant_id", "")) or None` produced the string `"None"` (not Python `None`), because `payload.get("tenant_id", "")` returns Python `None` (not empty string) when the key exists with value null. `str(None)` = `"None"` which is truthy. This garbage string then crashed DB queries.
+
+**Fix:** Changed to explicit null-safe extraction:
+```python
+tenant_id_raw = payload.get("tenant_id")
+tenant_id = str(tenant_id_raw) if tenant_id_raw else None
+```
+
+### Prompt-Manager Auth: Admin Role Recognition
+
+**Problem:** Role checks in audit and approvals routers used `user.role not in ("admin", "platform_admin")` which did not recognise `super_admin` or `tenant_admin` (the actual DB role names carried in JWTs). Admin users were denied access to their own audit logs and approval reviews.
+
+**Fix:** Created `ADMIN_ROLES = {"admin", "platform_admin", "super_admin", "tenant_admin"}` set and `is_admin` property on `CurrentUser` class in `prompt-manager/app/auth.py`. Replaced all hardcoded role checks in `audit.py` and `approvals.py` with `user.is_admin`.
+
+### Prompt-Manager Health Endpoint: Hardcoded Version
+
+**Problem:** The `/health` endpoint returned `"version": "1.9.0"` even though the FastAPI app version was bumped to 1.9.4.
+
+**Fix:** Changed to `"version": app.version` in `prompt-manager/app/main.py`.
+
+---
+
+## E2E Test Suite
+
+### Docker-Based Test Infrastructure
+
+Created a comprehensive Docker-based E2E test suite that runs inside the compose network — no tests run on the host macOS. Tests use container DNS names (`hie-manager`, `hie-agent-runner`, `hie-prompt-manager`, `hie-portal`) instead of localhost.
+
+**Test runner:** `scripts/run_e2e_tests.sh` — builds a test image from `Dockerfile.dev`, mounts `tests/` read-only, connects to `hie_hie-network`, and executes pytest inside the container.
+
+**Makefile targets:**
+```bash
+make test-e2e          # Run all E2E tests
+make test-e2e-v194     # Run v1.9.4 feature tests only
+make test-e2e-smoke    # Run smoke tests only
+```
+
+### Test Coverage (38 tests — all passing)
+
+**`tests/e2e/test_v194_rbac_audit_approvals.py`** — organised by feature requirements:
+
+| Section | Tests | Coverage |
+|---------|-------|----------|
+| Health Checks | 3 | All services healthy, version = 1.9.4 |
+| Demo Login (FR-5) | 7 | All 7 demo users login successfully, receive valid JWT |
+| Role Alignment (GR-1) | 8 | Each role resolves correctly via `/roles/me` — no silent fallback to viewer |
+| Audit Logging (GR-2) | 5 | Create audit entry, verify PII sanitisation (NHS numbers), list with auth, stats endpoint |
+| Approval Workflows (GR-3) | 7 | Create approval, list, approve, reject, role-gated access (CSO/Admin only, developer rejected) |
+| RBAC Regression | 4 | Tool filtering per role, developer blocked from deploy, viewer read-only, admin full access |
+| Portal Pages | 3 | Audit + Approvals admin pages return 200 |
+| Version Consistency | 1 | All services report version 1.9.4 |
+
+---
+
+## Files Changed (full release)
+
+### New Files (9)
+
+| File | Lines | Purpose |
+|------|-------|---------|
+| `prompt-manager/app/repositories/audit_repo.py` | ~150 | Audit log CRUD with PII sanitisation |
+| `prompt-manager/app/repositories/approval_repo.py` | ~120 | Approval lifecycle CRUD |
+| `prompt-manager/app/routers/audit.py` | ~80 | Audit API endpoints |
+| `prompt-manager/app/routers/approvals.py` | ~170 | Approval workflow API |
+| `prompt-manager/alembic/versions/002_audit_approvals_tables.py` | ~60 | DB migration |
+| `agent-runner/app/config.py` | ~10 | Inter-service config |
+| `Portal/src/app/(app)/admin/audit/page.tsx` | ~450 | Audit log viewer |
+| `Portal/src/app/(app)/admin/approvals/page.tsx` | ~500 | Approval review UI |
+| `tests/e2e/test_v194_rbac_audit_approvals.py` | ~620 | 38-test E2E suite |
+
+### New Scripts (1)
+
+| File | Purpose |
+|------|---------|
+| `scripts/run_e2e_tests.sh` | Docker-based E2E test runner |
+
+### Modified Files (15)
+
+| File | Change |
+|------|--------|
+| `agent-runner/app/roles.py` | DB-to-agent role mapping, operator/auditor permissions |
+| `agent-runner/app/main.py` | Wire `resolve_agent_role()` |
+| `agent-runner/app/agent.py` | Operator/auditor role preambles |
+| `agent-runner/app/hooks.py` | Audit POST + approval intercept |
+| `prompt-manager/app/models.py` | AuditLog + DeploymentApproval models |
+| `prompt-manager/app/main.py` | Register routers, fix health endpoint version |
+| `prompt-manager/app/schemas.py` | Audit + approval Pydantic schemas |
+| `prompt-manager/app/auth.py` | ADMIN_ROLES set, is_admin property, null tenant_id fix |
+| `prompt-manager/app/routers/audit.py` | Use `user.is_admin` instead of hardcoded role checks |
+| `prompt-manager/app/routers/approvals.py` | Use `user.is_admin`, fix CSO role gate |
+| `scripts/init-db.sql` | CSO role, demo tenant, 6 users, workspace |
+| `docker-compose.yml` | JWT_SECRET_KEY alignment for hie-manager |
+| `docker-compose.dev.yml` | JWT_SECRET_KEY alignment for hie-manager |
+| `Portal/src/components/AgentWorkflows/QuickStartPanel.tsx` | 7-role support, lifecycle stepper |
+| `Portal/src/app/(app)/agents/page.tsx` | Operator/auditor capabilities |
+| `Portal/src/components/Sidebar.tsx` | Audit + Approvals nav links |
+| `Makefile` | E2E test targets (test-e2e, test-e2e-v194, test-e2e-smoke) |
+
+### Documentation Files
+
+| File | Purpose |
+|------|---------|
+| `docs/design/FEATURE_NL_DEVELOPMENT_RBAC.md` | Updated: Phases 2-4 DONE, E2E verification |
+| `docs/releases/RELEASE_NOTES_v1.9.4.md` | This file |
+| `docs/reference/TESTING_GUIDE.md` | Updated: E2E v1.9.4 section |
+| `docs/INDEX.md` | Updated with v1.9.4 references |
+| `CHANGELOG.md` | v1.9.4 entry |
 
 ---
 

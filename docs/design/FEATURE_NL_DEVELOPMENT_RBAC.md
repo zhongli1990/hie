@@ -910,6 +910,20 @@ Added to `agent-runner/app/tools.py`:
 | `Portal/src/app/(app)/admin/approvals/page.tsx` | **NEW** | Approval review UI with approve/reject, review modal |
 | `scripts/init-db.sql` | **MODIFIED** | CSO role, demo tenant, 6 demo users, demo workspace |
 
+### Delivered Files (Bug Fixes + E2E Tests)
+
+| File | Status | Purpose |
+|------|--------|---------|
+| `prompt-manager/app/auth.py` | **MODIFIED** | `ADMIN_ROLES` set, `is_admin` property, null tenant_id fix |
+| `prompt-manager/app/routers/audit.py` | **MODIFIED** | Replaced hardcoded role checks with `user.is_admin` |
+| `prompt-manager/app/routers/approvals.py` | **MODIFIED** | Replaced hardcoded role checks, fixed CSO gate |
+| `prompt-manager/app/main.py` | **MODIFIED** | Health endpoint uses `app.version` instead of hardcoded |
+| `docker-compose.yml` | **MODIFIED** | JWT_SECRET_KEY alignment for hie-manager |
+| `docker-compose.dev.yml` | **MODIFIED** | JWT_SECRET_KEY alignment for hie-manager |
+| `tests/e2e/test_v194_rbac_audit_approvals.py` | **NEW** | 38-test E2E suite (health, login, RBAC, audit, approvals) |
+| `scripts/run_e2e_tests.sh` | **NEW** | Docker-based E2E test runner |
+| `Makefile` | **MODIFIED** | E2E test targets |
+
 ### Pending Files (Phase 5)
 
 | File | Phase | Purpose |
@@ -947,6 +961,32 @@ Added to `agent-runner/app/tools.py`:
 | Developer requests production deploy | DeploymentApproval created with status=pending |
 | CSO approves via Portal | Deployment executes; audit log records approval |
 | CSO rejects with notes | Developer notified; deployment does not execute |
+
+### E2E Test Suite (38 Tests — All Passing)
+
+Automated Docker-based E2E test suite covering all phases:
+
+```bash
+# Start all services
+docker compose up -d --build
+
+# Run v1.9.4 feature tests
+make test-e2e-v194
+```
+
+| Section | Tests | Coverage |
+|---------|-------|----------|
+| Health Checks | 3 | All services healthy, version = 1.9.4 |
+| Demo Login (FR-5) | 7 | All 7 demo users login successfully, receive valid JWT |
+| Role Alignment (GR-1) | 8 | Each role resolves correctly via `/roles/me` — no silent fallback |
+| Audit Logging (GR-2) | 5 | Create entry, PII sanitisation (NHS numbers), list with auth, stats |
+| Approval Workflows (GR-3) | 7 | Create, list, approve, reject, role-gated access |
+| RBAC Regression | 4 | Tool filtering per role, deploy blocked for developer, viewer read-only |
+| Portal Pages | 3 | Audit + Approvals admin pages return 200 |
+| Version Consistency | 1 | All services report version 1.9.4 |
+
+**Test file:** `tests/e2e/test_v194_rbac_audit_approvals.py`
+**Runner:** `scripts/run_e2e_tests.sh` (Docker-network, no host-side execution)
 
 ### Build Verification
 

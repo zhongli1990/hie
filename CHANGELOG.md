@@ -67,6 +67,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `prompt-manager/app/main.py` — Registered audit and approvals routers
 - `scripts/init-db.sql` — Added CSO role, demo tenant, 6 demo users, demo workspace (885 lines total)
 
+### Fixed
+
+**JWT Secret Mismatch (infrastructure bug):**
+- `hie-manager` used default JWT secret `hie-dev-secret-key-change-in-production` while agent-runner and prompt-manager used `hie-jwt-secret-key-change-in-production` — all cross-service JWT verification failed with 401
+- Added `JWT_SECRET_KEY=hie-jwt-secret-key-change-in-production` to hie-manager environment in `docker-compose.yml` and `docker-compose.dev.yml`
+
+**Prompt-Manager Auth Bugs:**
+- Fixed null tenant_id handling: `str(None)` produced string `"None"` instead of Python `None`, crashing DB queries for super_admin users
+- Fixed admin role recognition: hardcoded `("admin", "platform_admin")` checks didn't recognise `super_admin` or `tenant_admin` DB role names
+- Added `ADMIN_ROLES` set and `is_admin` property to `CurrentUser` class in `prompt-manager/app/auth.py`
+- Replaced all hardcoded role checks in `audit.py` and `approvals.py` with `user.is_admin`
+
+**Prompt-Manager Health Endpoint:**
+- `/health` returned hardcoded `"version": "1.9.0"` — changed to `app.version`
+
+### Added — E2E Test Suite
+
+- New `tests/e2e/test_v194_rbac_audit_approvals.py` — 38 Docker-based E2E tests covering health, demo login (FR-5), role alignment (GR-1), audit logging (GR-2), approval workflows (GR-3), RBAC regression, Portal pages, and version consistency
+- New `scripts/run_e2e_tests.sh` — Docker test runner that builds a test image, mounts tests read-only, and runs inside the compose network using container DNS names
+- New Makefile targets: `make test-e2e`, `make test-e2e-v194`, `make test-e2e-smoke`
+
 ### Version Bumps
 
 All services bumped to **1.9.4**:
@@ -100,7 +121,7 @@ None — 100% backward compatible. All SQL uses ON CONFLICT DO NOTHING.
 
 ### Files Changed
 
-19 files changed, +2365 / -48 lines (12 modified + 7 new)
+26 files changed (15 modified + 10 new + 1 deleted)
 
 ---
 
