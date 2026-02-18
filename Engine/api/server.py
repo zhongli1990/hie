@@ -128,7 +128,7 @@ class APIServer:
         return web.json_response({
             "status": "healthy",
             "timestamp": datetime.utcnow().isoformat(),
-            "version": "0.2.0",
+            "version": "1.9.5",
         })
     
     async def get_service_health(self, request: web.Request) -> web.Response:

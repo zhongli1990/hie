@@ -129,19 +129,19 @@ These guardrails make the NL development lifecycle safe for NHS production. They
 | FR-7 Deploy | **SAFE** — RBAC blocks developer deploy (GR-1), approval workflow gates production (GR-3), audit trail records all actions (GR-2) | **DONE** — Phase 1 (RBAC) + Phase 3 (Audit) + Phase 4 (Approvals) |
 | FR-8 Monitor | **Working** — `hie_project_status` returns runtime metrics | Already functional |
 | FR-9 Debug | **Partial** — status available but no message trace integration | Future: integrate with Visual Trace |
-| FR-10 Modify | **Working** — AI can add items/connections/rules to existing projects | Already functional |
+| FR-10 Modify | **IMPLEMENTED** — `hie_update_item`, `hie_update_connection`, `hie_update_routing_rule` + delete tools | **DONE** — v1.9.5 |
 | FR-11 Extend | **Working + guarded** — `write_file` + `hie_reload_custom_classes` + GR-6 namespace enforcement | **DONE** — Phase 1 |
-| FR-12 Rollback | **Not implemented** | **Needs GR-4 (snapshots) + new `hie_rollback_project` tool** |
+| FR-12 Rollback | **IMPLEMENTED** — `hie_rollback_project` tool + auto-snapshot on deploy + `ProjectVersionRepository` | **DONE** — v1.9.5 (GR-4) |
 | FR-13 Discover | **Working** — `hie_list_item_types` + ClassRegistry | Already functional |
 | FR-14 Teach | **Working** — system prompt includes full architecture context | Already functional |
 | GR-1 RBAC | **IMPLEMENTED** — 7-role hierarchy with DB-to-agent role mapping, Layer 1 tool filtering + Layer 2 hook validation | **DONE** — Phase 1 + Phase 2 (role alignment) |
 | GR-2 Audit | **IMPLEMENTED** — `AuditLog` model, `/audit` API with PII sanitisation, Portal audit viewer with stats/filters/CSV export | **DONE** — Phase 3, commit `f75976a` |
 | GR-3 Approvals | **IMPLEMENTED** — `DeploymentApproval` model, `/approvals` API, Portal approval UI with approve/reject, hook intercept on production deploy | **DONE** — Phase 4, commit `f75976a` |
-| GR-4 Snapshots | **Not implemented** | **Phase 5** |
+| GR-4 Snapshots | **IMPLEMENTED** — Auto-snapshot on deploy, `ProjectVersionRepository`, 3 version/rollback API endpoints, 3 agent tools | **DONE** — v1.9.5 (Phase 5) |
 | GR-5 Tenant Isolation | **IMPLEMENTED** — JWT tenant_id extracted and passed through hook context | **DONE** — Phase 1 |
 | GR-6 Namespace Enforcement | **IMPLEMENTED** — `is_class_name_writable()` + `is_file_path_writable()` enforce `custom.*` only for non-admin roles | **DONE** — Phase 1 |
 
-**Key takeaway:** 10 of 14 feature requirements work. GR-1, GR-2, GR-3, GR-5, and GR-6 guardrails are now fully implemented. Remaining work: GR-4 (snapshots), FR-12 (rollback), and FR-9 improvements.
+**Key takeaway:** 12 of 14 feature requirements implemented. **All 6 guardrails fully implemented.** Remaining: FR-3 (configure — partial, update tools now available), FR-9 (debug — partial, status available but no message trace integration).
 
 ### Gap Analysis: Production Readiness Status
 

@@ -5,6 +5,65 @@ All notable changes to OpenLI HIE (Healthcare Integration Engine) will be docume
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.5] - 2026-02-13
+
+### Added — Config Snapshots, Full CRUD, Environment Deploy & Rate Limiting
+
+**Config Snapshots & Rollback (GR-4 Complete — last guardrail):**
+- Auto-snapshot project config before every deployment into `project_versions` table
+- New `ProjectVersionRepository` in `Engine/api/repositories.py` with full CRUD
+- 3 new API endpoints: `GET /api/projects/{id}/versions`, `GET /api/projects/{id}/versions/{v}`, `POST /api/projects/{id}/rollback/{v}`
+- 3 new agent tools: `hie_list_versions`, `hie_get_version`, `hie_rollback_project`
+- Rollback restores all items, connections, and routing rules from snapshot
+- **6 of 6 guardrails now fully implemented**
+
+**Full CRUD Tools (FR-3, FR-10):**
+- 6 new agent tools wiring to existing Manager API update/delete endpoints:
+  - `hie_update_item`, `hie_delete_item` — modify/remove items
+  - `hie_update_connection`, `hie_delete_connection` — modify/remove connections
+  - `hie_update_routing_rule`, `hie_delete_routing_rule` — modify/remove routing rules
+- PUT/DELETE support added to `_hie_api_call()` in `agent-runner/app/tools.py`
+- RBAC: update/delete available to developer, tenant_admin, platform_admin only
+
+**Environment-Aware Deployment (FR-11):**
+- Added `environment` parameter to `hie_deploy_project` tool (staging/production)
+- Developers can deploy to staging without approval
+- Production deploys by developers still require CSO/Admin approval
+- Operators and admins can deploy to any environment directly
+- Environment passed through to Manager API and stored in deployment metadata
+
+**Rate Limiting via Redis:**
+- New `agent-runner/app/rate_limiter.py` — Redis sliding window counter
+- Rate limits enforced per user per category: bash (30/min), file_writes (20/min), api_calls (60/min), hl7_sends (10/min)
+- Graceful degradation: fails open if Redis is unavailable
+- Wired into `pre_tool_use_hook()` in hooks.py
+
+**Production Hardening:**
+- New `DISABLE_DEV_USER` environment variable — when `true`, unauthenticated requests get `viewer` role instead of dev `platform_admin` fallback
+- Added `REDIS_URL` to agent-runner config and docker-compose files
+
+### Changed
+
+- `agent-runner/app/tools.py` — PUT/DELETE support, 9 new tool definitions, environment param on deploy
+- `agent-runner/app/roles.py` — Permissions for 9 new tools across all 7 roles
+- `agent-runner/app/hooks.py` — Environment-aware approval gating, rate limit enforcement
+- `agent-runner/app/config.py` — Added REDIS_URL
+- `agent-runner/app/main.py` — DISABLE_DEV_USER flag, version bump to 1.9.5
+- `Engine/api/repositories.py` — Added ProjectVersionRepository
+- `Engine/api/routes/projects.py` — 3 version/rollback endpoints, auto-snapshot on deploy
+- `Engine/api/models.py` — Added `environment` field to DeployRequest
+- `docker-compose.yml` / `docker-compose.dev.yml` — Added REDIS_URL and DISABLE_DEV_USER env vars
+
+### Version Bumps
+
+All services bumped to **1.9.5**:
+- `prompt-manager/app/main.py`
+- `agent-runner/app/main.py`
+- `Engine/api/server.py`
+- `Portal/package.json`
+
+---
+
 ## [1.9.4] - 2026-02-13
 
 ### Added - Unified RBAC, Demo Onboarding & E2E Lifecycle

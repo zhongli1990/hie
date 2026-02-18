@@ -255,12 +255,17 @@ HIE_TOOLS = [
     # ── Production Lifecycle ──
     {
         "name": "hie_deploy_project",
-        "description": "Deploy project configuration to the Engine (does not start it)",
+        "description": "Deploy project configuration to the Engine. Automatically creates a config snapshot before deploying.",
         "input_schema": {
             "type": "object",
             "properties": {
                 "workspace_id": {"type": "string"},
                 "project_id": {"type": "string"},
+                "environment": {
+                    "type": "string",
+                    "enum": ["staging", "production"],
+                    "description": "Target environment (default: staging). Production deploys require approval for developers."
+                },
                 "start_after_deploy": {"type": "boolean", "description": "Start production immediately after deploy (default: true)"}
             },
             "required": ["workspace_id", "project_id"]
@@ -348,6 +353,132 @@ HIE_TOOLS = [
             "properties": {}
         }
     },
+    # ── Update/Delete Items (CRUD) ──
+    {
+        "name": "hie_update_item",
+        "description": "Update an existing item's configuration (adapter/host settings, pool size, enabled state)",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "project_id": {"type": "string", "description": "The project UUID"},
+                "item_id": {"type": "string", "description": "The item UUID to update"},
+                "display_name": {"type": "string", "description": "New display name"},
+                "enabled": {"type": "boolean", "description": "Enable/disable the item"},
+                "pool_size": {"type": "integer", "description": "Number of worker instances"},
+                "adapter_settings": {"type": "object", "description": "Updated adapter settings"},
+                "host_settings": {"type": "object", "description": "Updated host settings"},
+                "comment": {"type": "string", "description": "Comment describing the change"}
+            },
+            "required": ["project_id", "item_id"]
+        }
+    },
+    {
+        "name": "hie_delete_item",
+        "description": "Delete an item from a project. This also removes all connections involving this item.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "project_id": {"type": "string", "description": "The project UUID"},
+                "item_id": {"type": "string", "description": "The item UUID to delete"}
+            },
+            "required": ["project_id", "item_id"]
+        }
+    },
+    # ── Update/Delete Connections (CRUD) ──
+    {
+        "name": "hie_update_connection",
+        "description": "Update an existing connection between items",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "project_id": {"type": "string", "description": "The project UUID"},
+                "connection_id": {"type": "string", "description": "The connection UUID to update"},
+                "connection_type": {"type": "string", "enum": ["standard", "error", "async"], "description": "Connection type"},
+                "enabled": {"type": "boolean", "description": "Enable/disable the connection"},
+                "comment": {"type": "string", "description": "Comment describing the change"}
+            },
+            "required": ["project_id", "connection_id"]
+        }
+    },
+    {
+        "name": "hie_delete_connection",
+        "description": "Delete a connection between items in a project",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "project_id": {"type": "string", "description": "The project UUID"},
+                "connection_id": {"type": "string", "description": "The connection UUID to delete"}
+            },
+            "required": ["project_id", "connection_id"]
+        }
+    },
+    # ── Update/Delete Routing Rules (CRUD) ──
+    {
+        "name": "hie_update_routing_rule",
+        "description": "Update an existing routing rule (condition, action, targets, priority)",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "project_id": {"type": "string", "description": "The project UUID"},
+                "rule_id": {"type": "string", "description": "The routing rule UUID to update"},
+                "name": {"type": "string", "description": "Updated rule name"},
+                "enabled": {"type": "boolean", "description": "Enable/disable the rule"},
+                "priority": {"type": "integer", "description": "Updated priority"},
+                "condition_expression": {"type": "string", "description": "Updated condition"},
+                "action": {"type": "string", "enum": ["send", "transform", "delete"], "description": "Updated action"},
+                "target_items": {"type": "array", "items": {"type": "string"}, "description": "Updated targets"}
+            },
+            "required": ["project_id", "rule_id"]
+        }
+    },
+    {
+        "name": "hie_delete_routing_rule",
+        "description": "Delete a routing rule from a project",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "project_id": {"type": "string", "description": "The project UUID"},
+                "rule_id": {"type": "string", "description": "The routing rule UUID to delete"}
+            },
+            "required": ["project_id", "rule_id"]
+        }
+    },
+    # ── Config Snapshots & Rollback (GR-4) ──
+    {
+        "name": "hie_list_versions",
+        "description": "List all config snapshots (versions) for a project. Each deploy creates a snapshot automatically.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "project_id": {"type": "string", "description": "The project UUID"}
+            },
+            "required": ["project_id"]
+        }
+    },
+    {
+        "name": "hie_get_version",
+        "description": "Get a specific config snapshot for a project version, showing the full configuration at that point in time.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "project_id": {"type": "string", "description": "The project UUID"},
+                "version": {"type": "integer", "description": "The version number to retrieve"}
+            },
+            "required": ["project_id", "version"]
+        }
+    },
+    {
+        "name": "hie_rollback_project",
+        "description": "Rollback a project to a previous config version. Restores items, connections, and routing rules from the snapshot.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "project_id": {"type": "string", "description": "The project UUID"},
+                "version": {"type": "integer", "description": "The version number to rollback to"}
+            },
+            "required": ["project_id", "version"]
+        }
+    },
 ]
 
 # Combined tool list
@@ -375,11 +506,18 @@ def _hie_api_call(method: str, path: str, json_body: dict | None = None) -> dict
                 resp = client.get(url)
             elif method == "POST":
                 resp = client.post(url, json=json_body or {})
+            elif method == "PUT":
+                resp = client.put(url, json=json_body or {})
+            elif method == "DELETE":
+                resp = client.delete(url)
             else:
                 return {"success": False, "error": f"Unsupported method: {method}"}
 
             if resp.status_code < 400:
-                return {"success": True, "data": resp.json()}
+                try:
+                    return {"success": True, "data": resp.json()}
+                except Exception:
+                    return {"success": True, "data": resp.text}
             else:
                 return {"success": False, "status": resp.status_code, "error": resp.text}
     except Exception as e:
@@ -502,12 +640,76 @@ def execute_tool(
             }
             return _hie_api_call("POST", f"/api/projects/{proj_id}/routing-rules", body)
 
+        # ── HIE Update/Delete Item tools ──
+        elif tool_name == "hie_update_item":
+            proj_id = tool_input["project_id"]
+            item_id = tool_input["item_id"]
+            body = {}
+            for key in ("display_name", "enabled", "pool_size", "adapter_settings", "host_settings", "comment"):
+                if key in tool_input:
+                    body[key] = tool_input[key]
+            return _hie_api_call("PUT", f"/api/projects/{proj_id}/items/{item_id}", body)
+
+        elif tool_name == "hie_delete_item":
+            proj_id = tool_input["project_id"]
+            item_id = tool_input["item_id"]
+            return _hie_api_call("DELETE", f"/api/projects/{proj_id}/items/{item_id}")
+
+        # ── HIE Update/Delete Connection tools ──
+        elif tool_name == "hie_update_connection":
+            proj_id = tool_input["project_id"]
+            conn_id = tool_input["connection_id"]
+            body = {}
+            for key in ("connection_type", "enabled", "comment"):
+                if key in tool_input:
+                    body[key] = tool_input[key]
+            return _hie_api_call("PUT", f"/api/projects/{proj_id}/connections/{conn_id}", body)
+
+        elif tool_name == "hie_delete_connection":
+            proj_id = tool_input["project_id"]
+            conn_id = tool_input["connection_id"]
+            return _hie_api_call("DELETE", f"/api/projects/{proj_id}/connections/{conn_id}")
+
+        # ── HIE Update/Delete Routing Rule tools ──
+        elif tool_name == "hie_update_routing_rule":
+            proj_id = tool_input["project_id"]
+            rule_id = tool_input["rule_id"]
+            body = {}
+            for key in ("name", "enabled", "priority", "condition_expression", "action", "target_items"):
+                if key in tool_input:
+                    body[key] = tool_input[key]
+            return _hie_api_call("PUT", f"/api/projects/{proj_id}/routing-rules/{rule_id}", body)
+
+        elif tool_name == "hie_delete_routing_rule":
+            proj_id = tool_input["project_id"]
+            rule_id = tool_input["rule_id"]
+            return _hie_api_call("DELETE", f"/api/projects/{proj_id}/routing-rules/{rule_id}")
+
+        # ── HIE Config Version tools (GR-4) ──
+        elif tool_name == "hie_list_versions":
+            proj_id = tool_input["project_id"]
+            return _hie_api_call("GET", f"/api/projects/{proj_id}/versions")
+
+        elif tool_name == "hie_get_version":
+            proj_id = tool_input["project_id"]
+            version = tool_input["version"]
+            return _hie_api_call("GET", f"/api/projects/{proj_id}/versions/{version}")
+
+        elif tool_name == "hie_rollback_project":
+            proj_id = tool_input["project_id"]
+            version = tool_input["version"]
+            return _hie_api_call("POST", f"/api/projects/{proj_id}/rollback/{version}")
+
         # ── HIE Production Lifecycle tools ──
         elif tool_name == "hie_deploy_project":
             ws_id = tool_input["workspace_id"]
             proj_id = tool_input["project_id"]
             start = tool_input.get("start_after_deploy", True)
-            return _hie_api_call("POST", f"/api/workspaces/{ws_id}/projects/{proj_id}/deploy", {"start_after_deploy": start})
+            environment = tool_input.get("environment", "staging")
+            return _hie_api_call("POST", f"/api/workspaces/{ws_id}/projects/{proj_id}/deploy", {
+                "start_after_deploy": start,
+                "environment": environment,
+            })
 
         elif tool_name == "hie_start_project":
             ws_id = tool_input["workspace_id"]

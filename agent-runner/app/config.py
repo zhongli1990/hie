@@ -18,3 +18,6 @@ HIE_MANAGER_URL = os.environ.get("HIE_MANAGER_URL", "http://hie-manager:8081")
 
 # Prompt Manager (audit + approvals API)
 PROMPT_MANAGER_URL = os.environ.get("PROMPT_MANAGER_URL", "http://hie-prompt-manager:9341")
+
+# Redis (rate limiting)
+REDIS_URL = os.environ.get("REDIS_URL", "redis://redis:6379/0")

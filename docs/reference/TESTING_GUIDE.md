@@ -87,6 +87,25 @@ make test-e2e-v194
 make test-e2e
 ```
 
+#### v1.9.5 Feature Tests (`test_v195_snapshots_crud_envdeploy.py`)
+
+- Coverage: Config Snapshots (GR-4), CRUD Tools (FR-3/FR-10), Environment Deploy, Rate Limiting
+- ~22 tests organised by feature:
+
+| Section | Tests | Coverage |
+|---------|-------|----------|
+| CRUD Tools | 6 | Update/delete item, connection, routing rule |
+| Config Snapshots | 4 | Auto-snapshot on deploy, list versions, get version, rollback |
+| Environment Deploy | 4 | Staging deploy (no approval), production deploy (approval), operator direct |
+| Rate Limiting | 3 | Normal allowed, burst blocked, window reset |
+| RBAC for New Tools | 4 | Developer CRUD, viewer blocked, operator rollback, auditor read-only |
+| DEV_USER Disable | 1 | Auth required when flag set |
+
+```bash
+# Run v1.9.5 feature tests
+make test-e2e-v195
+```
+
 #### E2E Test Runner (`scripts/run_e2e_tests.sh`)
 
 The test runner:

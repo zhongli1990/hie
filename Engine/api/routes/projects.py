@@ -30,6 +30,7 @@ from Engine.api.models import (
 from Engine.api.repositories import (
     WorkspaceRepository,
     ProjectRepository,
+    ProjectVersionRepository,
     ItemRepository,
     ConnectionRepository,
     RoutingRuleRepository,
@@ -212,6 +213,7 @@ def setup_project_routes(app: web.Application, db_pool) -> None:
     """Set up project routes."""
     workspace_repo = WorkspaceRepository(db_pool)
     project_repo = ProjectRepository(db_pool)
+    version_repo = ProjectVersionRepository(db_pool)
     item_repo = ItemRepository(db_pool)
     connection_repo = ConnectionRepository(db_pool)
     rule_repo = RoutingRuleRepository(db_pool)
@@ -427,11 +429,27 @@ def setup_project_routes(app: web.Application, db_pool) -> None:
         if project['workspace_id'] != ws_uuid:
             return web.json_response({"error": "Project not found in workspace"}, status=404)
         
+        # Extract environment from deploy request (default: staging)
+        environment = deploy_data.environment if hasattr(deploy_data, 'environment') and deploy_data.environment else "staging"
+
         try:
+            # GR-4: Auto-snapshot current config before deploying
+            try:
+                current_version = project.get('version', 1)
+                await version_repo.create_snapshot(
+                    project_id=proj_uuid,
+                    version=current_version,
+                    config_snapshot=project,
+                    comment=f"Auto-snapshot before deploy to {environment}",
+                )
+                logger.info("config_snapshot_created", project_id=project_id, version=current_version)
+            except Exception as snap_err:
+                logger.warning("config_snapshot_failed", error=str(snap_err))
+
             # Stop existing engine if running
             if _engine_manager.is_running(proj_uuid):
                 await _engine_manager.stop(proj_uuid)
-            
+
             # Deploy new engine
             engine_id = await _engine_manager.deploy(proj_uuid, project)
             
@@ -821,6 +839,162 @@ def setup_project_routes(app: web.Application, db_pool) -> None:
             logger.error("send_test_message_failed", item_name=item_name, error=str(e))
             return web.json_response({"error": str(e)}, status=500)
     
+    # ── Config Versions & Rollback (GR-4) ────────────────────────────────
+
+    async def list_project_versions(request: web.Request) -> web.Response:
+        """List all config snapshots for a project."""
+        project_id = request.match_info["project_id"]
+
+        try:
+            proj_uuid = UUID(project_id)
+        except ValueError:
+            return web.json_response({"error": "Invalid project ID"}, status=400)
+
+        project = await project_repo.get_by_id(proj_uuid)
+        if not project:
+            return web.json_response({"error": "Project not found"}, status=404)
+
+        versions = await version_repo.list_versions(proj_uuid)
+        return web.json_response({
+            "versions": versions,
+            "total": len(versions),
+            "project_id": project_id,
+        }, dumps=lambda x: __import__('json').dumps(x, default=str))
+
+    async def get_project_version(request: web.Request) -> web.Response:
+        """Get a specific config snapshot."""
+        project_id = request.match_info["project_id"]
+        version = request.match_info["version"]
+
+        try:
+            proj_uuid = UUID(project_id)
+            version_num = int(version)
+        except (ValueError, TypeError):
+            return web.json_response({"error": "Invalid project ID or version"}, status=400)
+
+        snapshot = await version_repo.get_version(proj_uuid, version_num)
+        if not snapshot:
+            return web.json_response({"error": f"Version {version_num} not found"}, status=404)
+
+        return web.json_response(snapshot, dumps=lambda x: __import__('json').dumps(x, default=str))
+
+    async def rollback_project(request: web.Request) -> web.Response:
+        """Rollback a project to a previous config version."""
+        project_id = request.match_info["project_id"]
+        version = request.match_info["version"]
+
+        try:
+            proj_uuid = UUID(project_id)
+            version_num = int(version)
+        except (ValueError, TypeError):
+            return web.json_response({"error": "Invalid project ID or version"}, status=400)
+
+        # Get the snapshot
+        snapshot = await version_repo.get_version(proj_uuid, version_num)
+        if not snapshot:
+            return web.json_response({"error": f"Version {version_num} not found"}, status=404)
+
+        config = snapshot.get('config_snapshot', {})
+        if not config:
+            return web.json_response({"error": "Snapshot has no config data"}, status=400)
+
+        try:
+            # Stop engine if running
+            if _engine_manager.is_running(proj_uuid):
+                await _engine_manager.stop(proj_uuid)
+
+            # Delete current items, connections, routing rules
+            current_items = await item_repo.list_by_project(proj_uuid)
+            for item in current_items:
+                await item_repo.delete(item['id'])
+
+            current_connections = await connection_repo.list_by_project(proj_uuid)
+            for conn in current_connections:
+                await connection_repo.delete(conn['id'])
+
+            current_rules = await rule_repo.list_by_project(proj_uuid)
+            for rule in current_rules:
+                await rule_repo.delete(rule['id'])
+
+            # Restore items from snapshot
+            items_restored = 0
+            item_name_to_new_id = {}
+            for item_data in config.get('items', []):
+                new_item = await item_repo.create(
+                    project_id=proj_uuid,
+                    name=item_data['name'],
+                    item_type=item_data.get('item_type', 'process'),
+                    class_name=item_data.get('class_name', ''),
+                    display_name=item_data.get('display_name'),
+                    category=item_data.get('category'),
+                    enabled=item_data.get('enabled', True),
+                    pool_size=item_data.get('pool_size', 1),
+                    adapter_settings=item_data.get('adapter_settings'),
+                    host_settings=item_data.get('host_settings'),
+                    comment=item_data.get('comment'),
+                )
+                item_name_to_new_id[item_data['name']] = new_item['id']
+                # Also map old UUID to name for connection restoration
+                old_id = str(item_data.get('id', ''))
+                if old_id:
+                    item_name_to_new_id[old_id] = new_item['id']
+                items_restored += 1
+
+            # Restore connections from snapshot
+            connections_restored = 0
+            for conn_data in config.get('connections', []):
+                src_id = item_name_to_new_id.get(str(conn_data.get('source_item_id', '')))
+                tgt_id = item_name_to_new_id.get(str(conn_data.get('target_item_id', '')))
+                if src_id and tgt_id:
+                    await connection_repo.create(
+                        project_id=proj_uuid,
+                        source_item_id=src_id,
+                        target_item_id=tgt_id,
+                        connection_type=conn_data.get('connection_type', 'standard'),
+                        enabled=conn_data.get('enabled', True),
+                    )
+                    connections_restored += 1
+
+            # Restore routing rules from snapshot
+            rules_restored = 0
+            for rule_data in config.get('routing_rules', []):
+                await rule_repo.create(
+                    project_id=proj_uuid,
+                    name=rule_data.get('name', 'Restored Rule'),
+                    action=rule_data.get('action', 'send'),
+                    enabled=rule_data.get('enabled', True),
+                    priority=rule_data.get('priority', 10),
+                    condition_expression=rule_data.get('condition_expression'),
+                    target_items=rule_data.get('target_items', []),
+                    transform_name=rule_data.get('transform_name'),
+                )
+                rules_restored += 1
+
+            # Increment project version
+            await project_repo.increment_version(proj_uuid)
+
+            logger.info(
+                "project_rolled_back",
+                project_id=project_id,
+                to_version=version_num,
+                items=items_restored,
+                connections=connections_restored,
+                rules=rules_restored,
+            )
+
+            return web.json_response({
+                "status": "rolled_back",
+                "project_id": project_id,
+                "restored_to_version": version_num,
+                "items_restored": items_restored,
+                "connections_restored": connections_restored,
+                "rules_restored": rules_restored,
+            })
+
+        except Exception as e:
+            logger.error("rollback_failed", error=str(e))
+            return web.json_response({"error": str(e)}, status=500)
+
     # Register routes
     app.router.add_get("/api/workspaces/{workspace_id}/projects", list_projects)
     app.router.add_post("/api/workspaces/{workspace_id}/projects", create_project)
@@ -841,3 +1015,8 @@ def setup_project_routes(app: web.Application, db_pool) -> None:
     
     # Testing
     app.router.add_post("/api/workspaces/{workspace_id}/projects/{project_id}/items/{item_name}/test", send_test_message)
+
+    # Config Versions & Rollback (GR-4)
+    app.router.add_get("/api/projects/{project_id}/versions", list_project_versions)
+    app.router.add_get("/api/projects/{project_id}/versions/{version}", get_project_version)
+    app.router.add_post("/api/projects/{project_id}/rollback/{version}", rollback_project)

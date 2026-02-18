@@ -20,7 +20,7 @@ import traceback
 
 import httpx
 
-from .config import ENABLE_HOOKS, PROMPT_MANAGER_URL
+from .config import ENABLE_HOOKS, PROMPT_MANAGER_URL, REDIS_URL
 from .roles import is_tool_permitted, is_class_name_writable, is_file_path_writable
 
 logger = logging.getLogger(__name__)
@@ -108,11 +108,37 @@ SENSITIVE_DATA_PATTERNS = [
 # =============================================================================
 
 RATE_LIMITS = {
-    "bash_commands_per_minute": 30,
-    "file_writes_per_minute": 20,
-    "api_calls_per_minute": 60,
-    "hl7_sends_per_minute": 10,
+    "bash": 30,         # bash commands per minute
+    "file_writes": 20,  # file write operations per minute
+    "api_calls": 60,    # HIE API calls per minute
+    "hl7_sends": 10,    # HL7 test sends per minute
 }
+
+# Map tool names to rate limit categories
+TOOL_RATE_CATEGORY: dict[str, str] = {
+    "bash": "bash",
+    "write_file": "file_writes",
+    "hie_test_item": "hl7_sends",
+}
+# All hie_* tools default to "api_calls" category
+
+# Delete tools that require extra audit logging
+DELETE_TOOLS = {"hie_delete_item", "hie_delete_connection", "hie_delete_routing_rule"}
+
+# Lazy-loaded rate limiter instance
+_rate_limiter = None
+
+
+def _get_rate_limiter():
+    """Get or create the rate limiter instance (lazy init)."""
+    global _rate_limiter
+    if _rate_limiter is None:
+        try:
+            from .rate_limiter import RateLimiter
+            _rate_limiter = RateLimiter(REDIS_URL)
+        except Exception as e:
+            logger.warning(f"Rate limiter init failed (rate limiting disabled): {e}")
+    return _rate_limiter
 
 
 # =============================================================================
@@ -270,12 +296,32 @@ async def pre_tool_use_hook(input_data: dict[str, Any], tool_use_id: str, contex
         if path.startswith("/") and not path.startswith("/workspaces"):
             return _deny("Absolute paths outside /workspaces are not allowed")
 
+    # ── Rate Limiting ────────────────────────────────────────────────────
+    rate_limiter = _get_rate_limiter()
+    if rate_limiter:
+        user_id_rl = "anonymous"
+        if isinstance(context, dict):
+            user_id_rl = context.get("user_id", "anonymous")
+        category = TOOL_RATE_CATEGORY.get(tool_name)
+        if category is None and tool_name.startswith("hie_"):
+            category = "api_calls"
+        if category and category in RATE_LIMITS:
+            try:
+                allowed = await rate_limiter.check(user_id_rl, category, RATE_LIMITS[category])
+                if not allowed:
+                    return _deny(
+                        f"Rate limit exceeded for '{category}' ({RATE_LIMITS[category]}/min). "
+                        f"Please wait before retrying."
+                    )
+            except Exception as e:
+                logger.warning(f"Rate limit check failed (allowing): {e}")
+
     # ── Namespace: Enforce core vs custom class separation ───────────────
     # This is the CRITICAL product design guardrail:
     #   li.*, Engine.li.*, EnsLib.*  → PROTECTED (read-only)
     #   custom.*                     → DEVELOPER (writable)
 
-    if tool_name == "hie_create_item":
+    if tool_name in ("hie_create_item", "hie_update_item"):
         class_name = tool_input.get("class_name", "")
         if class_name:
             allowed, reason = is_class_name_writable(class_name, user_role)
@@ -289,11 +335,13 @@ async def pre_tool_use_hook(input_data: dict[str, Any], tool_use_id: str, contex
             if not allowed:
                 return _deny(reason)
 
-    # ── Lifecycle: Developer cannot deploy/start/stop ────────────────────
-    # For developers, intercept deploy requests and create an approval record.
-    if tool_name in ("hie_deploy_project", "hie_start_project", "hie_stop_project"):
-        if user_role == "developer":
-            # Create approval request so CSO/Admin can review
+    # ── Lifecycle: Environment-aware deploy gating ───────────────────────
+    # Developers can deploy to staging directly.
+    # Production deploys by developers create an approval request.
+    # Operators, admins can deploy to any environment.
+    if tool_name == "hie_deploy_project" and user_role == "developer":
+        environment = tool_input.get("environment", "staging")
+        if environment == "production":
             tenant_id_ctx = context.get("tenant_id", "") if isinstance(context, dict) else ""
             user_id = context.get("user_id", "unknown") if isinstance(context, dict) else "unknown"
             approval = await _post_approval_request(
@@ -303,15 +351,24 @@ async def pre_tool_use_hook(input_data: dict[str, Any], tool_use_id: str, contex
                 workspace_id=tool_input.get("workspace_id") or tool_input.get("workspace"),
                 project_id=tool_input.get("project_id") or tool_input.get("project"),
                 project_name=tool_input.get("project_name") or tool_input.get("name"),
-                environment="production",
+                environment=environment,
                 config_snapshot=tool_input,
             )
             approval_id = approval.get("id", "unknown") if approval else "unknown"
             return _deny(
-                f"Role 'developer' cannot use '{tool_name}' directly. "
-                f"A deployment approval request (#{approval_id}) has been created. "
+                f"Production deployment requires approval. "
+                f"Approval request #{approval_id} has been created. "
                 f"A Clinical Safety Officer or Tenant Admin must review and approve "
-                f"before the deployment can proceed."
+                f"before the production deployment can proceed. "
+                f"You can deploy to staging without approval using environment='staging'."
+            )
+
+    # Developers still cannot start/stop productions directly
+    if tool_name in ("hie_start_project", "hie_stop_project"):
+        if user_role == "developer":
+            return _deny(
+                f"Role 'developer' cannot use '{tool_name}' directly. "
+                f"Contact an Operator or Tenant Admin to manage production lifecycle."
             )
 
     return {}  # Allow

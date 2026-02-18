@@ -270,6 +270,7 @@ class RoutingRuleResponse(TimestampMixin):
 
 class DeployRequest(BaseModel):
     start_after_deploy: bool = True
+    environment: Optional[str] = "staging"
 
 
 class DeployResponse(BaseModel):

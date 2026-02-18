@@ -34,6 +34,7 @@ logger = logging.getLogger(__name__)
 JWT_SECRET_KEY = os.environ.get("JWT_SECRET_KEY", "hie-dev-secret-change-in-production")
 JWT_ALGORITHM = os.environ.get("JWT_ALGORITHM", "HS256")
 ENABLE_DEV_AUTH = os.environ.get("ENABLE_DEV_AUTH", "true").lower() == "true"
+DISABLE_DEV_USER = os.environ.get("DISABLE_DEV_USER", "false").lower() == "true"
 
 
 def extract_user_context(request: Request) -> dict[str, str]:
@@ -44,6 +45,13 @@ def extract_user_context(request: Request) -> dict[str, str]:
     """
     auth_header = request.headers.get("authorization", "")
     if not auth_header.startswith("Bearer "):
+        if DISABLE_DEV_USER:
+            # Production mode: no token = rejected (viewer with no access)
+            return {
+                "user_id": "anonymous",
+                "tenant_id": "",
+                "role": "viewer",
+            }
         if ENABLE_DEV_AUTH:
             return {
                 "user_id": "00000000-0000-0000-0000-000000000001",
@@ -137,7 +145,7 @@ def _save_hooks_config(config: dict[str, Any]) -> None:
         json.dump(config, f, indent=2)
 
 
-app = FastAPI(title="OpenLI HIE Agent Runner", version="2.0.0-dev")
+app = FastAPI(title="OpenLI HIE Agent Runner", version="1.9.5")
 app.include_router(skills_router)
 app.add_middleware(
     CORSMiddleware,
@@ -204,7 +212,7 @@ def must_resolve_workspace(path_str: str) -> str:
 
 @app.get("/health")
 async def health() -> dict[str, str]:
-    return {"status": "ok", "service": "hie-agent-runner", "version": "2.0.0-dev"}
+    return {"status": "ok", "service": "hie-agent-runner", "version": "1.9.5"}
 
 
 @app.post("/threads", response_model=CreateThreadResponse)

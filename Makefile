@@ -144,5 +144,8 @@ test-e2e:
 test-e2e-v194:
 	./scripts/run_e2e_tests.sh tests/e2e/test_v194_rbac_audit_approvals.py
 
+test-e2e-v195:
+	./scripts/run_e2e_tests.sh tests/e2e/test_v195_snapshots_crud_envdeploy.py
+
 test-e2e-smoke:
 	./scripts/run_e2e_tests.sh tests/e2e/test_api_smoke.py

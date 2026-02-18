@@ -121,6 +121,8 @@ services:
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
       - HIE_MANAGER_URL=http://hie-manager:8081
       - WORKSPACES_ROOT=/workspaces
+      - REDIS_URL=redis://redis:6379/0
+      - DISABLE_DEV_USER=false  # Set to true in production to require JWT auth
       - PYTHONUNBUFFERED=1
     depends_on:
       postgres:

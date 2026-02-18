@@ -576,6 +576,69 @@ class RoutingRuleRepository:
         return result == "DELETE 1"
 
 
+class ProjectVersionRepository:
+    """Repository for project config version snapshots (GR-4)."""
+
+    def __init__(self, pool: asyncpg.Pool):
+        self._pool = pool
+
+    async def create_snapshot(
+        self,
+        project_id: UUID,
+        version: int,
+        config_snapshot: dict,
+        created_by: Optional[UUID] = None,
+        comment: Optional[str] = None,
+    ) -> dict:
+        """Create a config snapshot for the given project version."""
+        query = """
+            INSERT INTO project_versions (project_id, version, config_snapshot, created_by, comment)
+            VALUES ($1, $2, $3::jsonb, $4, $5)
+            ON CONFLICT (project_id, version) DO UPDATE
+                SET config_snapshot = EXCLUDED.config_snapshot,
+                    created_by = EXCLUDED.created_by,
+                    comment = EXCLUDED.comment
+            RETURNING *
+        """
+        row = await self._pool.fetchrow(
+            query, project_id, version, json.dumps(config_snapshot, default=str),
+            created_by, comment
+        )
+        return _parse_jsonb_fields(dict(row), ['config_snapshot']) if row else {}
+
+    async def list_versions(self, project_id: UUID) -> list[dict]:
+        """List all config snapshots for a project, newest first."""
+        query = """
+            SELECT id, project_id, version, created_at, created_by, comment,
+                   pg_column_size(config_snapshot) as snapshot_size_bytes
+            FROM project_versions
+            WHERE project_id = $1
+            ORDER BY version DESC
+        """
+        rows = await self._pool.fetch(query, project_id)
+        return [dict(r) for r in rows]
+
+    async def get_version(self, project_id: UUID, version: int) -> Optional[dict]:
+        """Get a specific config snapshot."""
+        query = """
+            SELECT * FROM project_versions
+            WHERE project_id = $1 AND version = $2
+        """
+        row = await self._pool.fetchrow(query, project_id, version)
+        return _parse_jsonb_fields(dict(row), ['config_snapshot']) if row else None
+
+    async def get_latest(self, project_id: UUID) -> Optional[dict]:
+        """Get the most recent config snapshot."""
+        query = """
+            SELECT * FROM project_versions
+            WHERE project_id = $1
+            ORDER BY version DESC
+            LIMIT 1
+        """
+        row = await self._pool.fetchrow(query, project_id)
+        return _parse_jsonb_fields(dict(row), ['config_snapshot']) if row else None
+
+
 class PortalMessageRepository:
     """Repository for portal message tracking (Messages tab viewer)."""
     

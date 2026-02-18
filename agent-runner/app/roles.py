@@ -93,11 +93,15 @@ ROLE_TOOL_PERMISSIONS: dict[str, set[str]] = {
         "hie_list_workspaces", "hie_create_workspace",
         # Project management
         "hie_list_projects", "hie_create_project", "hie_get_project",
-        # Items, connections, rules
-        "hie_create_item", "hie_create_connection", "hie_create_routing_rule",
+        # Items, connections, rules — full CRUD
+        "hie_create_item", "hie_update_item", "hie_delete_item",
+        "hie_create_connection", "hie_update_connection", "hie_delete_connection",
+        "hie_create_routing_rule", "hie_update_routing_rule", "hie_delete_routing_rule",
         # Production lifecycle — full access within tenant
         "hie_deploy_project", "hie_start_project", "hie_stop_project",
         "hie_project_status",
+        # Config versions & rollback (GR-4)
+        "hie_list_versions", "hie_get_version", "hie_rollback_project",
         # Testing and registry
         "hie_test_item", "hie_list_item_types", "hie_reload_custom_classes",
         # File tools — write restricted to custom.* by hooks
@@ -109,10 +113,15 @@ ROLE_TOOL_PERMISSIONS: dict[str, set[str]] = {
         "hie_list_workspaces",
         # Project management — can create and read
         "hie_list_projects", "hie_create_project", "hie_get_project",
-        # Items, connections, rules — full build access
-        "hie_create_item", "hie_create_connection", "hie_create_routing_rule",
-        # Production lifecycle — NO deploy/start/stop (staging only via approval)
+        # Items, connections, rules — full CRUD (build access)
+        "hie_create_item", "hie_update_item", "hie_delete_item",
+        "hie_create_connection", "hie_update_connection", "hie_delete_connection",
+        "hie_create_routing_rule", "hie_update_routing_rule", "hie_delete_routing_rule",
+        # Production lifecycle — deploy to staging OK, production requires approval
+        "hie_deploy_project",
         "hie_project_status",
+        # Config versions — can view but NOT rollback (ops action)
+        "hie_list_versions", "hie_get_version",
         # Testing and registry
         "hie_test_item", "hie_list_item_types", "hie_reload_custom_classes",
         # File tools — write restricted to custom.* by hooks
@@ -124,6 +133,8 @@ ROLE_TOOL_PERMISSIONS: dict[str, set[str]] = {
         "hie_list_workspaces", "hie_list_projects", "hie_get_project",
         # Status monitoring
         "hie_project_status",
+        # Config versions — read-only for review
+        "hie_list_versions", "hie_get_version",
         # Testing — CSO needs to test during safety review
         "hie_test_item", "hie_list_item_types",
         # Read-only file access
@@ -136,16 +147,18 @@ ROLE_TOOL_PERMISSIONS: dict[str, set[str]] = {
         # Production lifecycle — their primary function
         "hie_deploy_project", "hie_start_project", "hie_stop_project",
         "hie_project_status",
+        # Config versions & rollback — operators CAN rollback (ops action)
+        "hie_list_versions", "hie_get_version", "hie_rollback_project",
         # Registry and read-only file access for troubleshooting
         "hie_list_item_types",
         "read_file", "list_files",
     },
 
     "auditor": {
-        # Read-only access — same as viewer
-        # Portal separately grants them audit log page visibility
+        # Read-only access + version history for compliance review
         "hie_list_workspaces", "hie_list_projects", "hie_get_project",
         "hie_project_status", "hie_list_item_types",
+        "hie_list_versions", "hie_get_version",
         "read_file", "list_files",
     },
 

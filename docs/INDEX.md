@@ -1,6 +1,6 @@
 # OpenLI HIE — Documentation Index
 
-**Version:** 1.9.4
+**Version:** 1.9.5
 **Last Updated:** February 13, 2026
 
 ---
@@ -98,7 +98,8 @@ docs/
 
 | Document | Version | Date |
 |----------|---------|------|
-| [**Release Notes v1.9.4**](releases/RELEASE_NOTES_v1.9.4.md) | **1.9.4** | **2026-02-13** |
+| [**Release Notes v1.9.5**](releases/RELEASE_NOTES_v1.9.5.md) | **1.9.5** | **2026-02-13** |
+| [Release Notes v1.9.4](releases/RELEASE_NOTES_v1.9.4.md) | 1.9.4 | 2026-02-13 |
 | [Release Notes v1.8.2](releases/RELEASE_NOTES_v1.8.2.md) | 1.8.2 | 2026-02-13 |
 | [Sequence Diagram Delivery](releases/SEQUENCE_DIAGRAM_DELIVERY.md) | 1.8.1 | 2026-02-12 |
 | [Release Notes v1.8.1](releases/RELEASE_NOTES_v1.8.1.md) | 1.8.1 | 2026-02-12 |
