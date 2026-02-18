@@ -31,6 +31,7 @@ docs/
 | [Custom Classes Guide](guides/CUSTOM_CLASSES_GUIDE.md) | Developers | Writing custom.* host classes, namespace rules, hot-reload |
 | [NHS Trust Demo Guide](guides/NHS_TRUST_DEMO_GUIDE.md) | All | Complete NHS acute trust reference implementation |
 | [Developer Workflow Scenarios](guides/DEVELOPER_WORKFLOW_SCENARIOS.md) | Developers | 8 workflow scenarios vs IRIS/Rhapsody/Mirth |
+| [**Demo Lifecycle Guide**](guides/DEMO_LIFECYCLE_GUIDE.md) | **All** | **Complete NL integration lifecycle — design to production in 5 acts** |
 
 ## Architecture
 
