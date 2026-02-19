@@ -29,6 +29,7 @@ services:
       - ./config:/app/config:rw
       - ./data:/data:rw
     environment:
+      - HIE_VERSION=${HIE_VERSION:-1.9.5}
       - HIE_CONFIG=/app/config/production.yaml
       - HIE_LOG_LEVEL=DEBUG
       - HIE_LOG_FORMAT=console
@@ -60,6 +61,7 @@ services:
       - ./Engine:/app/Engine:rw
       - ./config:/app/config:ro
     environment:
+      - HIE_VERSION=${HIE_VERSION:-1.9.5}
       - HIE_API_HOST=0.0.0.0
       - HIE_API_PORT=8081
       - DATABASE_URL=postgresql://hie:hie_password@postgres:5432/hie
@@ -81,6 +83,8 @@ services:
     build:
       context: ./Portal
       dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_HIE_VERSION: ${HIE_VERSION:-1.9.5}
     container_name: hie-portal-dev
     ports:
       - "9303:3000"
@@ -113,6 +117,7 @@ services:
       - ./agent-runner/skills:/app/skills:ro
       - hie_workspaces:/workspaces
     environment:
+      - HIE_VERSION=${HIE_VERSION:-1.9.5}
       - GLOBAL_SKILLS_PATH=/app/skills
       - ENABLE_HOOKS=true
       - MAX_AGENT_TURNS=25
@@ -145,6 +150,7 @@ services:
       - ./prompt-manager:/app:rw
       - ./agent-runner/skills:/app/skills:ro
     environment:
+      - HIE_VERSION=${HIE_VERSION:-1.9.5}
       - DATABASE_URL=postgresql+asyncpg://hie:hie_password@postgres:5432/hie
       - JWT_SECRET_KEY=hie-jwt-secret-key-change-in-production
       - SKILLS_DIR=/app/skills

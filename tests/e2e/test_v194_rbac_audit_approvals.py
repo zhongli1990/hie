@@ -34,6 +34,9 @@ AGENT_BASE = os.environ.get("HIE_E2E_AGENT_BASE", "http://hie-agent-runner:8082"
 PROMPT_MGR_BASE = os.environ.get("HIE_E2E_PROMPT_MGR_BASE", "http://hie-prompt-manager:8083")
 PORTAL_BASE = os.environ.get("HIE_E2E_PORTAL_BASE", "http://hie-portal:3000")
 
+# Platform version — injected by run_e2e_tests.sh from the root VERSION file
+EXPECTED_VERSION = os.environ.get("HIE_VERSION", "1.9.5")
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Demo user credentials (seeded by scripts/init-db.sql)
 # ─────────────────────────────────────────────────────────────────────────────
@@ -160,8 +163,8 @@ async def test_03_prompt_manager_health():
         status, data = await _api(s, "GET", f"{PROMPT_MGR_BASE}/health")
         assert status == 200, f"Prompt manager returned {status}: {data}"
         assert data.get("status") == "ok"
-        assert data.get("version") == "1.9.5", (
-            f"Expected version 1.9.5, got {data.get('version')}"
+        assert data.get("version") == EXPECTED_VERSION, (
+            f"Expected version {EXPECTED_VERSION}, got {data.get('version')}"
         )
 
 
@@ -641,12 +644,12 @@ async def test_60_portal_pages(path: str, label: str):
 
 @pytest.mark.asyncio
 async def test_70_prompt_manager_version():
-    """Prompt manager /health reports version 1.9.5 (not hardcoded 1.9.0)."""
+    """Prompt manager /health reports correct version (not hardcoded)."""
     async with aiohttp.ClientSession() as s:
         status, data = await _api(s, "GET", f"{PROMPT_MGR_BASE}/health")
         assert status == 200
         version = data.get("version", "unknown")
-        assert version == "1.9.5", (
-            f"Prompt manager version is '{version}' — expected '1.9.5'. "
+        assert version == EXPECTED_VERSION, (
+            f"Prompt manager version is '{version}' — expected '{EXPECTED_VERSION}'. "
             f"Check that the health endpoint uses app.version, not a hardcoded string."
         )

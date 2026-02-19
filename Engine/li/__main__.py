@@ -13,6 +13,8 @@ from pathlib import Path
 import click
 import structlog
 
+from Engine import __version__
+
 
 def setup_logging(level: str = "INFO", format: str = "json") -> None:
     """Configure structured logging for LI Engine."""
@@ -44,7 +46,7 @@ def setup_logging(level: str = "INFO", format: str = "json") -> None:
 
 
 @click.group()
-@click.version_option(version="0.1.0", prog_name="LI Engine")
+@click.version_option(version=__version__, prog_name="LI Engine")
 def main() -> None:
     """LI Engine - IRIS-Compatible Healthcare Integration Engine
 

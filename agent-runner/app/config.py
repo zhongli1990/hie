@@ -21,3 +21,6 @@ PROMPT_MANAGER_URL = os.environ.get("PROMPT_MANAGER_URL", "http://hie-prompt-man
 
 # Redis (rate limiting)
 REDIS_URL = os.environ.get("REDIS_URL", "redis://redis:6379/0")
+
+# Platform version (injected by docker-compose from VERSION file)
+HIE_VERSION = os.environ.get("HIE_VERSION", "unknown")

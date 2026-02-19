@@ -8,12 +8,24 @@ interface VersionHistory {
   features: string[];
 }
 
-const VERSION = "1.9.4";
+const VERSION = process.env.NEXT_PUBLIC_HIE_VERSION || "unknown";
 const BUILD_DATE = "Feb 13, 2026";
 const PLATFORM_NAME = "OpenLI HIE";
 const PRODUCT_NAME = "OpenLI Healthcare Integration Engine";
 
 const versionHistory: VersionHistory[] = [
+  {
+    version: "1.9.5",
+    date: "Feb 13, 2026",
+    features: [
+      "Centralized version management — single VERSION file, env-var injection across all services",
+      "Config Snapshots & Rollback (GR-4) — auto-snapshot on deploy, list/rollback API",
+      "6 new CRUD tools — update/delete items, connections, routing rules via natural language",
+      "Environment-aware deployment — staging deploys skip approval, production requires it",
+      "Redis rate limiting — sliding window counters per user/category",
+      "DEV_USER disable flag — production hardening for unauthenticated access",
+    ],
+  },
   {
     version: "1.9.4",
     date: "Feb 13, 2026",

@@ -53,10 +53,17 @@ ENV PYTHONUNBUFFERED=1
 DOCKERFILE
 }
 
+# ─── Read platform version from VERSION file ─────────────────────────────────
+
+HIE_VERSION="unknown"
+if [ -f "$PROJECT_ROOT/VERSION" ]; then
+    HIE_VERSION=$(cat "$PROJECT_ROOT/VERSION" | tr -d '[:space:]')
+fi
+
 # ─── Run tests ──────────────────────────────────────────────────────────────
 
 echo ""
-echo "━━━ Running E2E tests: $TEST_PATH ━━━"
+echo "━━━ Running E2E tests: $TEST_PATH (HIE_VERSION=$HIE_VERSION) ━━━"
 echo "Network: $NETWORK"
 echo ""
 
@@ -66,6 +73,7 @@ docker run --rm \
     -e PYTHONPATH=/app \
     -e PYTHONDONTWRITEBYTECODE=1 \
     -e PYTHONUNBUFFERED=1 \
+    -e HIE_VERSION=$HIE_VERSION \
     -e HIE_E2E_MANAGER_BASE=http://hie-manager:8081 \
     -e HIE_E2E_AGENT_BASE=http://hie-agent-runner:8082 \
     -e HIE_E2E_PROMPT_MGR_BASE=http://hie-prompt-manager:8083 \

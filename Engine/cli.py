@@ -13,6 +13,7 @@ from pathlib import Path
 import click
 import structlog
 
+from Engine import __version__
 from Engine.core.config import load_config, validate_config
 
 
@@ -46,7 +47,7 @@ def setup_logging(level: str = "INFO", format: str = "json") -> None:
 
 
 @click.group()
-@click.version_option(version="0.1.0", prog_name="HIE")
+@click.version_option(version=__version__, prog_name="HIE")
 def main() -> None:
     """HIE - Healthcare Integration Engine
     

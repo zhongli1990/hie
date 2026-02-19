@@ -15,6 +15,7 @@ from aiohttp import web
 import structlog
 import asyncpg
 
+from Engine import __version__
 from Engine.core.production import Production
 from Engine.core.schema import ProductionSchema
 
@@ -128,7 +129,7 @@ class APIServer:
         return web.json_response({
             "status": "healthy",
             "timestamp": datetime.utcnow().isoformat(),
-            "version": "1.9.5",
+            "version": __version__,
         })
     
     async def get_service_health(self, request: web.Request) -> web.Response:

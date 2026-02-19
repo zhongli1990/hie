@@ -22,7 +22,7 @@ from fastapi.responses import StreamingResponse
 from jose import JWTError, jwt
 from pydantic import BaseModel
 
-from .config import WORKSPACES_ROOT, PORT
+from .config import WORKSPACES_ROOT, PORT, HIE_VERSION
 from .agent import run_agent_loop
 from .events import make_event, format_sse
 from .api.skills_router import router as skills_router
@@ -145,7 +145,7 @@ def _save_hooks_config(config: dict[str, Any]) -> None:
         json.dump(config, f, indent=2)
 
 
-app = FastAPI(title="OpenLI HIE Agent Runner", version="1.9.5")
+app = FastAPI(title="OpenLI HIE Agent Runner", version=HIE_VERSION)
 app.include_router(skills_router)
 app.add_middleware(
     CORSMiddleware,
@@ -212,7 +212,7 @@ def must_resolve_workspace(path_str: str) -> str:
 
 @app.get("/health")
 async def health() -> dict[str, str]:
-    return {"status": "ok", "service": "hie-agent-runner", "version": "1.9.5"}
+    return {"status": "ok", "service": "hie-agent-runner", "version": app.version}
 
 
 @app.post("/threads", response_model=CreateThreadResponse)

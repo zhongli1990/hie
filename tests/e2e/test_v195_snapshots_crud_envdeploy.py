@@ -28,6 +28,9 @@ MANAGER_BASE = os.environ.get("HIE_E2E_MANAGER_BASE", "http://hie-manager:8081")
 AGENT_BASE = os.environ.get("HIE_E2E_AGENT_BASE", "http://hie-agent-runner:8082")
 PROMPT_MGR_BASE = os.environ.get("HIE_E2E_PROMPT_MGR_BASE", "http://hie-prompt-manager:8083")
 
+# Platform version — injected by run_e2e_tests.sh from the root VERSION file
+EXPECTED_VERSION = os.environ.get("HIE_VERSION", "1.9.5")
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Demo user credentials (seeded by scripts/init-db.sql)
 # ─────────────────────────────────────────────────────────────────────────────
@@ -124,39 +127,39 @@ async def test_00_login_all_users():
 
 @pytest.mark.asyncio
 async def test_01_manager_version_195():
-    """Manager API reports version 1.9.5."""
+    """Manager API reports correct version."""
     async with aiohttp.ClientSession() as s:
         status, data = await _api(s, "GET", f"{MANAGER_BASE}/api/health")
         assert status == 200, f"Manager returned {status}: {data}"
         assert data.get("status") == "healthy"
         version = data.get("version", "unknown")
-        assert version == "1.9.5", (
-            f"Manager version is '{version}' — expected '1.9.5'"
+        assert version == EXPECTED_VERSION, (
+            f"Manager version is '{version}' — expected '{EXPECTED_VERSION}'"
         )
 
 
 @pytest.mark.asyncio
 async def test_02_agent_runner_version_195():
-    """Agent runner reports version 1.9.5."""
+    """Agent runner reports correct version."""
     async with aiohttp.ClientSession() as s:
         status, data = await _api(s, "GET", f"{AGENT_BASE}/health")
         assert status == 200, f"Agent runner returned {status}: {data}"
         assert data.get("status") == "ok"
         version = data.get("version", "unknown")
-        assert version == "1.9.5", (
-            f"Agent runner version is '{version}' — expected '1.9.5'"
+        assert version == EXPECTED_VERSION, (
+            f"Agent runner version is '{version}' — expected '{EXPECTED_VERSION}'"
         )
 
 
 @pytest.mark.asyncio
 async def test_03_prompt_manager_version_195():
-    """Prompt manager reports version 1.9.5."""
+    """Prompt manager reports correct version."""
     async with aiohttp.ClientSession() as s:
         status, data = await _api(s, "GET", f"{PROMPT_MGR_BASE}/health")
         assert status == 200, f"Prompt manager returned {status}: {data}"
         version = data.get("version", "unknown")
-        assert version == "1.9.5", (
-            f"Prompt manager version is '{version}' — expected '1.9.5'"
+        assert version == EXPECTED_VERSION, (
+            f"Prompt manager version is '{version}' — expected '{EXPECTED_VERSION}'"
         )
 
 
@@ -822,7 +825,7 @@ async def test_60_dev_user_flag_check():
 
 @pytest.mark.asyncio
 async def test_70_all_services_report_195():
-    """All services should consistently report version 1.9.5."""
+    """All services should consistently report the expected version."""
     services = [
         (f"{MANAGER_BASE}/api/health", "Manager", "version"),
         (f"{AGENT_BASE}/health", "Agent Runner", "version"),
@@ -834,8 +837,8 @@ async def test_70_all_services_report_195():
             status, data = await _api(s, "GET", url)
             assert status == 200, f"{name} health check failed: {status}"
             version = data.get(version_key, "unknown")
-            assert version == "1.9.5", (
-                f"{name} reports version '{version}' — expected '1.9.5'"
+            assert version == EXPECTED_VERSION, (
+                f"{name} reports version '{version}' — expected '{EXPECTED_VERSION}'"
             )
 
 

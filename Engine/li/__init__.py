@@ -10,7 +10,7 @@ Designed for NHS hospital trust integration engines with support for:
 - Scalable Docker deployment
 """
 
-__version__ = "0.1.0"
+from Engine import __version__
 __author__ = "LI Engine Team"
 
 from Engine.li.config import ProductionConfig, ItemConfig

@@ -27,7 +27,7 @@ logger = logging.getLogger(__name__)
 
 SEED_DIR = os.environ.get("SEED_DIR", "/app/seeds")
 
-app = FastAPI(title="OpenLI HIE Prompt Manager", version="1.9.5")
+app = FastAPI(title="OpenLI HIE Prompt Manager", version=os.environ.get("HIE_VERSION", "unknown"))
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
