@@ -1,372 +1,298 @@
-# HIE - Healthcare Integration Engine
+# OpenLI HIE — The First GenAI-Native Healthcare Integration Engine
 
-A next-generation, enterprise-grade healthcare integration engine designed for mission-critical NHS acute trust environments.
+**Natural language IS the development language.**
 
-**Version:** 0.3.1  
-**Status:** User Management & Authentication Release  
-**Last Updated:** February 9, 2026
+OpenLI HIE is not an integration engine with AI bolted on. It is an integration engine where English (or any human language) is the only language a developer needs to design, build, test, deploy, monitor, debug, modify, and roll back healthcare integrations — because the AI agent understands all of it.
 
-## Overview
+**Version:** 1.9.5 | **License:** Open Source (MIT) | **Last Updated:** February 2026
 
-HIE is a high-performance messaging and orchestration bus that supports:
-- **Any protocol** (HL7v2, FHIR, DICOM, custom)
-- **Any data format** (structured, semi-structured, binary)
-- **Any transformation** — applied only when explicitly required
-- **Fully configurable routing** — No hardcoded Python, all routes defined via JSON/YAML
-- **Visual management portal** — Web-based UI for configuration and monitoring
+---
 
-## Design Principles
+## The Problem We Solve
 
-1. **Raw-first, parse-on-demand** — Messages are stored and transported in raw form. Parsing occurs only when explicitly required by a route or item.
+Every NHS trust runs dozens of clinical systems — PAS, EPR, RIS, PACS, Labs, Pharmacy — that need to exchange HL7, FHIR, and other healthcare messages reliably, 24/7. Today, building and maintaining these integrations requires:
 
-2. **Explicit over implicit** — No hidden behavior. Every transformation, validation, or routing decision is configured.
+- **Weeks of specialist training** on HL7 segment structure, MLLP transport, routing rule syntax, and vendor-specific configuration
+- **Expensive proprietary licenses** — InterSystems IRIS, Rhapsody, and similar engines cost hundreds of thousands of pounds annually
+- **Scarce integration engineers** who understand both the clinical data model and the technical implementation
+- **Vendor lock-in** to aging architectures built before containers, APIs, and cloud-native deployment existed
 
-3. **Vendor-neutral** — No legacy engine terminology in the core. Clean abstractions that can interoperate with existing systems via adapters.
+## Our Answer
 
-4. **Enterprise reliability** — Built for high-throughput, high-concurrency environments with proper backpressure, ordering guarantees, and retry logic.
+```
+Developer says:
+  "Build an ADT integration from Cerner PAS on port 5001
+   to RIS on 10.0.1.50:5002 and EPR on 10.0.1.60:5003.
+   Route A01 admissions and A03 discharges to both.
+   Route A02 transfers to RIS only."
+
+Time to first integration: minutes — not weeks.
+```
+
+The AI agent translates this into the correct HL7 TCPService, routing engine, MLLP operations, connections, and routing rules — without the developer ever touching a configuration form, writing a line of code, or reading an API doc.
+
+---
+
+## What Makes OpenLI Different
+
+### Natural Language as a Development Language
+
+This is the foundational innovation. Every stage of the integration lifecycle is achievable through conversation:
+
+| Lifecycle Stage | What You Say | What the Agent Does |
+|----------------|-------------|---------------------|
+| **Design** | "I need an ADT feed from PAS to RIS and EPR" | Proposes architecture with services, processes, operations |
+| **Build** | "Use MLLP on port 5001, route A01/A02/A03" | Creates all items, connections, routing rules |
+| **Test** | "Send a test ADT A01 message" | Crafts and sends a valid HL7 message, shows result |
+| **Deploy** | "Deploy to staging" | Deploys directly (or creates approval for production) |
+| **Monitor** | "How many messages processed today?" | Queries metrics and presents dashboard data |
+| **Debug** | "Why did message 47 fail?" | Traces message through the routing topology |
+| **Modify** | "Change the RIS port to 5004" | Updates the MLLP operation configuration |
+| **Rollback** | "Revert to yesterday's config" | Restores from auto-snapshot, remaps connections |
+
+### Enterprise-Grade Guardrails
+
+Natural language development is only safe for production NHS environments because of six guardrails that operate transparently:
+
+| Guardrail | What It Does |
+|-----------|-------------|
+| **GR-1: Role-Based Access** | 7-role RBAC hierarchy filters available tools before the AI sees them |
+| **GR-2: Audit Logging** | Every AI tool call is logged with PII sanitisation (NHS numbers, postcodes stripped) |
+| **GR-3: Approval Workflows** | Production deployments require Clinical Safety Officer or Admin sign-off |
+| **GR-4: Config Snapshots** | Every deploy auto-snapshots current config; one-command rollback to any version |
+| **GR-5: Tenant Isolation** | Multi-tenant architecture — each NHS Trust sees only their own data |
+| **GR-6: Namespace Enforcement** | Core engine classes (`li.*`) are read-only; developers write to `custom.*` only |
+
+### Where We Lead the Market
+
+| Capability | OpenLI HIE | InterSystems IRIS | Rhapsody | Mirth Connect |
+|-----------|-----------|-------------------|----------|---------------|
+| **NL Development** | English is the dev language | None | None | None |
+| **AI Agent Integration** | Built-in (Claude, Codex) | None | None | None |
+| **Hot Reload** | Config changes without restart | Requires restart | Requires restart | Requires restart |
+| **True Multiprocessing** | OS processes (GIL bypass) | JVM threading | JVM threading | JVM threading |
+| **Docker-Native** | First-class microservices | Complex | Complex | Limited |
+| **API-First** | REST + JSON everywhere | SOAP/REST hybrid | Limited API | Limited API |
+| **Open Source** | MIT — zero licensing cost | $$$$$ | $$$$$ | MPL (limited) |
+| **NHS-First Design** | DCB0129/0160 compliance built-in | Generic | Generic | Generic |
+
+---
 
 ## Architecture
 
+```
+┌──────────────────────────────────────────────────────────────────────┐
+│                        OpenLI HIE Platform                           │
+│                                                                      │
+│  ┌──────────┐  ┌──────────────┐  ┌─────────────┐  ┌──────────────┐ │
+│  │  Portal   │  │  Agent       │  │  Manager    │  │  Engine      │ │
+│  │  (React)  │→ │  Runner      │→ │  API        │→ │  (LI Core)   │ │
+│  │  Next.js  │  │  Claude/Codex│  │  REST+Auth  │  │  Productions │ │
+│  └──────────┘  └──────────────┘  └─────────────┘  └──────────────┘ │
+│        │              │                 │                 │          │
+│  ┌─────┴──────────────┴─────────────────┴─────────────────┴───────┐ │
+│  │                    PostgreSQL + Redis                           │ │
+│  └────────────────────────────────────────────────────────────────┘ │
+└──────────────────────────────────────────────────────────────────────┘
+```
+
+**Five microservices**, each independently deployable:
+
+| Service | Role | Port |
+|---------|------|------|
+| **Portal** | React/Next.js management UI — dashboards, topology, config, agents | 9303 |
+| **Agent Runner** | GenAI agent execution — Claude & Codex, RBAC, hooks, rate limiting | 9340 |
+| **Manager API** | REST API — workspaces, projects, items, connections, auth, deploy | 9302 |
+| **Engine** | LI runtime — message routing, MLLP/HTTP/File I/O, transformations | 9300 |
+| **Prompt Manager** | Template/skill store, audit logging, approval workflows | 9341 |
+
 ### Core Concepts
 
-- **Production** — The runtime orchestrator containing all items and routes
-- **Item** — An independently configurable runtime unit (receiver, processor, or sender)
-- **Route** — A message flow linking items together
-- **Message** — Envelope (metadata) + Payload (raw content)
+- **Workspace** — A tenant-scoped namespace containing projects (maps to an NHS Trust)
+- **Project** — A production configuration: items + connections + routing rules
+- **Item** — A runtime component: Service (inbound), Process (routing/transform), Operation (outbound)
+- **Connection** — A message flow link between two items
+- **Routing Rule** — A conditional filter that directs messages to target items
 
-### Message Model
+### Design Principles
 
+1. **Raw-first, parse-on-demand** — Messages preserved in original form; parsing only when explicitly required
+2. **Explicit over implicit** — No hidden transformations; every routing decision is configured and auditable
+3. **Configuration-driven** — All workflows configurable through Portal UI or natural language; zero code for standard integrations
+4. **Vendor-neutral core** — Clean abstractions; legacy engine concepts mapped via adapters, not core types
+
+---
+
+## Quick Start
+
+### Prerequisites
+
+- Docker and Docker Compose
+- An Anthropic API key (for AI agent features)
+
+### 1. Start the Platform
+
+```bash
+git clone https://github.com/zhongli1990/hie.git
+cd HIE
+
+# Set your Anthropic API key
+export ANTHROPIC_API_KEY=sk-ant-...
+
+# Start the full stack
+docker compose up -d --build
+
+# Wait for all services to be healthy (~60s)
+docker compose ps
 ```
-┌─────────────────────────────────────┐
-│              Message                │
-├─────────────────────────────────────┤
-│  Envelope (Header)                  │
-│  ├── message_id                     │
-│  ├── correlation_id                 │
-│  ├── timestamp                      │
-│  ├── source                         │
-│  ├── routing metadata               │
-│  └── governance/audit fields        │
-├─────────────────────────────────────┤
-│  Payload (Body)                     │
-│  ├── raw_content (bytes)            │
-│  ├── content_type                   │
-│  └── properties (typed, explicit)   │
-└─────────────────────────────────────┘
+
+### 2. Access the Platform
+
+| Service | URL |
+|---------|-----|
+| Portal (UI) | http://localhost:9303 |
+| Manager API | http://localhost:9302/api/health |
+| Agent Runner | http://localhost:9340/health |
+| Prompt Manager | http://localhost:9341/health |
+| Adminer (DB) | http://localhost:9330 |
+| Redis Commander | http://localhost:9331 |
+
+### 3. Login with Demo Users
+
+All demo users belong to **St Thomas' Hospital NHS Foundation Trust** (STH).
+
+| Persona | Email | Password | Can Do |
+|---------|-------|----------|--------|
+| **System Admin** | `admin@hie.nhs.uk` | `Admin123!` | Everything across all tenants |
+| **IT Director** | `trust.admin@sth.nhs.uk` | `Demo12345!` | Full access within STH |
+| **Integration Developer** | `developer@sth.nhs.uk` | `Demo12345!` | Design, Build, Test — staging deploy |
+| **Clinical Safety Officer** | `cso@sth.nhs.uk` | `Demo12345!` | Review, Approve/Reject deployments |
+| **Systems Operator** | `operator@sth.nhs.uk` | `Demo12345!` | Deploy, Start, Stop, Rollback |
+| **Service Desk** | `viewer@sth.nhs.uk` | `Demo12345!` | Read-only monitoring |
+| **IG Auditor** | `auditor@sth.nhs.uk` | `Demo12345!` | Read-only + audit log access |
+
+---
+
+## Protocol & Format Support
+
+| Protocol | Status | Transport |
+|----------|--------|-----------|
+| **HL7 v2.x** | Production | MLLP, HTTP, File |
+| **FHIR R4** | Planned | HTTP/REST |
+| **DICOM** | Planned | TCP |
+| **HTTP/REST** | Production | HTTP |
+| **File I/O** | Production | Filesystem |
+| **Database** | Production | PostgreSQL, ODBC |
+| **Custom** | Extensible | Python classes in `custom.*` namespace |
+
+---
+
+## Testing
+
+All tests run inside Docker containers — never on the host.
+
+```bash
+# Start the stack
+docker compose up -d --build
+
+# Run all E2E tests (recommended)
+make test-e2e
+
+# Run specific test suites
+make test-e2e-smoke      # 5 tests  — service health & API smoke
+make test-e2e-v194       # 38 tests — RBAC, audit, approvals, role alignment
+make test-e2e-v195       # 22 tests — snapshots, CRUD, env deploy, rate limiting
+
+# Run unit/integration tests inside the engine container
+docker compose exec -T hie-engine pytest -q tests/unit
+docker compose exec -T hie-engine pytest -q tests/integration
 ```
+
+See [Testing Guide](docs/reference/TESTING_GUIDE.md) for full details.
+
+---
 
 ## Project Structure
 
 ```
 HIE/
-├── Portal/               # Frontend Management UI (Next.js)
-│   ├── src/
-│   │   ├── app/         # Next.js 14 app directory
-│   │   ├── components/  # React components
-│   │   └── lib/         # Utilities and API client
-│   ├── public/          # Static assets
-│   ├── Dockerfile
-│   └── package.json
-├── Engine/              # Backend Microservice Cluster
-│   ├── core/           # Vendor-neutral core abstractions
-│   │   ├── message.py  # Envelope + Payload model
-│   │   ├── item.py     # Base Item abstraction
-│   │   ├── route.py    # Route definition
-│   │   ├── production.py  # Orchestrator/runtime
-│   │   └── config.py   # Configuration loader
-│   ├── api/            # Management API (hie-manager)
-│   │   ├── server.py   # aiohttp server
-│   │   ├── routes/     # API endpoints
-│   │   └── services/   # Business logic
-│   ├── auth/           # Authentication & RBAC
-│   ├── items/          # Integration components
-│   │   ├── receivers/  # Inbound (HTTP, file, MLLP)
-│   │   ├── processors/ # Business logic, transforms
-│   │   └── senders/    # Outbound (MLLP, file, HTTP)
-│   ├── li/             # IRIS-compatible LI Engine
-│   ├── parsers/        # Protocol parsers (HL7v2, FHIR)
-│   └── persistence/    # Data layer (PostgreSQL, Redis)
-├── tests/              # Test Suite
-│   ├── unit/          # Unit tests
-│   ├── integration/   # Integration tests
-│   ├── li/            # LI Engine-specific tests
-│   └── e2e/           # Docker-network E2E API smoke tests
-├── docs/               # Documentation
-├── config/             # Configuration Files
-├── scripts/            # Utility Scripts
-├── data/               # Runtime Data (gitignored)
-├── docker-compose.yml        # Primary production stack
-├── Dockerfile                # HIE Engine image
-├── Dockerfile.manager        # Manager API image
-├── pyproject.toml            # Python package config
-└── README.md
+├── Portal/                 # React/Next.js Management UI
+│   ├── src/app/           # Pages: dashboard, projects, agents, admin
+│   └── src/components/    # Sidebar, topology viewer, agent workflows
+├── Engine/                 # Python Backend
+│   ├── core/              # Message model, production runtime, items
+│   ├── api/               # Manager API: routes, repositories, models
+│   ├── auth/              # JWT auth, RBAC, password policies
+│   ├── li/                # LI Engine (IRIS-compatible runtime)
+│   ├── items/             # Receivers, processors, senders
+│   └── persistence/       # PostgreSQL, Redis, migrations
+├── agent-runner/           # GenAI Agent Service
+│   └── app/               # Tools, roles, hooks, rate limiter, skills
+├── prompt-manager/         # Template & Audit Service
+│   └── app/               # Prompts, skills, audit, approvals
+├── tests/
+│   ├── unit/              # Pure unit tests (no Docker deps)
+│   ├── integration/       # In-process component tests
+│   ├── li/                # LI Engine subsystem tests
+│   └── e2e/               # Docker-network E2E tests (65 tests)
+├── scripts/
+│   ├── init-db.sql        # Database schema & seed data
+│   └── run_e2e_tests.sh   # Docker E2E test runner
+├── docs/                   # 30+ architecture, design, and guide documents
+├── docker-compose.yml      # Production stack (12 services)
+└── docker-compose.dev.yml  # Development stack with hot-reload
 ```
 
-## Quick Start
-
-### Option 1: Full Stack with Docker Compose (Recommended for E2E Testing)
-
-```bash
-# Clone and setup
-git clone <repository>
-cd HIE
-
-# Create data directories
-mkdir -p data/{inbound,outbound,processed,archive}
-
-# Start the full stack (backend + portal + databases)
-docker-compose up --build
-
-# Access the services:
-# - Portal:           http://localhost:9303
-# - Manager API:      http://localhost:9302/api/health
-# - HIE Engine:       http://localhost:9300/health
-# - PostgreSQL:       localhost:9310
-# - Redis:            localhost:9311
-# - MLLP Echo:        localhost:9320
-# - HTTP Echo:        localhost:9321
-# - Adminer (DB UI):  http://localhost:9330
-# - Redis Commander:  http://localhost:9331
-```
-
-### Option 2: Development Setup
-
-```bash
-# Backend
-cd HIE
-python -m venv venv
-source venv/bin/activate
-pip install -e ".[dev]"
-
-# Run with example config
-hie run --config config/example.yaml
-
-# Portal (separate terminal)
-cd Portal
-npm install
-npm run dev
-# Access at http://localhost:3000
-```
-
-## Running Tests (Docker-only)
-
-All tests are intended to run inside the Docker stack. Do not install Python/Node dependencies on the host for verification.
-
-```bash
-# Ensure the stack is up (or start it)
-docker compose -f docker-compose.yml up -d
-
-# Run the full pytest suite inside the hie-engine container
-docker compose -f docker-compose.yml exec -T hie-engine pytest -q
-
-# Run only unit tests
-docker compose -f docker-compose.yml exec -T hie-engine pytest -q tests/unit
-
-# Run integration tests (in-process component integration)
-docker compose -f docker-compose.yml exec -T hie-engine pytest -q tests/integration
-
-# Run LI engine tests
-docker compose -f docker-compose.yml exec -T hie-engine pytest -q tests/li
-
-# Run Docker-network API E2E smoke tests (hits hie-manager/hie-portal/hie-engine)
-docker compose -f docker-compose.yml exec -T hie-engine pytest -q tests/e2e
-```
-
-See [`docs/TESTING.md`](docs/TESTING.md) for details on what each suite covers.
-
-## Configuration
-
-HIE supports both **YAML** and **JSON** configuration formats. Routes and productions are fully configurable without any Python code changes.
-
-### JSON Configuration (Recommended for Portal)
-
-```json
-{
-  "name": "NHS-ADT-Integration",
-  "description": "ADT message integration for NHS acute trust",
-  "enabled": true,
-  "settings": {
-    "actorPoolSize": 4,
-    "gracefulShutdownTimeout": 60,
-    "autoStart": true
-  },
-  "items": [
-    {
-      "id": "HTTP_ADT_Receiver",
-      "name": "HTTP ADT Receiver",
-      "type": "receiver.http",
-      "category": "service",
-      "enabled": true,
-      "settings": {
-        "port": 8080,
-        "path": "/api/hl7/adt"
-      }
-    },
-    {
-      "id": "ADT_Router",
-      "type": "processor.router",
-      "category": "process",
-      "enabled": true
-    },
-    {
-      "id": "PAS_MLLP_Sender",
-      "type": "sender.mllp",
-      "category": "operation",
-      "settings": {
-        "host": "pas.nhs.local",
-        "port": 2575
-      }
-    }
-  ],
-  "connections": [
-    {"sourceId": "HTTP_ADT_Receiver", "targetId": "ADT_Router"},
-    {"sourceId": "ADT_Router", "targetId": "PAS_MLLP_Sender"}
-  ],
-  "routingRules": [
-    {
-      "name": "Route A01 to PAS",
-      "sourceItemId": "ADT_Router",
-      "targetItemIds": ["PAS_MLLP_Sender"],
-      "filterGroup": {
-        "operator": "and",
-        "conditions": [
-          {"field": "MSH.9.2", "operator": "equals", "value": "A01"}
-        ]
-      }
-    }
-  ]
-}
-```
-
-### YAML Configuration
-
-```yaml
-production:
-  name: "ADT-Feed"
-  
-items:
-  - id: http_receiver
-    type: receiver.http
-    config:
-      port: 8080
-      path: /hl7
-      
-  - id: hl7_transformer
-    type: processor.transform
-    config:
-      script: transforms/adt_transform.py
-      
-  - id: mllp_sender
-    type: sender.mllp
-    config:
-      host: downstream.nhs.uk
-      port: 2575
-
-routes:
-  - id: adt_route
-    path: [http_receiver, hl7_transformer, mllp_sender]
-```
-
-## Canonical Message Format
-
-HIE uses an internal canonical message format that all external formats (HL7v2, FHIR, CSV, etc.) can be converted to and from:
-
-```
-External Format → Parser → CanonicalMessage → Serializer → External Format
-
-HL7v2 ADT^A01 → HL7v2Parser → CanonicalMessage → FHIRSerializer → FHIR Bundle
-```
-
-This enables:
-- Protocol-agnostic processing and routing
-- Unified transformation logic
-- Format conversion between any supported protocols
-
-## E2E Testing
-
-The full Docker Compose stack includes test servers:
-
-```bash
-# Send a test HL7v2 message to the HTTP receiver
-curl -X POST http://localhost:9300/hl7 \
-  -H "Content-Type: application/hl7-v2" \
-  -d 'MSH|^~\&|SENDING|FACILITY|RECEIVING|FACILITY|20260121120000||ADT^A01|123|P|2.5
-PID|1||12345^^^NHS^NH||DOE^JOHN||19800101|M'
-
-# Check the MLLP echo server received it
-docker logs hie-mllp-echo
-
-# View messages in the portal
-open http://localhost:9303/messages
-```
+---
 
 ## Documentation
 
-- [Product Vision](docs/PRODUCT_VISION.md)
-- [Feature Specification](docs/FEATURE_SPEC.md)
-- [Requirements Specification](docs/REQUIREMENTS_SPEC.md)
-- [Development Roadmap](docs/ROADMAP.md)
-- [Testing Guide](docs/TESTING.md)
+### Start Here
+
+- [Developer & User Guide](docs/guides/DEVELOPER_AND_USER_GUIDE.md) — Quickstart, NHS scenario, custom classes
+- [Demo Lifecycle Guide](docs/guides/DEMO_LIFECYCLE_GUIDE.md) — Complete NL integration lifecycle in 5 acts
+- [NHS Trust Demo Guide](docs/guides/NHS_TRUST_DEMO_GUIDE.md) — Reference implementation for NHS acute trusts
+
+### Architecture & Design
+
+- [Architecture Overview](docs/architecture/ARCHITECTURE_OVERVIEW.md) — Platform architecture
+- [Feature Design: NL Development & RBAC](docs/design/FEATURE_NL_DEVELOPMENT_RBAC.md) — Primary feature design document
+- [Product Vision](docs/design/PRODUCT_VISION.md) — Strategic positioning & market analysis
+- [Full Documentation Index](docs/INDEX.md) — All 30+ documents
+
+### Releases
+
+- [v1.9.5](docs/releases/RELEASE_NOTES_v1.9.5.md) — Config Snapshots, CRUD Tools, Environment Deploy, Rate Limiting
+- [v1.9.4](docs/releases/RELEASE_NOTES_v1.9.4.md) — Unified RBAC, Audit Logging, Approval Workflows, Demo Onboarding
+- [v1.8.2](docs/releases/RELEASE_NOTES_v1.8.2.md) — Message Model Metadata, Session Tracking
+- [All Releases](docs/INDEX.md#releases)
+
+---
+
+## Inspiration & Lineage
+
+OpenLI HIE draws architectural inspiration from the best enterprise integration engines while reimagining the development experience for the GenAI era:
+
+- **InterSystems IRIS/Ensemble** — The Service/Process/Operation item model, per-leg message header tracing, and production topology concepts inform our core architecture. We preserve the mental model that NHS integration engineers already know, then make it accessible through natural language.
+
+- **Orion Health Rhapsody** — The emphasis on healthcare-specific compliance, clinical safety review workflows, and NHS trust deployment patterns shaped our guardrail design (DCB0129/DCB0160 compliance, approval workflows, PII sanitisation).
+
+- **Mirth Connect** — The open-source model and channel-based message routing demonstrated that enterprise healthcare integration doesn't require proprietary licensing. We extend this principle to the AI development experience itself.
+
+- **Claude & Large Language Models** — The realisation that LLMs can understand healthcare data standards (HL7, FHIR), networking protocols (MLLP, HTTP), and integration architecture patterns (routing, transformation, error handling) well enough to be the primary development interface — not a helper, but the developer's hands.
+
+**The synthesis:** Take the proven enterprise architecture of IRIS, the compliance rigour of Rhapsody, the open-source ethos of Mirth, and make all of it accessible through natural language. The result is an integration engine where the barrier to entry drops from months of specialist training to a conversation in English.
+
+---
+
+## Contributing
+
+OpenLI HIE is open source and welcomes contributions. See the [Developer Guide](docs/guides/DEVELOPER_AND_USER_GUIDE.md) for setup instructions.
 
 ## License
 
-Open Source (License TBD)
+MIT License — free for NHS trusts, healthcare organisations, and the wider community. Zero licensing cost, zero vendor lock-in.
 
-## Status
+---
 
-✅ **v0.2.0 Released** — User Management & Authentication release.
-
-### What's New in v0.2.0
-
-**Authentication & Security:**
-- JWT-based authentication with 24-hour token expiry
-- bcrypt password hashing (12 rounds)
-- Account lockout after 5 failed attempts
-- Password policy enforcement (12+ chars, mixed case, digit, special)
-
-**User Management:**
-- User registration with admin approval workflow
-- User lifecycle states: pending, active, inactive, locked, rejected
-- Admin actions: approve, reject, activate, deactivate, unlock
-
-**Role-Based Access Control (RBAC):**
-- 6 system roles: Super Admin, Tenant Admin, Operator, Developer, Viewer, Auditor
-- Granular permissions for all resources
-- Multi-tenancy support (prepared for NHS Trusts)
-
-**Portal Authentication:**
-- Login page with error handling
-- Registration page with password validation
-- Pending approval page
-- Auth-protected routes (redirect to login if unauthenticated)
-- User dropdown menu with settings and sign out
-- Notifications panel with bell icon
-
-**Default Credentials:**
-- Email: `admin@hie.nhs.uk`
-- Password: `Admin123!`
-
-### What's Included in v0.1.0
-
-**Core Engine:**
-- Production orchestrator with lifecycle management
-- HTTP and File receivers
-- MLLP and File senders
-- Message routing with content-based filtering
-- PostgreSQL and Redis persistence
-- Immutable message model with envelope/payload separation
-
-**Management Portal:**
-- Dashboard with real-time metrics
-- Productions list and detail views
-- Configure page with route editor
-- Messages page with search and filtering
-- Monitoring page with system metrics
-- Errors page with severity tracking
-- Logs page with real-time streaming
-- Settings page with configuration panels
-
-**Infrastructure:**
-- Docker and Docker Compose deployment
-- Full E2E testing stack with echo servers
-- Management REST API
+*OpenLI HIE — Healthcare Integration Engine. Natural language is the development language.*
