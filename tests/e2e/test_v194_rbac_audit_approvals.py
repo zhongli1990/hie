@@ -160,8 +160,8 @@ async def test_03_prompt_manager_health():
         status, data = await _api(s, "GET", f"{PROMPT_MGR_BASE}/health")
         assert status == 200, f"Prompt manager returned {status}: {data}"
         assert data.get("status") == "ok"
-        assert data.get("version") == "1.9.4", (
-            f"Expected version 1.9.4, got {data.get('version')}"
+        assert data.get("version") == "1.9.5", (
+            f"Expected version 1.9.5, got {data.get('version')}"
         )
 
 
@@ -641,12 +641,12 @@ async def test_60_portal_pages(path: str, label: str):
 
 @pytest.mark.asyncio
 async def test_70_prompt_manager_version():
-    """Prompt manager /health reports version 1.9.4 (not hardcoded 1.9.0)."""
+    """Prompt manager /health reports version 1.9.5 (not hardcoded 1.9.0)."""
     async with aiohttp.ClientSession() as s:
         status, data = await _api(s, "GET", f"{PROMPT_MGR_BASE}/health")
         assert status == 200
         version = data.get("version", "unknown")
-        assert version == "1.9.4", (
-            f"Prompt manager version is '{version}' — expected '1.9.4'. "
+        assert version == "1.9.5", (
+            f"Prompt manager version is '{version}' — expected '1.9.5'. "
             f"Check that the health endpoint uses app.version, not a hardcoded string."
         )
