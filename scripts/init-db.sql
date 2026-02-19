@@ -236,21 +236,6 @@ INSERT INTO hie_users (id, tenant_id, email, display_name, title, department, pa
 ON CONFLICT (email) DO NOTHING;
 
 -- ============================================================================
--- Demo Workspace for St Thomas' Trust
--- ============================================================================
--- Links to the demo tenant so agent-runner can scope tools by tenant.
-
-INSERT INTO workspaces (id, name, display_name, description, tenant_id, created_by, settings) VALUES
-    ('10000000-0000-0000-0000-000000000201',
-     'sth-integrations',
-     'STH Integrations',
-     'Integration workspace for St Thomas'' Hospital NHS Foundation Trust',
-     '10000000-0000-0000-0000-000000000001',
-     '10000000-0000-0000-0000-000000000101',
-     '{"actorPoolSize": 4, "gracefulShutdownTimeout": 30}'::jsonb)
-ON CONFLICT (name) DO NOTHING;
-
--- ============================================================================
 -- Message Tables
 -- ============================================================================
 
@@ -473,6 +458,22 @@ VALUES (
     'Default workspace for HIE projects',
     '{"actorPoolSize": 2, "gracefulShutdownTimeout": 30}'::jsonb
 ) ON CONFLICT (name) DO NOTHING;
+
+-- ============================================================================
+-- Demo Workspace for St Thomas' Trust
+-- ============================================================================
+-- Links to the demo tenant so agent-runner can scope tools by tenant.
+-- NOTE: This INSERT must come AFTER the CREATE TABLE workspaces statement above.
+
+INSERT INTO workspaces (id, name, display_name, description, tenant_id, created_by, settings) VALUES
+    ('10000000-0000-0000-0000-000000000201',
+     'sth-integrations',
+     'STH Integrations',
+     'Integration workspace for St Thomas'' Hospital NHS Foundation Trust',
+     '10000000-0000-0000-0000-000000000001',
+     '10000000-0000-0000-0000-000000000101',
+     '{"actorPoolSize": 4, "gracefulShutdownTimeout": 30}'::jsonb)
+ON CONFLICT (name) DO NOTHING;
 
 -- Triggers for workspace/project tables
 DROP TRIGGER IF EXISTS update_workspaces_updated_at ON workspaces;
