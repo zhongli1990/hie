@@ -1,0 +1,160 @@
+OpenLI HIE — Commercial License Agreement
+
+Copyright (c) 2026 Lightweight Integration Ltd
+All rights reserved.
+
+================================================================================
+                         COMMERCIAL LICENSE AGREEMENT
+================================================================================
+
+This Commercial License Agreement ("Agreement") is entered into between
+Lightweight Integration Ltd ("Licensor") and the licensee organization
+("Licensee").
+
+--------------------------------------------------------------------------------
+1. GRANT OF LICENSE
+--------------------------------------------------------------------------------
+
+Subject to the terms of this Agreement and payment of applicable fees, Licensor
+grants Licensee a non-exclusive, non-transferable, worldwide license to:
+
+a) Use, copy, and install the Software for internal business purposes
+b) Create derivative works for internal use
+c) Deploy the Software in production environments
+d) Distribute the Software as part of Licensee's products or services
+
+This license removes all obligations under the AGPL-3.0 Community License,
+including but not limited to:
+- Source code disclosure requirements
+- Network use copyleft provisions
+- Derivative work licensing requirements
+
+--------------------------------------------------------------------------------
+2. ELIGIBILITY & PRICING
+--------------------------------------------------------------------------------
+
+A commercial license is REQUIRED for any organization with annual revenue of
+£250,000 GBP or above.
+
+Pricing Tiers:
+
+  SME License (£250K - £2M annual revenue):
+    £500/year per organization
+    - Full commercial use rights
+    - Community support (GitHub Issues)
+    - Standard updates and patches
+
+  Enterprise License (> £2M annual revenue):
+    Contact for custom quote
+    - Full commercial use rights
+    - Priority support with SLA
+    - Dedicated integration engineering assistance
+    - Custom feature development
+    - Indemnification coverage
+
+  NHS Trust License:
+    Contact for NHS-specific pricing
+    - Full commercial use rights
+    - NHS Trust deployment support
+    - DCB0129/DCB0160 compliance assistance
+    - Clinical safety review support
+    - Priority bug fixes
+
+--------------------------------------------------------------------------------
+3. INTELLECTUAL PROPERTY
+--------------------------------------------------------------------------------
+
+a) The Software, including all source code, documentation, architecture,
+   algorithms, and design, is and remains the exclusive intellectual property
+   of Lightweight Integration Ltd.
+
+b) This license does not transfer any ownership rights to Licensee.
+
+c) Licensee may not sublicense, sell, or transfer this license without prior
+   written consent from Licensor.
+
+d) All derivative works created by Licensee remain subject to this Agreement.
+
+--------------------------------------------------------------------------------
+4. TRADEMARK RESTRICTIONS
+--------------------------------------------------------------------------------
+
+"OpenLI", "OpenLI HIE", "OpenLI Healthcare Integration Engine", and the OpenLI
+logo are trademarks of Lightweight Integration Ltd.
+
+Licensee may not:
+- Use OpenLI trademarks in product names without written permission
+- Imply endorsement or partnership without written agreement
+- Create confusion about the origin of derivative products
+- Use the OpenLI name or logo in marketing without approval
+
+Licensee may:
+- State compatibility with OpenLI HIE (e.g., "Compatible with OpenLI HIE")
+- Reference OpenLI HIE in technical documentation
+
+--------------------------------------------------------------------------------
+5. CONFIDENTIALITY
+--------------------------------------------------------------------------------
+
+Licensee agrees to treat the Software's proprietary algorithms, architecture
+decisions, and non-public documentation as confidential information and shall
+not disclose them to third parties without Licensor's written consent.
+
+--------------------------------------------------------------------------------
+6. WARRANTY DISCLAIMER
+--------------------------------------------------------------------------------
+
+THE SOFTWARE IS PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE, AND NONINFRINGEMENT.
+
+WHILE DESIGNED FOR HEALTHCARE INTEGRATION IN NHS ENVIRONMENTS, THE SOFTWARE
+DOES NOT CONSTITUTE A MEDICAL DEVICE. LICENSEE IS RESPONSIBLE FOR VALIDATING
+THE SOFTWARE MEETS THEIR SPECIFIC REGULATORY, COMPLIANCE, AND CLINICAL SAFETY
+REQUIREMENTS.
+
+--------------------------------------------------------------------------------
+7. LIMITATION OF LIABILITY
+--------------------------------------------------------------------------------
+
+IN NO EVENT SHALL LIGHTWEIGHT INTEGRATION LTD BE LIABLE FOR ANY INDIRECT,
+INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES ARISING OUT OF OR IN
+CONNECTION WITH THIS AGREEMENT OR THE USE OF THE SOFTWARE, EVEN IF ADVISED OF
+THE POSSIBILITY OF SUCH DAMAGES.
+
+LICENSOR'S TOTAL LIABILITY SHALL NOT EXCEED THE AMOUNT PAID BY LICENSEE FOR
+THE LICENSE IN THE TWELVE (12) MONTHS PRECEDING THE CLAIM.
+
+--------------------------------------------------------------------------------
+8. TERM AND TERMINATION
+--------------------------------------------------------------------------------
+
+a) This Agreement is effective from the date of purchase and continues for the
+   licensed period (annual).
+
+b) Either party may terminate this Agreement with 30 days written notice.
+
+c) Upon termination, Licensee must cease all use of the Software and destroy
+   all copies.
+
+d) Sections 3, 4, 5, 6, 7, and 9 survive termination.
+
+--------------------------------------------------------------------------------
+9. GOVERNING LAW
+--------------------------------------------------------------------------------
+
+This Agreement shall be governed by and construed in accordance with the laws
+of England and Wales. Any disputes arising under this Agreement shall be
+subject to the exclusive jurisdiction of the courts of England and Wales.
+
+================================================================================
+
+Lightweight Integration Ltd
+United Kingdom
+https://github.com/zhongli1990/hie
+
+For commercial licensing inquiries:
+  Email: Zhong@li-ai.co.uk
+  GitHub: https://github.com/zhongli1990/hie
+
+================================================================================

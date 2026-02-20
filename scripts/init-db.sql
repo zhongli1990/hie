@@ -1,3 +1,6 @@
+-- Copyright (c) 2026 Lightweight Integration Ltd. All rights reserved.
+-- Licensed under AGPL-3.0 / Commercial dual license. See LICENSE file.
+--
 -- HIE Database Initialization Script
 -- Creates tables and indexes for PostgreSQL persistence
 

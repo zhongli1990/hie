@@ -130,3 +130,5 @@ docs/
 ---
 
 *OpenLI HIE — Healthcare Integration Engine*
+
+*© 2026 Lightweight Integration Ltd. Dual licensed under AGPL-3.0 / Commercial. See [LICENSE](../LICENSE).*

@@ -2,6 +2,8 @@
   "name": "hie-portal",
   "version": "1.9.5",
   "private": true,
+  "license": "AGPL-3.0-or-later",
+  "author": "Lightweight Integration Ltd <Zhong@li-ai.co.uk>",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
