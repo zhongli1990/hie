@@ -5,6 +5,34 @@ All notable changes to OpenLI HIE (Healthcare Integration Engine) will be docume
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.6] - 2026-02-20
+
+### Added — Dual License, IP Protection & Deployment Fixes
+
+**Strict Dual License (AGPL-3.0 / Commercial):**
+- `LICENSE` — AGPL-3.0 community license + commercial license terms with CLA, trademark notice, healthcare disclaimer
+- `LICENSE-COMMERCIAL` — Dedicated commercial license agreement with SME (£500/yr), Enterprise, and NHS Trust pricing tiers
+- IP protection: confidentiality, trademark restrictions, governing law (England & Wales)
+- Copyright headers added to 15+ key source files across Engine, Portal, agent-runner, prompt-manager
+
+**License Metadata Updates:**
+- `pyproject.toml` — license changed from MIT to AGPL-3.0-or-later, author set to Lightweight Integration Ltd
+- `Portal/package.json` — added license AGPL-3.0-or-later and author fields
+- `README.md` — dual license badge, copyright notice, corrected license section, CLA reference in Contributing
+- `docs/INDEX.md` — copyright footer
+
+**Fresh Deployment Database Fix:**
+- Folded all incremental migration scripts into `scripts/init-db.sql`:
+  - `session_id`, `body_class_name`, `schema_name`, `schema_namespace` columns on `portal_messages`
+  - `genai_sessions` + `genai_messages` tables (Agents & Chat)
+  - `message_bodies` + `message_headers` tables (Visual Trace v2)
+  - All indexes and triggers
+- Fresh `docker compose up` now creates complete v1.9.x schema without manual migration
+
+**Docker Linux Deployment Fix:**
+- Added `extra_hosts: ["host.docker.internal:host-gateway"]` to hie-manager in `docker-compose.yml`
+- Fixes MLLP outbound operations failing on AWS/Linux VMs (Docker Engine doesn't inject host.docker.internal like Docker Desktop)
+
 ## [1.9.5] - 2026-02-13
 
 ### Added — Config Snapshots, Full CRUD, Environment Deploy & Rate Limiting

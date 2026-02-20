@@ -1,5 +1,55 @@
 # HIE Release Notes
 
+## Version 1.9.6 - February 20, 2026
+
+### 🔒 Dual License, IP Protection & Deployment Fixes
+
+**Strict Dual License (AGPL-3.0 / Commercial)**
+
+This release formalises the intellectual property protection for OpenLI HIE under a strict dual license model, matching the saas-codex project structure.
+
+#### License & IP Protection
+
+- **`LICENSE`** — AGPL-3.0 community license (revenue < £250K) + commercial license terms, CLA, trademark notice, healthcare disclaimer
+- **`LICENSE-COMMERCIAL`** — Dedicated commercial license agreement:
+  - SME License (£250K–£2M revenue): £500/year
+  - Enterprise License (> £2M revenue): custom quote
+  - NHS Trust License: NHS-specific pricing
+  - Full IP protection, confidentiality, trademark restrictions
+  - Governing law: England & Wales
+- **Copyright headers** added to 15+ key source files across all services:
+  - Engine: `server.py`, `repositories.py`, `messages.py`, `message_store.py`
+  - LI Core: `base.py`, `hl7.py`, `fhir.py`, `fhir_routing.py`
+  - LI Adapters: `file.py`, `http.py`
+  - Portal: `AboutModal.tsx`, `MessageSequenceDiagram.tsx`
+  - Services: `agent-runner/main.py`, `prompt-manager/main.py`
+  - Infrastructure: `docker-compose.yml`, `init-db.sql`
+- **License metadata** updated in `pyproject.toml` (AGPL-3.0-or-later) and `Portal/package.json`
+- **README.md** — dual license badge, copyright notice, corrected license section, CLA reference
+
+#### Fresh Deployment Database Fix
+
+All incremental migration scripts folded into `scripts/init-db.sql` so fresh deployments get the complete schema:
+- `session_id`, `body_class_name`, `schema_name`, `schema_namespace` columns on `portal_messages`
+- `genai_sessions` + `genai_messages` tables (Agents & Chat pages)
+- `message_bodies` + `message_headers` tables (Visual Trace v2)
+- All indexes and triggers
+
+#### Docker Linux Deployment Fix
+
+- Added `extra_hosts: ["host.docker.internal:host-gateway"]` to hie-manager in `docker-compose.yml`
+- Docker Desktop (macOS/Windows) injects `host.docker.internal` automatically; Docker Engine on Linux does not
+- Fixes MLLP outbound operations (Lab_Out, RIS_Out) failing on AWS/Linux VM deployments
+
+### Upgrade Notes
+
+- **No breaking changes** — drop-in replacement for v1.9.5
+- **Fresh deployments** — `docker compose up` now creates complete schema automatically
+- **Existing deployments** — incremental migration scripts remain safe to re-run (IF NOT EXISTS guards)
+- **AWS/Linux VMs** — pull latest and `docker compose up -d hie-manager` to get host.docker.internal fix
+
+---
+
 ## Version 1.9.0 - February 14, 2026
 
 ### 🎯 Major Feature: IRIS Message Model, FHIR REST Stack, Unified Message Tracing

@@ -11,11 +11,22 @@ interface VersionHistory {
 }
 
 const VERSION = process.env.NEXT_PUBLIC_HIE_VERSION || "unknown";
-const BUILD_DATE = "Feb 13, 2026";
+const BUILD_DATE = "Feb 20, 2026";
 const PLATFORM_NAME = "OpenLI HIE";
 const PRODUCT_NAME = "OpenLI Healthcare Integration Engine";
 
 const versionHistory: VersionHistory[] = [
+  {
+    version: "1.9.6",
+    date: "Feb 20, 2026",
+    features: [
+      "Strict dual license (AGPL-3.0 / Commercial) — IP protection for Lightweight Integration Ltd",
+      "LICENSE-COMMERCIAL — dedicated commercial license with SME/Enterprise/NHS Trust tiers",
+      "Copyright headers added to all key source files across Engine, Portal, and services",
+      "Fresh deployment DB fix — all migrations folded into init-db.sql (genai, message_headers)",
+      "Docker Linux fix — host.docker.internal mapping for AWS VM deployments",
+    ],
+  },
   {
     version: "1.9.5",
     date: "Feb 13, 2026",
