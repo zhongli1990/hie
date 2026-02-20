@@ -1,10 +1,15 @@
 # OpenLI HIE — The First GenAI-Native Healthcare Integration Engine
 
+[![License: Dual](https://img.shields.io/badge/License-AGPL%20v3%20%2F%20Commercial-blue.svg)](LICENSE)
+[![Version](https://img.shields.io/badge/version-1.9.5-green.svg)](RELEASE_NOTES.md)
+
 **Natural language IS the development language.**
 
 OpenLI HIE is not an integration engine with AI bolted on. It is an integration engine where English (or any human language) is the only language a developer needs to design, build, test, deploy, monitor, debug, modify, and roll back healthcare integrations — because the AI agent understands all of it.
 
-**Version:** 1.9.5 | **License:** Open Source (MIT) | **Last Updated:** February 2026
+> **© 2026 Lightweight Integration Ltd, UK** — Dual licensed under AGPL-3.0 (community) and Commercial license. See [LICENSE](LICENSE) for details.
+
+**Version:** 1.9.5 | **License:** AGPL-3.0 / Commercial Dual License | **Last Updated:** February 2026
 
 ---
 
@@ -73,7 +78,7 @@ Natural language development is only safe for production NHS environments becaus
 | **True Multiprocessing** | OS processes (GIL bypass) | JVM threading | JVM threading | JVM threading |
 | **Docker-Native** | First-class microservices | Complex | Complex | Limited |
 | **API-First** | REST + JSON everywhere | SOAP/REST hybrid | Limited API | Limited API |
-| **Open Source** | MIT — zero licensing cost | $$$$$ | $$$$$ | MPL (limited) |
+| **Open Source** | AGPL-3.0 / Commercial dual license | $$$$$ | $$$$$ | MPL (limited) |
 | **NHS-First Design** | DCB0129/0160 compliance built-in | Generic | Generic | Generic |
 
 ---
@@ -287,12 +292,30 @@ OpenLI HIE draws architectural inspiration from the best enterprise integration 
 
 ## Contributing
 
-OpenLI HIE is open source and welcomes contributions. See the [Developer Guide](docs/guides/DEVELOPER_AND_USER_GUIDE.md) for setup instructions.
+OpenLI HIE is open source and welcomes contributions. By contributing, you agree to the Contributor License Agreement (CLA) described in the [LICENSE](LICENSE) file.
+
+See the [Developer Guide](docs/guides/DEVELOPER_AND_USER_GUIDE.md) for setup instructions.
 
 ## License
 
-MIT License — free for NHS trusts, healthcare organisations, and the wider community. Zero licensing cost, zero vendor lock-in.
+This project is dual-licensed:
+
+- **AGPL-3.0** for organizations with annual revenue below £250,000 — free to use, modify, and distribute under open source terms
+- **Commercial License** for organizations with revenue ≥ £250,000 — removes AGPL obligations, includes enterprise support and NHS Trust deployment assistance
+
+See [LICENSE](LICENSE) for full terms including:
+- Community License (AGPL-3.0) obligations
+- Commercial License pricing tiers (SME / Enterprise / NHS Trust)
+- Trademark notice for OpenLI brand
+- Contributor License Agreement (CLA)
+- Healthcare disclaimer
+
+**© 2026 Lightweight Integration Ltd, UK**
+
+For licensing inquiries: [Zhong@li-ai.co.uk](mailto:Zhong@li-ai.co.uk)
 
 ---
 
 *OpenLI HIE — Healthcare Integration Engine. Natural language is the development language.*
+
+*© 2026 Lightweight Integration Ltd. All rights reserved.*

@@ -7,16 +7,16 @@ name = "hie"
 version = "1.9.5"
 description = "Healthcare Integration Engine - Enterprise-grade healthcare messaging platform"
 readme = "README.md"
-license = "MIT"
+license = "AGPL-3.0-or-later"
 requires-python = ">=3.11"
 authors = [
-    { name = "HIE Contributors" }
+    { name = "Lightweight Integration Ltd", email = "Zhong@li-ai.co.uk" }
 ]
 keywords = ["healthcare", "integration", "hl7", "fhir", "messaging", "nhs"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Healthcare Industry",
-    "License :: OSI Approved :: MIT License",
+    "License :: OSI Approved :: GNU Affero General Public License v3 or later (AGPLv3+)",
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.11",
