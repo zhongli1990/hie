@@ -92,7 +92,7 @@ export default function LoginPage() {
       </div>
 
       <div className="mt-4 pt-4 border-t border-gray-200 text-center text-xs text-gray-500">
-        Default admin: admin@hie.nhs.uk / Admin123!
+        Please click the Register button to get onboard. For any issues, contact zhong@li-ai.co.uk
       </div>
     </div>
   );
