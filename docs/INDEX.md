@@ -1,6 +1,6 @@
 # OpenLI HIE — Documentation Index
 
-**Version:** 1.9.6
+**Version:** 1.9.7
 **Last Updated:** February 20, 2026
 
 ---

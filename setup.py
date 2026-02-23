@@ -4,7 +4,7 @@ from setuptools import setup, find_packages
 
 setup(
     name="hie",
-    version="1.9.5",
+    version="1.9.7",
     description="Healthcare Integration Engine",
     author="HIE Team",
     packages=find_packages(),

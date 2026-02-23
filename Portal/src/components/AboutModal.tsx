@@ -11,11 +11,21 @@ interface VersionHistory {
 }
 
 const VERSION = process.env.NEXT_PUBLIC_HIE_VERSION || "unknown";
-const BUILD_DATE = "Feb 20, 2026";
+const BUILD_DATE = "Feb 23, 2026";
 const PLATFORM_NAME = "OpenLI HIE";
 const PRODUCT_NAME = "OpenLI Healthcare Integration Engine";
 
 const versionHistory: VersionHistory[] = [
+  {
+    version: "1.9.7",
+    date: "Feb 23, 2026",
+    features: [
+      "Comprehensive documentation — Demo Lifecycle Guide rewritten with DB verification, 7-Act walkthrough, 18-item E2E checklist",
+      "Developer & User Guide — Part 3 GenAI Agent Guide rewritten with all 24 tools, RBAC matrix, security layers, lifecycle examples",
+      "Portal security — removed exposed demo credentials from login page, replaced with onboarding contact message",
+      "Version consistency — all docker-compose defaults, pyproject.toml, setup.py aligned to single VERSION file",
+    ],
+  },
   {
     version: "1.9.6",
     date: "Feb 20, 2026",

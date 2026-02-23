@@ -1,6 +1,6 @@
 # OpenLI HIE — Natural Language Integration Lifecycle Demo Guide
 
-**Version:** 1.9.6
+**Version:** 1.9.7
 **Audience:** Product demos, NHS Trust onboarding, investor presentations, developer training
 **Prerequisite:** Docker stack running (`docker compose up -d --build`)
 
@@ -34,9 +34,9 @@ docker compose ps
 | Service | URL | Port | Expected |
 |---------|-----|------|----------|
 | Portal (UI) | http://localhost:9303 | 9303 | Login page renders |
-| Manager API | http://localhost:9302/api/health | 9302 | `{"version": "1.9.6"}` |
-| Agent Runner | http://localhost:9340/health | 9340 | `{"version": "1.9.6"}` |
-| Prompt Manager | http://localhost:9341/health | 9341 | `{"version": "1.9.6"}` |
+| Manager API | http://localhost:9302/api/health | 9302 | `{"version": "1.9.7"}` |
+| Agent Runner | http://localhost:9340/health | 9340 | `{"version": "1.9.7"}` |
+| Prompt Manager | http://localhost:9341/health | 9341 | `{"version": "1.9.7"}` |
 | PostgreSQL | localhost:9310 | 9310 | — |
 | Redis | localhost:9311 | 9311 | — |
 | MLLP Echo | localhost:9320 | 9320 | — |
@@ -651,7 +651,7 @@ Logout → Login as `operator@sth.nhs.uk` → Type: "Deploy and start the ADT in
 
 | # | Test | Expected | Pass? |
 |---|------|----------|-------|
-| 1 | All 3 health endpoints report version | `1.9.6` (from VERSION file) | |
+| 1 | All 3 health endpoints report version | `1.9.7` (from VERSION file) | |
 | 2 | All 7 demo users login successfully | JWT tokens issued, correct role names | |
 | 3 | Agent role resolution works | developer→developer, cso→clinical_safety_officer, etc. | |
 | 4 | Developer can design/build/test | Items, connections, rules created via NL | |
@@ -728,5 +728,5 @@ All tests run inside Docker on the `hie_hie-network` — never on the host macOS
 
 ---
 
-*OpenLI HIE v1.9.6 — The First GenAI-Native Integration Engine*
+*OpenLI HIE v1.9.7 — The First GenAI-Native Integration Engine*
 *Licensed under AGPL-3.0 or Commercial by Lightweight Integration Ltd*

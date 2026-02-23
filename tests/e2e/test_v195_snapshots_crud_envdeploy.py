@@ -29,7 +29,7 @@ AGENT_BASE = os.environ.get("HIE_E2E_AGENT_BASE", "http://hie-agent-runner:8082"
 PROMPT_MGR_BASE = os.environ.get("HIE_E2E_PROMPT_MGR_BASE", "http://hie-prompt-manager:8083")
 
 # Platform version — injected by run_e2e_tests.sh from the root VERSION file
-EXPECTED_VERSION = os.environ.get("HIE_VERSION", "1.9.5")
+EXPECTED_VERSION = os.environ.get("HIE_VERSION", "1.9.7")
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Demo user credentials (seeded by scripts/init-db.sql)

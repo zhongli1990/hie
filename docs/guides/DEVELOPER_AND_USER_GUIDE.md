@@ -1,6 +1,6 @@
 # OpenLI HIE — Developer & User Guide
 
-**Version:** 1.9.6
+**Version:** 1.9.7
 **Date:** February 2026
 **Status:** Production-Ready Enterprise Integration Engine
 
@@ -61,7 +61,7 @@ OpenLI HIE follows IRIS conventions so that IRIS developers feel immediately at 
 
 ## Quickstart: Create Your First Workflow Route (10 Minutes)
 
-> *This walkthrough creates a minimal but fully functional HL7 message route — verified end-to-end in v1.9.6. It mirrors the simplest possible IRIS production: one inbound service, one routing engine, and two outbound operations.*
+> *This walkthrough creates a minimal but fully functional HL7 message route — verified end-to-end in v1.9.7. It mirrors the simplest possible IRIS production: one inbound service, one routing engine, and two outbound operations.*
 
 ### What You'll Build
 
@@ -1322,7 +1322,7 @@ After deployment, the custom class appears in the Portal's class dropdown when a
 
 ---
 
-## Part 3: GenAI Agent Guide — AI-Assisted Configuration (v1.9.6)
+## Part 3: GenAI Agent Guide — AI-Assisted Configuration (v1.9.7)
 
 > *This section is for developers who want to use the **GenAI Agent** to accelerate configuration — a capability no other integration engine offers. Everything described below has been verified end-to-end with live API calls.*
 
