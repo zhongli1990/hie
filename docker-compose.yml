@@ -39,7 +39,7 @@ services:
       - ./data/processed:/data/processed
       - ./data/archive:/data/archive
     environment:
-      - HIE_VERSION=${HIE_VERSION:-1.9.7}
+      - HIE_VERSION=${HIE_VERSION}
       - HIE_CONFIG=/app/config/production.yaml
       - HIE_LOG_LEVEL=DEBUG
       - HIE_LOG_FORMAT=json
@@ -74,7 +74,7 @@ services:
       - "9302:8081"           # Management API
       - "10001-10020:10001-10020"  # MLLP/TCP ports for HL7 services (20 ports)
     environment:
-      - HIE_VERSION=${HIE_VERSION:-1.9.7}
+      - HIE_VERSION=${HIE_VERSION}
       - HIE_API_HOST=0.0.0.0
       - HIE_API_PORT=8081
       - DATABASE_URL=postgresql://hie:hie_password@postgres:5432/hie
@@ -103,7 +103,7 @@ services:
       context: ./Portal
       dockerfile: Dockerfile
       args:
-        NEXT_PUBLIC_HIE_VERSION: ${HIE_VERSION:-1.9.7}
+        NEXT_PUBLIC_HIE_VERSION: ${HIE_VERSION}
     container_name: hie-portal
     ports:
       - "9303:3000"
@@ -142,7 +142,7 @@ services:
     ports:
       - "9340:8082"
     environment:
-      - HIE_VERSION=${HIE_VERSION:-1.9.7}
+      - HIE_VERSION=${HIE_VERSION}
       - GLOBAL_SKILLS_PATH=/app/skills
       - ENABLE_HOOKS=true
       - MAX_AGENT_TURNS=25
@@ -182,7 +182,7 @@ services:
     ports:
       - "9342:8081"
     environment:
-      - HIE_VERSION=${HIE_VERSION:-1.9.7}
+      - HIE_VERSION=${HIE_VERSION}
       - CODEX_API_KEY=${CODEX_API_KEY:-}
       - OPENAI_API_KEY=${OPENAI_API_KEY:-}
       - CODEX_SANDBOX_TYPE=none
@@ -214,7 +214,7 @@ services:
     ports:
       - "9341:8083"
     environment:
-      - HIE_VERSION=${HIE_VERSION:-1.9.7}
+      - HIE_VERSION=${HIE_VERSION}
       - DATABASE_URL=postgresql+asyncpg://hie:hie_password@postgres:5432/hie
       - JWT_SECRET_KEY=hie-jwt-secret-key-change-in-production
       - SKILLS_DIR=/app/skills

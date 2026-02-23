@@ -1,7 +1,7 @@
 # OpenLI HIE — The First GenAI-Native Healthcare Integration Engine
 
 [![License: Dual](https://img.shields.io/badge/License-AGPL%20v3%20%2F%20Commercial-blue.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/version-1.9.6-green.svg)](RELEASE_NOTES.md)
+[![Version](https://img.shields.io/badge/version-1.9.7-green.svg)](RELEASE_NOTES.md)
 
 **Natural language IS the development language.**
 
@@ -9,7 +9,7 @@ OpenLI HIE is not an integration engine with AI bolted on. It is an integration 
 
 > **© 2026 Lightweight Integration Ltd, UK** — Dual licensed under AGPL-3.0 (community) and Commercial license. See [LICENSE](LICENSE) for details.
 
-**Version:** 1.9.6 | **License:** AGPL-3.0 / Commercial Dual License | **Last Updated:** February 2026
+**Version:** 1.9.7 | **License:** AGPL-3.0 / Commercial Dual License | **Last Updated:** February 2026
 
 ---
 

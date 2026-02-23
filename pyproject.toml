@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "hie"
-version = "1.9.7"
+dynamic = ["version"]
 description = "Healthcare Integration Engine - Enterprise-grade healthcare messaging platform"
 readme = "README.md"
 license = "AGPL-3.0-or-later"
@@ -71,6 +71,10 @@ hie = "Engine.cli:main"
 Homepage = "https://github.com/hie/hie"
 Documentation = "https://hie.readthedocs.io"
 Repository = "https://github.com/hie/hie"
+
+[tool.hatch.version]
+path = "VERSION"
+pattern = "^(?P<version>\\S+)"
 
 [tool.hatch.build.targets.wheel]
 packages = ["Engine"]

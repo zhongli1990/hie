@@ -1,10 +1,15 @@
 """HIE - Healthcare Integration Engine setup."""
 
+import os
 from setuptools import setup, find_packages
+
+_here = os.path.abspath(os.path.dirname(__file__))
+with open(os.path.join(_here, "VERSION")) as f:
+    _version = f.read().strip()
 
 setup(
     name="hie",
-    version="1.9.7",
+    version=_version,
     description="Healthcare Integration Engine",
     author="HIE Team",
     packages=find_packages(),

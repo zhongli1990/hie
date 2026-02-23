@@ -10,4 +10,4 @@ import os
 
 # Single source of truth for version assertions across all E2E test suites.
 # Injected by scripts/run_e2e_tests.sh from the root VERSION file.
-EXPECTED_VERSION = os.environ.get("HIE_VERSION", "1.9.7")
+EXPECTED_VERSION = os.environ.get("HIE_VERSION", "unknown")
