@@ -1,8 +1,8 @@
 # OpenLI HIE — Developer & User Guide
 
-**Version:** 1.7.5  
-**Date:** February 11, 2026  
-**Status:** Production-Ready Enterprise Integration Engine  
+**Version:** 1.9.6
+**Date:** February 2026
+**Status:** Production-Ready Enterprise Integration Engine
 
 ---
 
@@ -61,7 +61,7 @@ OpenLI HIE follows IRIS conventions so that IRIS developers feel immediately at 
 
 ## Quickstart: Create Your First Workflow Route (10 Minutes)
 
-> *This walkthrough creates a minimal but fully functional HL7 message route — verified end-to-end in v1.7.5. It mirrors the simplest possible IRIS production: one inbound service, one routing engine, and two outbound operations.*
+> *This walkthrough creates a minimal but fully functional HL7 message route — verified end-to-end in v1.9.6. It mirrors the simplest possible IRIS production: one inbound service, one routing engine, and two outbound operations.*
 
 ### What You'll Build
 
@@ -1322,49 +1322,135 @@ After deployment, the custom class appears in the Portal's class dropdown when a
 
 ---
 
-## Part 3: GenAI Agent Guide — AI-Assisted Configuration
+## Part 3: GenAI Agent Guide — AI-Assisted Configuration (v1.9.6)
 
-> *This section is for developers who want to use the **GenAI Agent** to accelerate configuration — a capability no other integration engine offers.*
+> *This section is for developers who want to use the **GenAI Agent** to accelerate configuration — a capability no other integration engine offers. Everything described below has been verified end-to-end with live API calls.*
 
 ---
+
+### Architecture
+
+The GenAI Agent is powered by three microservices:
+
+| Service | Port | Role |
+|---------|------|------|
+| **Agent Runner** | 9340 (internal 8082) | Runs the LLM agent loop, manages tools, enforces RBAC |
+| **Prompt Manager** | 9341 (internal 8083) | Stores prompt templates, skills, audit logs, approvals |
+| **Manager API** | 9302 (internal 8081) | Backend for workspace/project/item CRUD operations |
+
+The Portal's Agents page connects to the Agent Runner via **SSE (Server-Sent Events)** for real-time streaming of tool calls and responses.
+
+### Available Tools (24 hie_* tools)
+
+All tools call the Manager API. The agent selects which tools to call based on the user's natural language request.
+
+| Tool | What It Does | API Call |
+|------|-------------|----------|
+| `hie_list_workspaces` | List available workspaces | GET /api/workspaces |
+| `hie_create_workspace` | Create a new workspace | POST /api/workspaces |
+| `hie_list_projects` | List projects in a workspace | GET /api/workspaces/{ws}/projects |
+| `hie_create_project` | Create a new project | POST /api/workspaces/{ws}/projects |
+| `hie_get_project` | Get full project config | GET /api/workspaces/{ws}/projects/{p} |
+| `hie_create_item` | Add service/process/operation | POST /api/projects/{p}/items |
+| `hie_update_item` | Modify item settings | PUT /api/projects/{p}/items/{i} |
+| `hie_delete_item` | Remove an item | DELETE /api/projects/{p}/items/{i} |
+| `hie_create_connection` | Wire two items together | POST /api/projects/{p}/connections |
+| `hie_update_connection` | Modify a connection | PUT /api/projects/{p}/connections/{c} |
+| `hie_delete_connection` | Remove a connection | DELETE /api/projects/{p}/connections/{c} |
+| `hie_create_routing_rule` | Add a routing rule | POST /api/projects/{p}/routing-rules |
+| `hie_update_routing_rule` | Modify a routing rule | PUT /api/projects/{p}/routing-rules/{r} |
+| `hie_delete_routing_rule` | Remove a routing rule | DELETE /api/projects/{p}/routing-rules/{r} |
+| `hie_deploy_project` | Deploy config to engine | POST /api/workspaces/{ws}/projects/{p}/deploy |
+| `hie_start_project` | Start all items | POST /api/workspaces/{ws}/projects/{p}/start |
+| `hie_stop_project` | Stop all items | POST /api/workspaces/{ws}/projects/{p}/stop |
+| `hie_project_status` | Get runtime status | GET /api/workspaces/{ws}/projects/{p}/status |
+| `hie_test_item` | Send test message | POST /api/.../items/{name}/test |
+| `hie_list_item_types` | List available classes | GET /api/item-types |
+| `hie_reload_custom_classes` | Reload custom.* classes | POST /api/item-types/reload-custom |
+| `hie_list_versions` | List config snapshots | GET /api/projects/{p}/versions |
+| `hie_get_version` | Get a specific snapshot | GET /api/projects/{p}/versions/{v} |
+| `hie_rollback_project` | Rollback to a version | POST /api/projects/{p}/rollback/{v} |
+
+### RBAC — Who Can Use Which Tools
+
+Each role sees only its permitted tools. The agent literally cannot call tools outside its role's set.
+
+| Role | Build | Deploy | Start/Stop | Test | Rollback | Tools |
+|------|-------|--------|------------|------|----------|-------|
+| **platform_admin** | All | All | All | All | All | 24 |
+| **tenant_admin** | All | All | All | All | All | 23 |
+| **developer** | All CRUD | Staging only | No | Yes | No | 22 |
+| **clinical_safety_officer** | No | No | No | Yes | No | 8 |
+| **operator** | No | Yes | Yes | No | Yes | 11 |
+| **auditor** | No | No | No | No | No | 8 |
+| **viewer** | No | No | No | No | No | 6 |
+
+**Security layers:**
+- **Layer 1 (Proactive):** Tools not in the role's set are removed before the LLM sees them
+- **Layer 2 (Defensive):** Pre-tool-use hook validates permissions again before execution
+- **Layer 3 (Namespace):** `li.*`, `Engine.li.*`, `EnsLib.*` writes blocked for non-admins
+- **Layer 4 (File Path):** File writes restricted to `custom/` directory for non-admins
 
 ### Using the Agent to Build Integrations
 
 **Portal Navigation:** Sidebar → Agents
 
-**Example conversation:**
+**Full lifecycle example (as developer):**
 
 ```
-You:    Create an HL7 ADT receiver on port 2575 that validates NHS numbers,
-        transforms to v2.5.1 for RIS at ris.sth.nhs.uk:2576, transforms to
-        v2.4 for Lab at lab.sth.nhs.uk:2577, and archives everything to
-        /data/outbound.
+You:    Build a complete ADT integration for St Thomas' Hospital:
+        - Inbound "Cerner.PAS.Receiver" on port 5001 (HL7 TCP, Application AckMode)
+        - Routing engine "ADT.Router"
+        - Outbound "RIS.Sender" to 10.0.1.50:5002 (A01, A02, A03)
+        - Outbound "EPR.Sender" to 10.0.1.60:5003 (A01, A03 only)
+        Wire everything and create routing rules.
 
-Agent:  I'll create that integration. Setting up project "ADT Integration"
-        with 3 inbound services, 2 processes, and 3 outbound operations...
+Agent:  I'll build that integration. Let me start by finding the workspace...
 
-        ✅ Created project: ADT Integration
-        ✅ Cerner.PAS.Receiver — HL7 TCP Service, port 2575
-        ✅ NHS.Validation.Process — NHS validation + PDS enrichment
-        ✅ ADT.Content.Router — 4 routing rules configured
-        ✅ RIS.HL7.Sender — HL7 v2.5.1 to ris.sth.nhs.uk:2576
-        ✅ Lab.HL7.Sender — HL7 v2.4 to lab.sth.nhs.uk:2577
-        ✅ Archive.File.Writer — /data/outbound
-        ✅ All connections wired
-        ✅ Production deployed and running (8/8 items active)
+        [hie_list_workspaces] → Found "STH Integrations"
+        [hie_create_project] → Created "Cerner ADT Integration"
+        [hie_create_item] × 4 → Created receiver, router, RIS sender, EPR sender
+        [hie_create_connection] × 3 → Wired receiver→router→RIS, router→EPR
+        [hie_create_routing_rule] × 2 → A01/A02/A03→RIS, A01/A03→EPR
 
-        Shall I send a test ADT A01 message?
+        Integration built! 4 items, 3 connections, 2 routing rules.
+        Shall I test it?
 
-You:    Yes, and also add a FHIR inbound on port 8443.
+You:    Test with an A01 admission and an A02 transfer.
 
-Agent:  ✅ Test message sent — ACK received from RIS and Lab.
-        ✅ Added GP.FHIR.Receiver on port 8443 with FHIR→HL7 normalisation.
-        Production hot-reloaded — now 9/9 items active.
+Agent:  [hie_test_item] → Sent A01 admission → Routed to RIS + EPR
+        [hie_test_item] → Sent A02 transfer → Routed to RIS only (EPR excluded)
+
+        Routing works correctly. A01 goes to both, A02 to RIS only.
+
+You:    Deploy to production.
+
+Agent:  I can't deploy to production — my role (Integration Developer)
+        doesn't have permission. I'll create a deployment approval request
+        so a Clinical Safety Officer or Admin can review and approve it.
+```
+
+### Using Skills
+
+The agent has access to role-specific skills (seeded from `agent-runner/skills/`):
+
+| Skill | Available To | What It Does |
+|-------|-------------|-------------|
+| `hl7-route-builder` | developer | Generates HL7 routing configurations |
+| `fhir-mapper` | developer | Maps FHIR resources to HL7 segments |
+| `integration-test` | developer, cso | Generates and runs integration test plans |
+| `nhs-compliance-check` | developer, cso | Validates NHS data handling compliance |
+| `clinical-safety-review` | cso | Runs 32-item DCB0129/DCB0160 safety checklist |
+
+Seed skills into the database:
+```bash
+curl -X POST http://localhost:9341/seed/skills
+curl -X POST http://localhost:9341/seed/templates
 ```
 
 ### Using Prompt Templates
 
-**Portal Navigation:** Sidebar → Prompts
+**Portal Navigation:** Sidebar → Admin → Skills (for skills) or Prompts page
 
 Pre-built templates for common healthcare integration tasks:
 
@@ -1375,6 +1461,46 @@ Pre-built templates for common healthcare integration tasks:
 | NHS Validation Rules | Generate NHS-specific validation logic |
 | Integration Route Design | Design message flow for a clinical scenario |
 | Error Handling Strategy | Configure retry/failover for an operation |
+
+### Audit Trail
+
+Every tool call made by the agent is automatically logged to the audit system:
+- **PII sanitisation**: NHS numbers → `[NHS_NUMBER]`, UK postcodes → `[POSTCODE]`
+- **Denied actions recorded**: RBAC-blocked tool calls are logged with `result_status: denied`
+- **Portal view**: Admin → Audit Log — with stats cards, filters, expandable details
+
+### Approval Workflow
+
+Production deployments require CSO/Admin approval:
+1. Developer requests deploy → creates `pending` approval record
+2. CSO reviews in Admin → Approvals → clicks Approve/Reject with notes
+3. Operator deploys the approved project
+
+API endpoints:
+```bash
+# Create approval (called by agent-runner when developer requests deploy)
+POST http://localhost:9341/approvals
+
+# List approvals
+GET http://localhost:9341/approvals?status=pending
+
+# Approve (CSO/Admin only — returns 403 for viewer/developer)
+POST http://localhost:9341/approvals/{id}/approve
+
+# Reject
+POST http://localhost:9341/approvals/{id}/reject
+```
+
+### Demo Users for Agent Testing
+
+See [DEMO_LIFECYCLE_GUIDE.md](DEMO_LIFECYCLE_GUIDE.md) for the complete 7-act walkthrough with all 7 demo users. Quick reference:
+
+| Role | Login | Agent Chat Capabilities |
+|------|-------|------------------------|
+| Developer | `developer@sth.nhs.uk` / `Demo12345!` | Design, Build, Test |
+| CSO | `cso@sth.nhs.uk` / `Demo12345!` | Review, Test, Approve/Reject |
+| Operator | `operator@sth.nhs.uk` / `Demo12345!` | Deploy, Start/Stop, Rollback |
+| Admin | `admin@hie.nhs.uk` / `Admin123!` | Everything |
 
 ---
 
